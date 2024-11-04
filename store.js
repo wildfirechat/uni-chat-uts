@@ -1627,12 +1627,21 @@ let store = {
     // clone一下，别影响到好友列表
     getGroupMemberUserInfos(groupId, includeSelf = true, sortByPinyin = false) {
 
-        let memberIds = wfc.getGroupMemberIds(groupId);
+        let groupMembers = wfc.getGroupMembers(groupId, false);
+        let memberIds = groupMembers.map(member => member.memberId);
         let userInfos = wfc.getUserInfos(memberIds, groupId);
         if (!includeSelf) {
             userInfos = userInfos.filter(u => u.uid !== wfc.getUserId())
         }
-        let userInfosCloneCopy = userInfos.map(u => Object.assign({}, u));
+        let groupMemberMap = new Map();
+        for (const groupMember of groupMembers) {
+            groupMemberMap.set(groupMember.memberId, groupMember);
+        }
+        let userInfosCloneCopy = userInfos.map(u => {
+            let info = Object.assign({}, u)
+            info._groupMember = groupMemberMap.get(info.uid);
+            return info;
+        });
         if (sortByPinyin) {
             return this._patchAndSortUserInfos(userInfosCloneCopy, groupId);
         } else {
