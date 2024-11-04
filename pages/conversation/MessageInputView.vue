@@ -355,6 +355,13 @@ export default {
         },
 
         async voip(audioOnly) {
+            // #ifdef APP-PLUS
+            uni.showToast({
+                title: '鸿蒙系统暂不支持音视频通话',
+                icon: 'none'
+            })
+            return
+            // #endif
             if (!await checkVoipPermissions(audioOnly)) {
                 return;
             }
@@ -426,8 +433,9 @@ export default {
 
         chooseFile() {
             // #ifdef APP-HARMONY
+            // HX 4.31 开始支持, https://uniapp.dcloud.net.cn/api/media/file.html#choosefile
             uni.showToast({
-                title: 'TODO ' + '暂不支持',
+                title: '鸿蒙系统暂不支持',
                 icon: 'none'
             })
             //#endif
