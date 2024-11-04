@@ -331,6 +331,8 @@ export default {
         },
 
         chooseImage() {
+            // 使用 chooseMedia，同时选取图片和视频
+            // https://uniapp.dcloud.net.cn/api/media/video.html#choosemedia
             uni.chooseImage({
                 // count: _self.limit ? _self.limit  - _self.fileList.length : 999,
                 sourceType: ['album', 'camera'],
@@ -355,7 +357,7 @@ export default {
         },
 
         async voip(audioOnly) {
-            // #ifdef APP-PLUS
+            // #ifdef APP-HARMONY
             uni.showToast({
                 title: '鸿蒙系统暂不支持音视频通话',
                 icon: 'none'
