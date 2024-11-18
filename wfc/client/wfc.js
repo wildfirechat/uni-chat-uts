@@ -11,6 +11,8 @@ import Config from "../../config";
 import EventType from "./wfcEvent";
 import ConnectionStatus from "./connectionStatus";
 import NullUserInfo from "../model/nullUserInfo";
+import utsWfcClient from "../proto/utsWfcClient";
+import UserSettingScope from "./userSettingScope";
 
 export class WfcManager {
 
@@ -2049,6 +2051,26 @@ export class WfcManager {
 
     clearAllNotification() {
         impl.clearAllNotification();
+    }
+
+    /**
+     * 当前用户是否开启添加好友需要验证，默认为开启
+     *
+     * @return true，需要验证；false，不需要验证
+     */
+    isAddFriendNeedVerify() {
+        return impl.isAddFriendNeedVerify();
+    }
+
+    /**
+     * 修改当前用户是否开启添加好友需要验证功能
+     *
+     * @param enable {boolean}  是否需要验证
+     * @param successCB {() => void } 结果回调
+     * @param failCB { (err) => void} 结果回调
+     */
+    setAddFriendNeedVerify(enable, successCB, failCB) {
+        impl.setAddFriendNeedVerify(enable, successCB, failCB);
     }
 
     chooseFile(type, successCB, failCB) {
