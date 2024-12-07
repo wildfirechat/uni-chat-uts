@@ -8,12 +8,24 @@
                 "signingConfig": "default",
                 "compatibleSdkVersion": "5.0.0(12)",
                 "runtimeOS": "HarmonyOS",
+				"buildOption": {
+				    "strictMode": {
+						"caseSensitiveCheck": true,
+						"useNormalizedOHMUrl": true
+				    }
+				}
             },
             {
                 "name": "release",
                 "signingConfig": "default",
                 "compatibleSdkVersion": "5.0.0(12)",
                 "runtimeOS": "HarmonyOS",
+				"buildOption": {
+					"strictMode": {
+						"caseSensitiveCheck": true,
+						"useNormalizedOHMUrl": true
+					}
+				}
             }
         ],
         "buildModeSet": [

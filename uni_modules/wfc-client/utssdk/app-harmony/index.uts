@@ -28,8 +28,8 @@ export function copyFileToAppCacheDir(fileUri: string):string {
 export function initProto(): void {
     // TODO
     // 这儿拿不到 context，暂时放到了 entryAbility 里面去设置 dbpath
-    // const context: Context =  getContext();
-    // clientModule.setDBPath(context.filesDir);
+    const context: Context =  getContext();
+    clientModule.setDBPath(context.filesDir);
 
     //     'onChannelInfoUpdate': this.onChannelInfoUpdate,
     //     'onClearMessage': null,
@@ -747,7 +747,7 @@ function genWfcEventListener(event: string): (...args: Object[]) => void {
     }
 }
 
-function variableParamsToArrayParamCallback(cb: (value: object) => void) {
+function variableParamsToArrayParamCallback(cb: (value: object) => void) : (...args: Object[]) => void{
     return (...params: object[]) => {
         cb(params)
     }
