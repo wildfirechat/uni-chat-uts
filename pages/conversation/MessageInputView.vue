@@ -12,7 +12,7 @@
                 </view>
                 <view v-else style="width: 100%">
                     <view class="wf-input-text-container">
-                        <textarea ref="textarea" @focus="onInputFocus" :focus="inputFocus" class="wf-input-textarea" @input="onInput" :value="text" placeholder="" hold-keyboard confirm-type="send" @confirm="send(text)" :maxlength="-1" auto-height/>
+                        <textarea ref="textarea" @focus="onInputFocus" class="wf-input-textarea" @input="onInput" :value="text" placeholder="" hold-keyboard confirm-type="send" @confirm="send(text)" :maxlength="-1" auto-height/>
                     </view>
                     <view v-if="sharedConversationState.quotedMessage" class="quote-message-container">
                         <view class="quoted-message single-line">{{ sharedConversationState.quotedMessage.messageContent.digest(sharedConversationState.quotedMessage) }}</view>

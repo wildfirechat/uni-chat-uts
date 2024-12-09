@@ -36,10 +36,12 @@ export default {
         if (iw && ih) {
             let size = scaleDown(iw, ih, 300, 300);
             if (size) {
-                this.$refs.img.style.height = size.height + 'px';
-                this.$refs.img.style.width = size.width + 'px';
-                this.$refs.thumbnail.style.height = size.height + 'px';
-                this.$refs.thumbnail.style.width = size.width + 'px';
+                this.$nextTick(() => {
+                    this.$refs.img.style.height = size.height + 'px';
+                    this.$refs.img.style.width = size.width + 'px';
+                    this.$refs.thumbnail.style.height = size.height + 'px';
+                    this.$refs.thumbnail.style.width = size.width + 'px';
+                })
             }
         }
     },

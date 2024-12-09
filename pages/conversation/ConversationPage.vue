@@ -151,21 +151,24 @@ export default {
     onLoad() {
         const currentWebview = this.$scope.$getAppWebview(); //此对象相当于html5plus里的plus.webview.currentWebview()。在uni-app里vue页面直接使用plus.webview.currentWebview()无效
         // currentWebview.setBounce({position:{top:'100px'},changeoffset:{top:'0px'}}); //动态重设bounce效果
-        currentWebview.overrideUrlLoading({
-            mode: 'reject',
-            // match:'http.*'
-        }, e => {
-            console.log('reject url', e.url)
-            if (this.sharedConversationState.enableMessageMultiSelection) {
-                return;
-            }
-            uni.navigateTo({
-                url: `/pages/misc/WebViewPage?url=${encodeURIComponent(e.url)}`,
-                fail: (e) => {
-                    console.log('navigate to WebViewPage error', e)
+        // 鸿蒙端，暂不支持
+        if (currentWebview && currentWebview.overrideUrlLoading) {
+            currentWebview.overrideUrlLoading({
+                mode: 'reject',
+                // match:'http.*'
+            }, e => {
+                console.log('reject url', e.url)
+                if (this.sharedConversationState.enableMessageMultiSelection) {
+                    return;
                 }
+                uni.navigateTo({
+                    url: `/pages/misc/WebViewPage?url=${encodeURIComponent(e.url)}`,
+                    fail: (e) => {
+                        console.log('navigate to WebViewPage error', e)
+                    }
+                });
             });
-        });
+        }
     },
 
     onShow() {
@@ -471,7 +474,7 @@ export default {
             }
             let voice = message.messageContent;
             let mp3RemotePath = voice.remotePath
-            if(!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS){
+            if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS) {
                 mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
             }
             innerAudioContext = uni.createInnerAudioContext();
