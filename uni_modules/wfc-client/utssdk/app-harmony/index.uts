@@ -3,6 +3,7 @@
 import clientModule, {sendMessageEx} from "@wfc/marswrapper"
 import {pinyin4js} from '@ohos/pinyin4js';
 import fs from '@ohos.file.fs';
+import {pushService} from '@kit.PushKit';
 
 import {FailCallback, StringCallback, SuccessCallback, VoidCallback} from "../interface.uts";
 
@@ -39,7 +40,41 @@ export function initProto(): void {
     //     'onTrafficData': null,
     //     'onProgress': this.onProgress,
 
-    clientModule.setConnectionStatusListener(genWfcEventListener('onConnectionStatusChange'))
+    // function genWfcEventListener(event: string): (...args: Object[]) => void {
+    //     return (...params: Object[]) => {
+    //         let args: Object[] = [event]
+    //         args.push(...params)
+    //         let obj = {
+    //             'args': args
+    //         } as Record<string, Object>
+    //
+    //         wfcEventListener?.(obj)
+    //     }
+    // }
+    //clientModule.setConnectionStatusListener(genWfcEventListener('onConnectionStatusChange'))
+    clientModule.setConnectionStatusListener((...params: Object[]) => {
+        let args: Object[] = ['onConnectionStatusChange']
+        args.push(...params)
+        let obj = {
+            'args': args
+        } as Record<string, Object>
+        wfcEventListener?.(obj)
+
+        if (args[1] === 1) {
+            // 配置推送相关 token，要有合法的签名、包名等，才能正确获取 token
+            // 成功配置之后，需要推送时，im-server 会调用 app-server，app-server 再调用鸿蒙的推送服务进行推送。具体请看下  push-server
+            pushService.getToken()
+                .then((pushToken: string) => {
+                    // 8 是鸿蒙推送
+                    setDeviceToken(8, pushToken);
+                    console.log('get push token success', 8, pushToken);
+                })
+                .catch((err: Error) => {
+                    console.error('get push token failed', err);
+                });
+
+        }
+    })
 
     clientModule.setConnectToServerListener(genWfcEventListener('onConnectToServer'))
     clientModule.setReceiveMessageListener(genWfcEventListener('onReceiveMessage'),
