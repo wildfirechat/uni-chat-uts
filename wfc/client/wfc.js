@@ -11,8 +11,6 @@ import Config from "../../config";
 import EventType from "./wfcEvent";
 import ConnectionStatus from "./connectionStatus";
 import NullUserInfo from "../model/nullUserInfo";
-import utsWfcClient from "../proto/utsWfcClient";
-import UserSettingScope from "./userSettingScope";
 
 export class WfcManager {
 
