@@ -722,7 +722,9 @@ export default {
         },
 
         scrollToBottom() {
-            this.scrollTop = 99999 + this.lastMessageId;
+            setTimeout(() => {
+                this.scrollTop = 99999 + this.lastMessageId;
+            }, 200)
         }
     },
 
