@@ -40,7 +40,7 @@ export default {
     data() {
         return {
             user: store.state.contact.selfUserInfo,
-            supportConference: avengineKit.isSupportConference()
+            supportConference: avengineKit.isSupportConference(),
         }
     },
     methods: {
