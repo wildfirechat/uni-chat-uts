@@ -8,5 +8,5 @@
 
 export type StringCallback = (value : string) => void
 export type VoidCallback = () => void
-export type SuccessCallback = VoidCallback
+export type SuccessCallback = () => void
 export type FailCallback = (error: number) => void
