@@ -2,7 +2,7 @@
     "id": "wfc-client",
     "name": "【官方】野火即时通讯IM插件(UTS)",
     "displayName": "【官方】野火即时通讯IM插件(UTS)",
-    "version": "0.7.2",
+    "version": "0.7.3",
     "description": "野火官方发布的移动端实时音视频插件，包括Android和iOS平台，拥有完善的Demo，服务器和移动端免费使用，支持多人音频和多人视频通话，让您一步拥有完美的即时通讯软件。",
     "keywords": [
         "IM",
@@ -23,5 +23,16 @@
         "npmurl": "",
         "type": "uts"
     },
-    "repository": "https://gitee.com/wfchat/uni-wfc-client/tree/uts/"
+    "repository": "https://gitee.com/wfchat/uni-wfc-client/tree/uts/",
+    "uni_modules": {
+        "platforms": {
+            "client": {
+                "App": {
+                    "app-android": "u",
+                    "app-harmony": "u",
+                    "app-ios": "u"
+                }
+            }
+        }
+    }
 }
