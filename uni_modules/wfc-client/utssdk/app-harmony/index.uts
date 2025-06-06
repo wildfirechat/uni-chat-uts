@@ -727,7 +727,7 @@ export function uploadMedia(fileName: string, data: string, mediaType: number, s
 
 @UTSJS.keepAlive
 export function uploadMediaFile(filePath: string, mediaType: number, successCB: StringCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
-    clientModule.uploadMediaFile(filePath, mediaType.toInt(), stringCallback(successCB), numberCallback(failCB), progressCB)
+    clientModule.uploadMediaFile(filePath, mediaType, stringCallback(successCB), numberCallback(failCB), progressCB)
 }
 
 export function getMessage(messageId: number): string {
