@@ -1,7 +1,7 @@
 <template>
     <div class="me-container">
         <div class="user-info" @click="showUserInfo">
-            <image class="portrait" :src="user.portrait"></image>
+            <image class="portrait" :src="user.portrait" @click.stop="updatePortrait"></image>
             <text class="name">{{ user.displayName }}</text>
         </div>
         <div class="about" @click="showAbout">
@@ -26,6 +26,8 @@ import {clear} from "../util/storageHelper";
 import store from "../../store";
 import avengineKit from "../../wfc/av/engine/avengineKit";
 import Config from "../../config";
+import MessageContentMediaType from "../../wfc/messages/messageContentMediaType";
+import ModifyMyInfoType from "../../wfc/model/modifyMyInfoType";
 
 export default {
     name: "MePage",
@@ -88,6 +90,61 @@ export default {
             });
 
         },
+
+        updatePortrait() {
+            console.log('updatePortrait 0')
+            // 使用 chooseMedia，同时选取图片和视频
+            // https://uniapp.dcloud.net.cn/api/media/video.html#choosemedia
+            uni.chooseImage({
+                count: 1,
+                mediaType: ['image'],
+                sourceType: ['album', 'camera'],
+                sizeType: ['original', 'compressed'],
+                success: (e) => {
+                    console.log('choose image', e.tempFilePaths);
+                    e.tempFilePaths.forEach(async path => {
+                        let filePath;
+                        // #ifdef APP-HARMONY
+                        filePath = path;
+                        //#else
+                        if (path.startsWith('file:///')) {
+                            filePath = path.substring('file://'.length);
+                        } else {
+                            filePath = plus.io.convertLocalFileSystemURL(path)
+                        }
+                        //#endif
+                        wfc.uploadMediaFile(filePath, MessageContentMediaType.Portrait, (remoteUrl) => {
+                            console.log('upload success', remoteUrl);
+                            wfc.modifyMyInfo([{
+                                type: ModifyMyInfoType.Modify_Portrait,
+                                value: remoteUrl
+                            }], () => {
+                                console.log('modifyMyInfo success', remoteUrl);
+                                this.user.portrait = remoteUrl;
+                                uni.showToast({
+                                    title: '头像更新成功',
+                                    icon: 'none'
+                                });
+                            }, (error) => {
+                                console.error('modifyMyInfo error', error);
+                                uni.showToast({
+                                    title: '头像更新失败: ' + error,
+                                    icon: 'none'
+                                });
+                            });
+                        }, (error) => {
+                            console.error('upload error', error);
+                            // uni.showToast({
+                            //     title: '上传失败: ' + error,
+                            //     icon: 'none'
+                            // });
+                        }, (progress) => {
+                            console.log('upload progress', progress);
+                        });
+                    })
+                }
+            });
+        }
     }
 }
 </script>
