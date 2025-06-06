@@ -721,12 +721,13 @@ export function updateRemoteMessageContent(messageUid: string, messagePayload: s
     clientModule.updateRemoteMessageContent(messageUid, messagePayload, distribute, updateLocal, voidCallback(successCB), numberCallback(failCB))
 }
 
-export function uploadMedia(fileName: string, data: string, mediaType: number, successCB: VoidCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
-    clientModule.uploadMedia(fileName, data, mediaType, voidCallback(successCB), numberCallback(failCB), progressCB)
+export function uploadMedia(fileName: string, data: string, mediaType: number, successCB: StringCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
+    clientModule.uploadMedia(fileName, data, mediaType, stringCallback(successCB), numberCallback(failCB), progressCB)
 }
 
-export function uploadMediaFile(filePath: string, mediaType: number, successCB: VoidCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
-    clientModule.uploadMedia(filePath, mediaType.toInt(), voidCallback(successCB), numberCallback(failCB), progressCB)
+@UTSJS.keepAlive
+export function uploadMediaFile(filePath: string, mediaType: number, successCB: StringCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
+    clientModule.uploadMediaFile(filePath, mediaType.toInt(), stringCallback(successCB), numberCallback(failCB), progressCB)
 }
 
 export function getMessage(messageId: number): string {

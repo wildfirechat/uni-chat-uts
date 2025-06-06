@@ -1666,8 +1666,7 @@ export class WfcManager {
      * 发送消息，参考{@link sendConversationMessage}
      * @param {Message} message 一定要求是{@link Message}类型
      * @param preparedCB
-     * @param progressCB
-     * @param successCB
+     * @param progressCB 由于 uniapp 限制，这个方法目前只会回调一次，无法持续回调。https://doc.dcloud.net.cn/uni-app-x/plugin/uts-plugin.html#keepalive     * @param successCB
      * @param failCB
      * @returns {Promise<void>}
      */
@@ -1680,7 +1679,7 @@ export class WfcManager {
      * @param message
      * @param toUsers
      * @param preparedCB
-     * @param progressCB
+     * @param progressCB 由于 uniapp 限制，这个方法目前只会回调一次，无法持续回调。https://doc.dcloud.net.cn/uni-app-x/plugin/uts-plugin.html#keepalive     * @param successCB
      * @param successCB
      * @param failCB
      * @returns {Promise<void>}
@@ -1807,7 +1806,7 @@ export class WfcManager {
      * @param {number} mediaType 媒体类型，可选值参考{@link MessageContentMediaType}
      * @param {function (string)} successCB 回调通知上传成功之后的url
      * @param {function (number)} failCB
-     * @param {function (number, number)} progressCB
+     * @param {function (number, number)} progressCB 由于 uniapp 限制，这个方法目前只会回调一次，无法持续回调。https://doc.dcloud.net.cn/uni-app-x/plugin/uts-plugin.html#keepalive
      * @returns {Promise<void>}
      */
     async uploadMediaFile(filePath,  mediaType, successCB, failCB, progressCB) {
