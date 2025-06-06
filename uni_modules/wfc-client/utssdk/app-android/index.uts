@@ -624,6 +624,10 @@ export function uploadMedia(fileName: string, data: string, mediaType: number, s
     clientModule.uploadMedia(fileName, data, mediaType.toInt(), voidCallback(successCB), numberCallback(failCB), progressCB)
 }
 
+export function uploadMediaFile(filePath: string, mediaType: number, successCB: VoidCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
+    clientModule.uploadMedia(filePath, mediaType.toInt(), voidCallback(successCB), numberCallback(failCB), progressCB)
+}
+
 export function getMessage(messageId: number): string {
     return clientModule.getMessage(messageId.toLong())
 }

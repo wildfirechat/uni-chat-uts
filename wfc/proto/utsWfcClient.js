@@ -293,6 +293,7 @@ class UtsWfcClient {
     updateMessageStatus = updateMessageStatus
     updateRemoteMessageContent = updateRemoteMessageContent
     uploadMedia = uploadMedia
+    uploadMediaFile = uploadMediaFile
     useSM4 = useSM4
     getMessageByUid = getMessageByUid
     getGroupMember = getGroupMember
