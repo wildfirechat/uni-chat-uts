@@ -141,6 +141,7 @@ import {
     updateMessageStatus,
     updateRemoteMessageContent,
     uploadMedia,
+	uploadMediaFile,
     useSM4,
     getMessageByUid,
     getGroupMember,
