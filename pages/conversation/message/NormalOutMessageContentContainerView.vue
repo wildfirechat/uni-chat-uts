@@ -185,7 +185,7 @@ export default {
                     let unreadUserIds = [];
                     groupMembers.forEach(memberId => {
                         let readDt = readEntries ? readEntries.get(memberId) : 0;
-                        if (readDt && gte(readDt, timestamp)) {
+                        if ((readDt && gte(readDt, timestamp)) || memberId === this.message.from ) {
                             readCount++;
                             readUserIds.push(memberId);
                         } else {
