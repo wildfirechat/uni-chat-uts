@@ -408,8 +408,8 @@ export class WfcManager {
      * @param {boolean} incoming 是否是收到的好友请求
      * @return {FriendRequest|null}
      */
-    getOneFriendRequest(userId, incoming = true) {
-        return impl.getOneFriendRequest(userId, incoming);
+    getFriendRequest(userId, incoming = true) {
+        return impl.getFriendRequest(userId, incoming);
     }
 
     /**
