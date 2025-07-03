@@ -141,6 +141,10 @@ export function getIncommingFriendRequest(): string {
     return clientModule.getIncommingFriendRequest();
 }
 
+export function getFriendRequest(userId: string, incoming: boolean): string {
+    return clientModule.getFriendRequest(userId, incoming);
+}
+
 export function getGroupInfos(groupIds: string[], refresh: boolean): string {
     return clientModule.getGroupInfos(groupIds, refresh=refresh)
     // return ''

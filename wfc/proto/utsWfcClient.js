@@ -18,6 +18,7 @@ import {
     getFavGroups,
     getFavUsers,
     getIncommingFriendRequest,
+    getFriendRequest,
     getGroupInfos,
     getUnreadFriendRequestStatus,
     isFavGroup,
@@ -171,6 +172,7 @@ class UtsWfcClient {
     getFavGroups = getFavGroups
     getFavUsers = getFavUsers
     getIncommingFriendRequest = getIncommingFriendRequest
+    getFriendRequest = getFriendRequest
     getGroupInfos = getGroupInfos
     getUnreadFriendRequestStatus = getUnreadFriendRequestStatus
     isFavGroup = isFavGroup

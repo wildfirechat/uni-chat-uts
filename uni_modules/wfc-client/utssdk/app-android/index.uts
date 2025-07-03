@@ -150,6 +150,10 @@ export function getIncommingFriendRequest(): string {
     return clientModule.getIncommingFriendRequest();
 }
 
+export function getFriendRequest(userId: string, incoming: boolean): string {
+    return clientModule.getFriendRequest(userId, incoming);
+}
+
 export function getGroupInfos(groupIds: string[], fresh: boolean): string {
     return clientModule.getGroupInfos(groupIds.toKotlinList(), fresh)
     // return ''
