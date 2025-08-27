@@ -491,7 +491,9 @@ export default {
                 message._isPlaying = false;
                 store.playVoice(null)
             })
-            innerAudioContext.play();
+            innerAudioContext.onCanplay(() => {
+                innerAudioContext.play();
+            })
         },
         mentionMessageSenderTitle(message) {
             if (!message) {
