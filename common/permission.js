@@ -1,5 +1,9 @@
 /// null = 未请求，1 = 已允许，0 = 拒绝|受限, 2 = 系统未开启
 
+// #ifdef APP-HARMONY
+import {requestSystemPermission} from '@/uni_modules/wfc-client'
+// #endif
+
 var isIOS
 
 function album() {
@@ -229,6 +233,28 @@ function requestAndroid(permissionIDs) {
     });
 }
 
+function requestHarmony(permissionIDs) {
+    return new Promise((resolve, reject) => {
+        requestSystemPermission(
+            permissionIDs,
+            (allRight, grantedList) => {
+                console.log("success, permissionIDs:" + permissionIDs, allRight);
+                let result = 0;
+                if(allRight){
+                    result = 1
+                }else {
+                    result = 0
+                }
+                resolve(result);
+            },
+            (doNotAskAgain, grantedList) => {
+                console.log("fail :" , doNotAskAgain, grantedList);
+                resolve(-1)
+            }
+        );
+    });
+}
+
 function gotoAppPermissionSetting() {
     if (permission.isIOS) {
         var UIApplication = plus.ios.import("UIApplication");
@@ -258,6 +284,7 @@ const permission = {
     },
     requestIOS: requestIOS,
     requestAndroid: requestAndroid,
+    requestHarmony: requestHarmony,
     gotoAppSetting: gotoAppPermissionSetting
 }
 

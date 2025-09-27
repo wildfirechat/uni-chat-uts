@@ -19,9 +19,7 @@ import SoundMessageContent from "../../../wfc/messages/soundMessageContent";
 import permision from "@/common/permission.js"
 // #endif
 
-// #ifndef APP-HARMONY
 const recorderManager = uni.getRecorderManager();
-// #endif
 export default {
     name: 'AudioInputView',
     props: {
@@ -71,12 +69,20 @@ export default {
             this.title = ' ';
             this.text = '按住说话'
         });
+        recorderManager.onError(res => {
+            console.log('recorderManager.onError', res);
+        })
     },
     methods: {
-        // #ifdef APP-PLUS
+        // #ifdef APP-PLUS || APP-HARMONY
         async checkPermission() {
+            // #ifdef APP-PLUS
             let status = permision.isIOS ? await permision.requestIOS(['record']) :
                 await permision.requestAndroid(['android.permission.RECORD_AUDIO']);
+            // #endif
+            // #ifdef APP-HARMONY
+            let status = await permision.requestHarmony(['ohos.permission.MICROPHONE']);
+            // #endif
             if (status === null || status === 1) {
                 status = 1;
             } else if (status === 2) {
@@ -102,12 +108,14 @@ export default {
         },
         // #endif
         async handleLongPress(e) {
-            // #ifdef APP-PLUS
+            console.log('to start record 000');
+            // #ifdef APP-PLUS || APP-HARMONY
             let status = await this.checkPermission();
             if (status !== 1) {
                 return;
             }
             // #endif
+            console.log('to start record 001');
             this.longPressClientY = e.changedTouches[e.changedTouches.length - 1].clientY;
             this.popupToggle = true;
             recorderManager.start({

@@ -746,6 +746,11 @@ export function getGroupMember(groupId: string, memberId: string): string {
     return clientModule.getGroupMember(groupId, memberId)
 }
 
+export function requestSystemPermission(permissions: string[], success: (allRight: boolean, grantedList: string[]) => void, fail: (doNotAskAgain:boolean, grantedList:string[]) => void): void {
+    console.log('requestSystemPermission', permissions);
+    UTSHarmony.requestSystemPermission(permissions, success, fail)
+}
+
 /*
 export function chooseFile()
 export function notify(title, content);
