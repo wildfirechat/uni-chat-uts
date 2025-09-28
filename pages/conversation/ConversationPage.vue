@@ -83,7 +83,7 @@ import MultiSelectActionView from "@/pages/conversation/MessageMultiSelectAction
 import ForwardType from "@/pages/conversation/message/forward/ForwardType";
 import FileMessageContent from "@/wfc/messages/fileMessageContent";
 import ImageMessageContent from "@/wfc/messages/imageMessageContent";
-// import {copyImg, copyText} from "@/pages/util/clipboard";
+import {copyImg, copyText} from "@/pages/util/clipboard";
 import Message from "@/wfc/messages/message";
 import VideoMessageContent from "@/wfc/messages/videoMessageContent";
 import SoundMessageContent from "@/wfc/messages/soundMessageContent";
@@ -93,7 +93,6 @@ import FavItem from "@/wfc/model/favItem";
 import ConversationType from "@/wfc/model/conversationType";
 import GroupMemberType from "@/wfc/model/groupMemberType";
 import CompositeMessageContent from "@/wfc/messages/compositeMessageContent";
-import ConnectionStatus from "../../wfc/client/connectionStatus";
 import {getItem, setItem} from "../util/storageHelper";
 import Config from "../../config";
 import RichNotificationMessageContent from "../../wfc/messages/notification/richNotificationMessageContent";
@@ -102,6 +101,7 @@ import ContextableNotificationMessageContentContainerView from "./message/Contex
 import EventType from "../../wfc/client/wfcEvent";
 import MultiCallOngoingMessageContent from "../../wfc/av/messages/multiCallOngoingMessageContent";
 import JoinCallRequestMessageContent from "../../wfc/av/messages/joinCallRequestMessageContent";
+import messageInputView from "./MessageInputView.vue";
 
 var innerAudioContext;
 export default {
@@ -277,8 +277,10 @@ export default {
         },
 
         // message context menu
+        // 目前仅文本消息支持复制
         isCopyable(message) {
-            return message && (message.messageContent instanceof TextMessageContent || message.messageContent instanceof ImageMessageContent);
+            //return message && (message.messageContent instanceof TextMessageContent || message.messageContent instanceof ImageMessageContent);
+            return message && message.messageContent instanceof TextMessageContent;
         },
         isDownloadAble(message) {
             return message && (message.messageContent instanceof ImageMessageContent
@@ -343,12 +345,7 @@ export default {
         copy(message) {
             let content = message.messageContent;
             if (content instanceof TextMessageContent) {
-                let selectedText = window.getSelection().toString()
-                if (selectedText) {
-                    copyText(selectedText);
-                } else {
-                    copyText(content.content)
-                }
+                copyText(content.content)
             } else {
                 copyImg(content.remotePath)
             }
@@ -580,7 +577,7 @@ export default {
                 this.contextMenuItems.push({
                     title: "下载",
                     message: message,
-                    tag: 'copy'
+                    tag: 'download'
                 })
             }
             this.contextMenuItems.push({
@@ -620,37 +617,6 @@ export default {
                 tag: 'multiSelection',
             })
             this.showContextMenu = true;
-
-            // <!--                    <li v-if="isCopyable(message)">-->
-            //     <!--                        <a @click.prevent="copy(message)">{{ $t('common.copy') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isDownloadAble(message)">-->
-            //     <!--                        <a @click.prevent="download(message)">{{ $t('common.save') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li>-->
-            //     <!--                        <a @click.prevent="delMessage(message)">{{ $t('common.delete') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isForwardable(message)">-->
-            //     <!--                        <a @click.prevent="_forward(message)">{{ $t('common.forward') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isFavable(message)">-->
-            //     <!--                        <a @click.prevent="favMessage(message)">{{ $t('common.fav') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isQuotable(message)">-->
-            //     <!--                        <a @click.prevent="quoteMessage(message)">{{ $t('common.quote') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li>-->
-            //     <!--                        <a @click.prevent="multiSelect(message)">{{ $t('common.multi_select') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isRecallable(message)">-->
-            //     <!--                        <a @click.prevent="recallMessage(message)">{{ $t('common.recall') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isLocalFile(message)">-->
-            //     <!--                        <a @click.prevent="openFile(message)">{{ $t('common.open') }}</a>-->
-            //     <!--                    </li>-->
-            //     <!--                    <li v-if="isLocalFile(message)">-->
-            //     <!--                        <a @click.prevent="openDir(message)">{{ $t('common.open_dir') }}</a>-->
-            //     <!--                    </li>-->
         },
 
         onContextMenuItemSelect(t) {
@@ -677,6 +643,9 @@ export default {
                     break;
                 case 'multiSelection':
                     this.multiSelect(t.message);
+                    break;
+                case 'copy':
+                    this.copy(t.message);
                     break;
                 default:
                     uni.showToast({

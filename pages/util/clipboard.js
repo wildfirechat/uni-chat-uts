@@ -48,7 +48,9 @@ export const copyImg = async (src) => {
 
 
 export const copyText = (text) => {
-    const blob = new Blob([text], {type: 'text/plain'})
-    copyToClipboard(blob)
+    uni.setClipboardData({
+        data: text,
+        showToast: true,
+    })
 }
 
