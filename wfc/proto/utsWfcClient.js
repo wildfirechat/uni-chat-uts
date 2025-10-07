@@ -210,7 +210,6 @@ class UtsWfcClient {
     getConversationUnreadCount = getConversationUnreadCount
     getFriendAlias = getFriendAlias
     getFriendList = getFriendList
-    getFriendList = getFriendList
     getMyFiles = getMyFiles
     getOutgoingFriendRequest = getOutgoingFriendRequest
     getRemoteMessage = getRemoteMessage
