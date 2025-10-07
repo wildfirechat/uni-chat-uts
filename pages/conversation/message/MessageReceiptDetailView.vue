@@ -51,16 +51,6 @@ export default {
             }
             return desc ? desc : this.$t('common.none');
         },
-        unreceiveUsersDesc() {
-            let desc = '';
-            if (this.unreceiveUsers) {
-                this.unreceiveUsers.forEach(u => {
-                    desc += u._displayName + '、';
-                });
-                desc = desc.substring(0, desc.length - 1)
-            }
-            return desc ? desc : this.$t('common.none');
-        },
     }
 }
 
