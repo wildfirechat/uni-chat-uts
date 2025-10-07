@@ -82,7 +82,7 @@ export function addHttpHeader(header: string, value: string) {
 }
 
 
-export function addMembers(groupId: string, memberIds: string[], extra: string, notifyLines: number[], messagePayload: string,  @escaping  successCB: () => void,  @escaping failCB: (err: any) => void) {
+export function addMembers(groupId: string, memberIds: string[], extra: string, notifyLines: number[], messagePayload: string,  @escaping  successCB: () => void,  @escaping failCB: (err: number) => void) {
     clientModule.addMembers(groupId, memberIds=memberIds, extra=extra, lines=notifyLines, messagePayload=messagePayload, success=(_: any) => {
         successCB()
     }, error=failCB)
@@ -158,7 +158,7 @@ export function isFavGroup(groupId: string): boolean {
     return clientModule.isFavGroup(groupId)
 }
 
-export function getAuthCode(appId: string, appType: Int32, host: string,  @escaping  @escaping successCB: StringCallback,  @escaping failCB: (err: any) => void) {
+export function getAuthCode(appId: string, appType: Int32, host: string,  @escaping  @escaping successCB: StringCallback,  @escaping failCB: (err: number) => void) {
     clientModule.getAuthCode(appId, appType=appType, host=host, success=(value: any) => {
         successCB(value as string)
     }, error=failCB)

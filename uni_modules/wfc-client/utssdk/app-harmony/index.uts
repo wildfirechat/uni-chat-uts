@@ -146,7 +146,7 @@ export function addHttpHeader(header: string, value: string) {
 }
 
 
-export function addMembers(groupId: string, memberIds: string[], extra: string, notifyLines: number[], notifyContentStr: string, successCB: () => void, failCB: (err: object) => void) {
+export function addMembers(groupId: string, memberIds: string[], extra: string, notifyLines: number[], notifyContentStr: string, successCB: () => void, failCB: (err: number) => void) {
     clientModule.addMembers(memberIds, groupId, extra, notifyLines, notifyContentStr, (_: object) => {
         successCB()
     }, failCB)
@@ -224,7 +224,7 @@ export function isFavGroup(groupId: string): boolean {
     return clientModule.isFavGroup(groupId) === 1
 }
 
-export function getAuthCode(appId: string, appType: number, host: string, successCB: StringCallback, failCB: (err: object) => void) {
+export function getAuthCode(appId: string, appType: number, host: string, successCB: StringCallback, failCB: (err: number) => void) {
     clientModule.getAuthCode(appId, appType, host, (value: string) => {
         successCB(value)
     }, failCB)
