@@ -503,8 +503,8 @@ export function searchUser(keyword: string, searchType: number, page: number,  @
     clientModule.searchUser(keyword, searchType=searchType.toInt32(), page=page.toInt32(), success=stringCallback(successCB), error=numberCallback(failCB))
 }
 
-export function sendConferenceRequest(sessionId: number, roomId: string, request: string, data: string, advance: boolean,  @escaping successCB: VoidCallback,  @escaping failCB: FailCallback): void {
-    clientModule.sendConferenceRequest(sessionId.toInt64(), roomId=roomId, request=request, data=data, advance=advance, success=voidCallback(successCB), error=numberCallback(failCB))
+export function sendConferenceRequest(sessionId: number, roomId: string, request: string, data: string, advance: boolean,  @escaping successCB: StringCallback,  @escaping failCB: FailCallback): void {
+    clientModule.sendConferenceRequest(sessionId.toInt64(), roomId=roomId, request=request, data=data, advance=advance, success=stringCallback(successCB), error=numberCallback(failCB))
 }
 
 export function sendFriendRequest(userId: string, reason: string, extra: string,  @escaping successCB: VoidCallback,  @escaping failCB: FailCallback): void {
