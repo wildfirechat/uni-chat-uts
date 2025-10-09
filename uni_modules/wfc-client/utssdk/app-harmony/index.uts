@@ -147,9 +147,7 @@ export function addHttpHeader(header: string, value: string) {
 
 
 export function addMembers(groupId: string, memberIds: string[], extra: string, notifyLines: number[], notifyContentStr: string, successCB: () => void, failCB: (err: number) => void) {
-    clientModule.addMembers(memberIds, groupId, extra, notifyLines, notifyContentStr, (_: object) => {
-        successCB()
-    }, failCB)
+    clientModule.addMembers(memberIds, groupId, extra, notifyLines, notifyContentStr, voidCallback(successCB), numberCallback(failCB))
 }
 
 export function getConversationInfos(types: number[], lines: number[]): string {
@@ -225,9 +223,7 @@ export function isFavGroup(groupId: string): boolean {
 }
 
 export function getAuthCode(appId: string, appType: number, host: string, successCB: StringCallback, failCB: (err: number) => void) {
-    clientModule.getAuthCode(appId, appType, host, (value: string) => {
-        successCB(value)
-    }, failCB)
+    clientModule.getAuthCode(appId, appType, host, stringCallback(successCB), numberCallback(failCB))
 }
 
 export function isMyFriend(userId: string): boolean {
