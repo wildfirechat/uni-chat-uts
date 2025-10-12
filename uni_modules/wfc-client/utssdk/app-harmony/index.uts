@@ -1,6 +1,6 @@
 /* 引入 interface.uts 文件中定义的变量 */
 
-import clientModule, {sendMessageEx} from "@wfc/marswrapper"
+import clientModule, {sendMessageEx, uploadMediaFile as _uploadMediaFile} from "@wfc/marswrapper"
 import {pinyin4js} from '@ohos/pinyin4js';
 import fs from '@ohos.file.fs';
 import {pushService} from '@kit.PushKit';
@@ -727,7 +727,10 @@ export function uploadMedia(fileName: string, data: string, mediaType: number, s
 
 @UTSJS.keepAlive
 export function uploadMediaFile(filePath: string, mediaType: number, successCB: StringCallback, failCB: FailCallback, progressCB: (value: object) => void): void {
-    clientModule.uploadMediaFile(filePath, mediaType, stringCallback(successCB), numberCallback(failCB), progressCB)
+    console.log('xxxxxxxxxxxxxxxxx', filePath, mediaType)；
+	_uploadMediaFile(filePath, mediaType, stringCallback(successCB), numberCallback(failCB), progressCB)
+	console.log('yyyyyyy')；
+	
 }
 
 export function getMessage(messageId: number): string {
