@@ -31,10 +31,6 @@ export default class MediaMessageContent extends MessageContent {
             this.file = fileOrLocalPath;
             if (fileOrLocalPath && fileOrLocalPath.path) {
                 this.localPath = fileOrLocalPath.path;
-                // attention: 粘贴的时候，path是空字符串，故采用了这个trick
-                if (this.localPath.indexOf(fileOrLocalPath.name) < 0) {
-                    this.localPath += fileOrLocalPath.name;
-                }
             }
 
         }

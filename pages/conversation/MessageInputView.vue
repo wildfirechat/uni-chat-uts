@@ -434,15 +434,13 @@ export default {
         },
 
         chooseFile() {
-            // #ifdef APP-HARMONY
-            // HX 4.31 开始支持, https://uniapp.dcloud.net.cn/api/media/file.html#choosefile
-            uni.showToast({
-                title: '鸿蒙系统暂不支持',
-                icon: 'none'
-            })
-            //#endif
-            wfc.chooseFile('all', async (file) => {
-                    console.log('choose file', file);
+
+            uni.chooseFile({
+                // count: _self.limit ? _self.limit  - _self.fileList.length : 999,
+                count: 1,
+                type: 'all',
+                success: async (e) => {
+                    const file = e.tempFiles[0]
                     let path = file.path;
                     let filePath;
                     // #ifdef APP-PLUS
@@ -451,18 +449,13 @@ export default {
                     } else {
                         filePath = plus.io.convertLocalFileSystemURL(path)
                     }
-                    // #endif
-                    // #ifdef H5
-                    filePath = await fetch(path).then(res => res.blob())
-                        .then(blob => {
-                            let name = `${new Date().getTime()}.${blob.type.substring(blob.type.lastIndexOf('/') + 1)}`;
-                            return new File([blob], name)
-                        })
-                    // #endif
                     file.path = filePath;
+                    // #endif
+
+					console.log('sendFile ', file, e)
                     store.sendFile(this.conversationInfo.conversation, file);
                 }
-            )
+            })
         },
 
         onKeyboardHeightChange(keyboardHeight, currentKeyboardHeight) {
