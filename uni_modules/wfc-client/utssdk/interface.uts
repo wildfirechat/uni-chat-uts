@@ -10,3 +10,4 @@ export type StringCallback = (value : string) => void
 export type VoidCallback = () => void
 export type SuccessCallback = () => void
 export type FailCallback = (error: number) => void
+export type JSONCallback = (value: UTSJSONObject) => void

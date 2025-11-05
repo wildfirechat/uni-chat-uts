@@ -631,8 +631,11 @@ export function getGroupMember(groupId: string, memberId: string): string {
     return clientModule.getGroupMember(groupId, memberId=memberId)
 }
 
+export function chooseFile(type:string, successCB: StringCallback, failCB: FailCallback):void {
+
+}
+
 /*
-export function chooseFile()
 export function notify(title, content);
 
 
