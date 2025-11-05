@@ -517,12 +517,7 @@ export function sendFriendRequest(userId: string, reason: string, extra: string,
 }
 
 export function sendMessage(conversation: string, messagePayload: string, toUsers: string[], expireDuration: number, prepareCB: (value: object) => void, progressCB: (value: object) => void, successCB: (value: object) => void, failCB: FailCallback): void {
-    clientModule.sendMessage(conversation, messagePayload, toUsers, expireDuration.toInt(), prepareCB, progressCB, (v: object) => {
-		successCB(v);
-		let array = v as Array<object>;
-		console.log('jyj0001', array, typeof array);
-		console.log('jyjxxx1',v, 'oo', typeof v, v instanceof UTSJSONObject, v typeof String);
-	}, numberCallback(failCB))
+    clientModule.sendMessage(conversation, messagePayload, toUsers, expireDuration.toInt(), prepareCB, progressCB, successCB, numberCallback(failCB))
 }
 
 export function setBackupAddress(backupHost: string, backupPort: number): void {
@@ -647,8 +642,11 @@ export function getGroupMember(groupId: string, memberId: string): string {
     return clientModule.getGroupMember(groupId, memberId)
 }
 
+export function chooseFile(type:string, successCB: StringCallback, failCB: FailCallback ): void {
+    clientModule.chooseFile(type, stringCallback(successCB), numberCallback(failCB))
+}
+
 /*
-export function chooseFile()
 export function notify(title, content);
 
 

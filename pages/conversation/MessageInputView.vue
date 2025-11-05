@@ -434,7 +434,7 @@ export default {
         },
 
         chooseFile() {
-
+            // #ifdef APP-HARMONY
             uni.chooseFile({
                 // count: _self.limit ? _self.limit  - _self.fileList.length : 999,
                 count: 1,
@@ -442,20 +442,29 @@ export default {
                 success: async (e) => {
                     const file = e.tempFiles[0]
                     let path = file.path;
-                    let filePath;
-                    // #ifdef APP-PLUS
-                    if (path.startsWith('file://')) {
-                        filePath = path.substring('file://'.length);
-                    } else {
-                        filePath = plus.io.convertLocalFileSystemURL(path)
-                    }
-                    file.path = filePath;
-                    // #endif
-
-					console.log('sendFile ', file, e)
+                    console.log('sendFile ', file, e)
                     store.sendFile(this.conversationInfo.conversation, file);
                 }
             })
+            // #else
+            wfc.chooseFile('all', async (file) => {
+                console.log('choose file', file);
+                let path = file.path;
+                let filePath;
+                if (path.startsWith('file://')) {
+                    filePath = path.substring('file://'.length);
+                    console.log('sendFile 000', filePath);
+                } else {
+                    filePath = plus.io.convertLocalFileSystemURL(path)
+                    console.log('sendFile 111', filePath);
+                }
+                file.path = filePath;
+                console.log('sendFile ', file)
+                store.sendFile(this.conversationInfo.conversation, file);
+            }, err => {
+                console.error('choose file error', err);
+            });
+            // #endif
         },
 
         onKeyboardHeightChange(keyboardHeight, currentKeyboardHeight) {
