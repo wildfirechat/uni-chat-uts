@@ -632,7 +632,7 @@ export function getGroupMember(groupId: string, memberId: string): string {
 }
 
 export function chooseFile(type:string, successCB: StringCallback, failCB: FailCallback):void {
-
+	clientModule.chooseFile(type, success=stringCallback(successCB), error=numberCallback(failCB));
 }
 
 /*

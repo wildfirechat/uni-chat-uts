@@ -309,6 +309,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)searchFiles:(NSString *)keyword conversation:(NSString *)strConv fromUser:(NSString *)fromUser beforeUid:(NSString *)beforeUid count:(int)count success:(JSCallback)successCB error:(JSCallback)errorCB;
 
 - (void)searchMyFiles:(NSString *)keyword beforeUid:(NSString *)beforeUid count:(int)count success:(JSCallback)successCB error:(JSCallback)errorCB;
+
+- (void)kickoffPCClient:(NSString *)clientId success:(JSCallback)successCB error:(JSCallback)errorCB;
+- (void)getCommonGroups:(NSString *)userId success:(JSCallback)successCB error:(JSCallback)errorCB;
 @end
 
 NS_ASSUME_NONNULL_END

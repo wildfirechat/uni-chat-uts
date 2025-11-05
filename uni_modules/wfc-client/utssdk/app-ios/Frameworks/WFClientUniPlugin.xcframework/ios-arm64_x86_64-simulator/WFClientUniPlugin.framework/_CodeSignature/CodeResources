@@ -6,7 +6,7 @@
 	<dict>
 		<key>Headers/ClientModule.h</key>
 		<data>
-		iDDyEvAGRdQ5F9kFmGsi04ksPPE=
+		+vdmPR3+bCIAsW7RLvY7Mi/KNho=
 		</data>
 		<key>Headers/ClientProxy.h</key>
 		<data>
@@ -26,7 +26,7 @@
 		</data>
 		<key>Info.plist</key>
 		<data>
-		mUUmmW67dwAxfxnGo8/lOsTOqUA=
+		wGy8Iadn7rCilQm/mUNcBxRtXmY=
 		</data>
 		<key>Modules/module.modulemap</key>
 		<data>
@@ -37,21 +37,13 @@
 	<dict>
 		<key>Headers/ClientModule.h</key>
 		<dict>
-			<key>hash</key>
-			<data>
-			iDDyEvAGRdQ5F9kFmGsi04ksPPE=
-			</data>
 			<key>hash2</key>
 			<data>
-			N58gjvZABOFa05LtQHdlFKeiyELJ+lQtFIn1ElImbHs=
+			PA9hRFOSTBGFO7JqfQU4mhxk+N/TSrjrzZ58t+AdcW4=
 			</data>
 		</dict>
 		<key>Headers/ClientProxy.h</key>
 		<dict>
-			<key>hash</key>
-			<data>
-			mBNOxhXs6obwipWNP8QYU9uwuA0=
-			</data>
 			<key>hash2</key>
 			<data>
 			sPmjrK9MkmtKcgy8Ym2FNrkBVsr20vXPXzSVT2ZlRSE=
@@ -59,10 +51,6 @@
 		</dict>
 		<key>Headers/EventListener.h</key>
 		<dict>
-			<key>hash</key>
-			<data>
-			PHxKxEKZpKwLGJNy/x2HfX/kZTg=
-			</data>
 			<key>hash2</key>
 			<data>
 			NP5S4NO07uldnia18ZGK4+/ig7C2AZDz6y0tzqdsbh4=
@@ -70,10 +58,6 @@
 		</dict>
 		<key>Headers/JSCallback.h</key>
 		<dict>
-			<key>hash</key>
-			<data>
-			ircthuINrcdW1ch5y0KV9mr5+WI=
-			</data>
 			<key>hash2</key>
 			<data>
 			kS/tMfme3V9K1fdco0njQMgi+Mc+yYWkAsvvTepUoYY=
@@ -81,10 +65,6 @@
 		</dict>
 		<key>Headers/WFClientUniPlugin.h</key>
 		<dict>
-			<key>hash</key>
-			<data>
-			qOEsZLxCvyaC73glPbKpd81P0Mk=
-			</data>
 			<key>hash2</key>
 			<data>
 			eirOdIy7BgVfnWqj+DSGudMIFoDYfP0Hao7GXbA5EiE=
@@ -92,10 +72,6 @@
 		</dict>
 		<key>Modules/module.modulemap</key>
 		<dict>
-			<key>hash</key>
-			<data>
-			7v+1MNEQbQkXN9LMEbtgs/ASScg=
-			</data>
 			<key>hash2</key>
 			<data>
 			Twe0WIFcbdbFrMKo0d8XcueNRrU6pgtNkWdhowN/FVo=
