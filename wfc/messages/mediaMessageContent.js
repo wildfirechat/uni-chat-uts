@@ -6,7 +6,6 @@ import MessageContent from './messageContent'
 import Config from '../../config'
 
 export default class MediaMessageContent extends MessageContent {
-    file;
     remotePath = '';
     localPath = '';
     mediaType = 0;
@@ -28,7 +27,6 @@ export default class MediaMessageContent extends MessageContent {
             this.localPath = fileOrLocalPath;
             this.remotePath = remotePath;
         } else {
-            this.file = fileOrLocalPath;
             if (fileOrLocalPath && fileOrLocalPath.path) {
                 this.localPath = fileOrLocalPath.path;
             }

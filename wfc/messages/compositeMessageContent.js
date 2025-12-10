@@ -17,7 +17,7 @@ export default class CompositeMessageContent extends MediaMessageContent {
     loaded = false;
 
     constructor() {
-        super(MessageContentType.Composite_Message, MessageContentMediaType.General, '')
+        super(MessageContentType.Composite_Message, MessageContentMediaType.File, '')
     }
 
     setMessages(msgs) {
@@ -43,7 +43,7 @@ export default class CompositeMessageContent extends MediaMessageContent {
         return '[聊天记录]' + this.title;
     }
 
-    encode() {
+    async encode() {
         let payload = super.encode();
         payload.content = this.title;
         let arr = [];
@@ -102,9 +102,17 @@ export default class CompositeMessageContent extends MediaMessageContent {
             str = str.replace(/"uid":"([0-9]+)"/, "\"uid\":$1");
             str = str.replace(/"serverTime":"([0-9]+)"/, "\"serverTime\":$1");
 
-            let blob = new Blob([str]);
+            // let blob = new Blob([str]);
             let fileName = 'wcf-' + new Date().getTime() + '.data';
-            this.file = new File([blob], fileName);
+            // let fm = uni.getFileSystemManager();
+            console.log('to create local file', str);
+            try {
+                let path = await this.createTextFile(fileName, str);
+                payload.localMediaPath = path;
+                console.log('localPath', path);
+            } catch (e) {
+                console.error('createLocalFile error', e);
+            }
             obj = {
                 ms: binArr,
             }
@@ -189,6 +197,80 @@ export default class CompositeMessageContent extends MediaMessageContent {
             this.messages.push(msg);
         });
         console.log('cp ms', this.messages)
+    }
+
+    createTextFile(fileName, data) {
+        return new Promise((resolve, reject) => {
+            //#ifdef APP-HARMONY
+            const dir = getFilesDir()
+            const fs = uni.getFileSystemManager()
+            const filePath = `${dir}/composite_data_${fileName}`
+            // console.log("filePath:", filePath)
+            fs.writeFile({
+                filePath: filePath,
+                encoding: "utf-8",
+                data: data,
+                success: (res) => {
+                    resolve(filePath)
+                },
+                fail: (err) => {
+                    console.log("err:", err)
+                    reject(err)
+                }
+            })
+            //#else
+            // 1. 请求文件系统 (PRIVATE_DOC 为应用私有文档目录，卸载App会被清除)
+            plus.io.requestFileSystem(plus.io.PRIVATE_DOC, function(fs) {
+
+                // 2. 获取或创建文件 (create: true 表示不存在则创建)
+                fs.root.getFile(fileName, {
+                    create: true
+                }, function(fileEntry) {
+
+                    // 3. 创建写入器
+                    fileEntry.createWriter(function(writer) {
+
+                        // 写入完成的回调
+                        writer.onwrite = function(e) {
+                            resolve(fileEntry.fullPath);
+                        };
+
+                        // 写入错误的回调
+                        writer.onerror = function(e) {
+                            reject({
+                                code: 500,
+                                msg: '写入失败: ' + e.message
+                            });
+                        };
+
+                        // 4. 执行写入
+                        // 默认 writer 指针在文件开头，write 方法会自动以 UTF-8 编码写入字符串
+                        // 如果需要确保覆盖原有内容，建议先 seek(0)
+                        writer.seek(0);
+                        writer.write(data);
+
+                    }, function(e) {
+                        reject({
+                            code: 501,
+                            msg: '创建Writer失败: ' + e.message
+                        });
+                    });
+
+                }, function(e) {
+                    reject({
+                        code: 502,
+                        msg: '获取文件失败: ' + e.message
+                    });
+                });
+
+            }, function(e) {
+                reject({
+                    code: 503,
+                    msg: '请求文件系统失败: ' + e.message
+                });
+            });
+            //#endif
+        })
     }
 
 }
