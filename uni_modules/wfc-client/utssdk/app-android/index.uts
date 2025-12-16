@@ -642,6 +642,10 @@ export function getGroupMember(groupId: string, memberId: string): string {
     return clientModule.getGroupMember(groupId, memberId)
 }
 
+export function kickoffPCClient(clientId:string, successCB: VoidCallback, failCB: FailCallback):void {
+    clientModule.kickoffPCClient(clientId, voidCallback(successCB), numberCallback(failCB))
+}
+
 export function chooseFile(type:string, successCB: StringCallback, failCB: FailCallback ): void {
     clientModule.chooseFile(type, stringCallback(successCB), numberCallback(failCB))
 }

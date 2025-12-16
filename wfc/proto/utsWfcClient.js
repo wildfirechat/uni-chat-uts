@@ -149,7 +149,8 @@ import {
     addMembers,
     getMessage,
     disconnect,
-    chooseFile
+    chooseFile,
+    kickoffPCClient
 
 } from "@/uni_modules/wfc-client";
 
@@ -304,6 +305,7 @@ class UtsWfcClient {
     getMessage = getMessage
     disconnect = disconnect
     chooseFile = chooseFile
+    kickoffPCClient = kickoffPCClient
 }
 
 const utsWfcClient = new UtsWfcClient()

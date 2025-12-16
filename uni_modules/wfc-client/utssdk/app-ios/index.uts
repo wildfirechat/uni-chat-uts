@@ -635,6 +635,10 @@ export function chooseFile(type:string, successCB: StringCallback, failCB: FailC
 	clientModule.chooseFile(type, success=stringCallback(successCB), error=numberCallback(failCB));
 }
 
+export function kickoffPCClient(clientId:string, successCB: VoidCallback, failCB: FailCallback):void {
+    clientModule.kickoffPCClient(clientId, success=voidCallback(successCB), error=numberCallback(failCB))
+}
+
 /*
 export function notify(title, content);
 

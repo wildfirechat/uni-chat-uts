@@ -730,7 +730,7 @@ export function uploadMediaFile(filePath: string, mediaType: number, successCB: 
     console.log('xxxxxxxxxxxxxxxxx', filePath, mediaType)；
 	_uploadMediaFile(filePath, mediaType, stringCallback(successCB), numberCallback(failCB), progressCB)
 	console.log('yyyyyyy')；
-	
+
 }
 
 export function getMessage(messageId: number): string {
@@ -748,6 +748,10 @@ export function getGroupMember(groupId: string, memberId: string): string {
 export function requestSystemPermission(permissions: string[], success: (allRight: boolean, grantedList: string[]) => void, fail: (doNotAskAgain:boolean, grantedList:string[]) => void): void {
     console.log('requestSystemPermission', permissions);
     UTSHarmony.requestSystemPermission(permissions, success, fail)
+}
+
+export function kickoffPCClient(clientId:string, successCB: VoidCallback, failCB: FailCallback):void {
+    clientModule.kickoffPCClient(clientId, voidCallback(successCB), numberCallback(failCB))
 }
 
 /*

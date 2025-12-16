@@ -2086,6 +2086,43 @@ export class WfcManager {
         impl.setAddFriendNeedVerify(enable, successCB, failCB);
     }
 
+    /**
+     * 设置是否 PC 在线时，本机是否静音
+     * @param {boolean} mute
+     * @param {function ()} successCB
+     * @param {function (number)} failCB
+     */
+    muteNotificationWhenPcOnline(mute, successCB, failCB) {
+        impl.muteNotificationWhenPcOnline(mute, successCB, failCB);
+    }
+
+    /**
+     * 是否开启了PC在线时，移动端静音操作
+     *
+     * @return {boolean} 当为true时，如果PC端（包括pc端，web端和小程序端）在线，移动端将不再收到提醒
+     **/
+    isMuteNotificationWhenPcOnline(){
+        return impl.isMuteNotificationWhenPcOnline();
+    }
+
+    /**
+     * 获取 PC/Pad/Web/小程序 在线状态
+     * @return {[PCOnlineInfo]}
+     */
+    getPCOnlineInfos(){
+        return impl.getPCOnlineInfos();
+    }
+
+    /**
+     * 将 PC/Pad/Web/小程序端踢下线
+     * @param {string} clientId
+     * @param {function ()} successCB
+     * @param {function (number)} failCB
+     */
+    kickoffPCClient(clientId, successCB, failCB) {
+        impl.kickoffPCClient(clientId, successCB, failCB);
+    }
+
     chooseFile(type, successCB, failCB) {
         impl.chooseFile(type, successCB, failCB)
     }

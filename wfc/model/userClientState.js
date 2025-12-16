@@ -14,6 +14,9 @@ export default class UserClientState {
      Platform_LINUX = 7;
      Platform_iPad = 8;
      Platform_APad = 9;
+     Platform_Harmony = 10;
+     Platform_Harmony_Pad = 11;
+     Platform_Harmony_PC = 12;
      */
     platform;
 
