@@ -27,12 +27,12 @@ export default class PCOnlineInfo {
     timestamp = 0;
 
     static infoFromStr(value, type) {
-        let parts = value.split('\\|');
+        let parts = value.split('|');
         if (parts.length >= 4) {
             let info = new PCOnlineInfo();
             info.type = type;
-            info.timestamp = parts[0];
-            info.platform = parts[1];
+            info.timestamp = Number(parts[0]);
+            info.platform = Number(parts[1]);
             info.clientId = parts[2];
             info.clientName = parts[3];
             info.isOnline = true;
