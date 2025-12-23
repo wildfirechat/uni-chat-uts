@@ -2127,6 +2127,17 @@ export class WfcManager {
         impl.chooseFile(type, successCB, failCB)
     }
 
+    /**
+     * 仅鸿蒙端支持
+     * 将内容保存到文件
+     * @param {string} name
+     * @param {string} data
+     * @return {string} 文件路径
+     */
+    saveToFile(name, data){
+        return impl.saveToFile(name, data)
+    }
+
     _getStore() {
         return impl._getStore();
     }

@@ -1,6 +1,6 @@
 /* 引入 interface.uts 文件中定义的变量 */
 
-import clientModule, {sendMessageEx, uploadMediaFile as _uploadMediaFile} from "@wfc/marswrapper"
+import clientModule, {sendMessageEx, saveToFile as _saveToFile, uploadMediaFile as _uploadMediaFile} from "@wfc/marswrapper"
 import {pinyin4js} from '@ohos/pinyin4js';
 import fs from '@ohos.file.fs';
 import {pushService} from '@kit.PushKit';
@@ -752,6 +752,10 @@ export function requestSystemPermission(permissions: string[], success: (allRigh
 
 export function kickoffPCClient(clientId:string, successCB: VoidCallback, failCB: FailCallback):void {
     clientModule.kickoffPCClient(clientId, voidCallback(successCB), numberCallback(failCB))
+}
+
+export function saveToFile(name: string, data: string):string {
+    return _saveToFile(name, data)
 }
 
 /*

@@ -202,22 +202,12 @@ export default class CompositeMessageContent extends MediaMessageContent {
     createTextFile(fileName, data) {
         return new Promise((resolve, reject) => {
             //#ifdef APP-HARMONY
-            const dir = getFilesDir()
-            const fs = uni.getFileSystemManager()
-            const filePath = `${dir}/composite_data_${fileName}`
-            // console.log("filePath:", filePath)
-            fs.writeFile({
-                filePath: filePath,
-                encoding: "utf-8",
-                data: data,
-                success: (res) => {
-                    resolve(filePath)
-                },
-                fail: (err) => {
-                    console.log("err:", err)
-                    reject(err)
-                }
-            })
+            let path = wfc.saveToFile(fileName, data);
+            if(path){
+                resolve(path);
+            } else {
+                reject(new Error(`Could not create local file: ${path}`));
+            }
             //#else
             // 1. 请求文件系统 (PRIVATE_DOC 为应用私有文档目录，卸载App会被清除)
             plus.io.requestFileSystem(plus.io.PRIVATE_DOC, function(fs) {

@@ -150,7 +150,9 @@ import {
     getMessage,
     disconnect,
     chooseFile,
-    kickoffPCClient
+    kickoffPCClient,
+    // 仅鸿蒙支持
+    saveToFile
 
 } from "@/uni_modules/wfc-client";
 
@@ -306,6 +308,7 @@ class UtsWfcClient {
     disconnect = disconnect
     chooseFile = chooseFile
     kickoffPCClient = kickoffPCClient
+    saveToFile = saveToFile
 }
 
 const utsWfcClient = new UtsWfcClient()
