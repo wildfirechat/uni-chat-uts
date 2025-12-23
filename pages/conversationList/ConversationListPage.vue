@@ -9,7 +9,7 @@
                 :key="conversationInfoKey(conversationInfo)"
                 v-bind:class="{top:conversationInfo.top }"
             >
-                <ConversationItemView :conversation-info="conversationInfo" @contextmenu.native.prevent="showConversationContextMenu($event, conversationInfo)"/>
+                <ConversationItemView :conversation-info="conversationInfo"  @longpress="showConversationContextMenu($event, conversationInfo)"/>
             </view>
         </uni-list>
 

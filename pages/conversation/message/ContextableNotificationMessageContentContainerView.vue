@@ -9,11 +9,11 @@
                        :value="message" placeholder="" value="sharedPickState.messages"/>
                 <RichNotificationMessageContentView :message="message"
                                                     v-if="message.messageContent.type === 12"
-                                                    @contextmenu.prevent.native="openMessageContextMenu($event, message)"
+                                                    @longpress="openMessageContextMenu($event, message)"
                 />
                 <ArticlesMessageContentView :message="message"
                                             v-else-if="message.messageContent.type === 13"
-                                            @contextmenu.prevent.native="openMessageContextMenu($event, message)"
+                                            @longpress="openMessageContextMenu($event, message)"
                 />
             </div>
         </div>

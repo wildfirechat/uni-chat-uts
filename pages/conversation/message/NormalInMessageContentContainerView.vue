@@ -21,7 +21,8 @@
                         <div class="flex-row">
                             <MessageContentContainerView class="message-content-container"
                                                          :message="message"
-                                                         @contextmenu.prevent="openMessageContextMenu($event, message)"/>
+                                                         @longpress="openMessageContextMenu($event, message)"
+                                                         />
                             <!--                            <LoadingView v-if="isDownloading"/>-->
                         </div>
                         <QuoteMessageView style="padding: 5px 0; max-width: 80%"
@@ -73,6 +74,7 @@ export default {
             })
         },
         openMessageContextMenu(event, message) {
+            console.log('long press', message);
             this.$eventBus.$emit('openMessageContextMenu', [event, message])
             this.highLight = true;
         },
