@@ -12,6 +12,7 @@
 #import "WFCCConversationInfo.h"
 #import "WFCCUserInfo.h"
 #import "WFCCFriendRequest.h"
+#import "WFCCJoinGroupRequest.h"
 #import "WFCCConversationSearchInfo.h"
 #import "WFCCGroupMember.h"
 #import "WFCCGroupSearchInfo.h"
@@ -151,6 +152,8 @@ typedef NS_ENUM(NSInteger, UserSettingScope) {
     UserSettingScope_Privacy_Searchable = 27,
     //不能直接使用，协议栈内会使用此值
     UserSettingScope_AddFriend_NoVerify = 28,
+    //不能直接使用，协议栈内会使用此值
+    UserSettingScope_Sync_Badge = 29,
     
     //自定义用户设置，请使用1000以上的key
     UserSettingScope_Custom_Begin = 1000
@@ -174,6 +177,19 @@ typedef NS_ENUM(NSInteger, WFCCSearchUserType) {
     SearchUserType_Mobile,
     SearchUserType_UserId,
     SearchUserType_Name_Mobile_UserId
+};
+
+/**
+ 搜索用户的用户类型
+
+ - UserSearchUserType_All: 搜索普通用户和机器人
+ - UserSearchUserType_Only_User: 只搜索普通用户
+ - UserSearchUserType_Only_Robot: 只搜索机器人
+ */
+typedef NS_ENUM(NSInteger, WFCCUserSearchUserType) {
+    UserSearchUserType_All,
+    UserSearchUserType_Only_User,
+    UserSearchUserType_Only_Robot
 };
 
 /**
@@ -259,6 +275,14 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
            success:(void(^)(NSArray<WFCCUserInfo *> *machedUsers))successBlock
              error:(void(^)(int errorCode))errorBlock;
 
+- (void)searchUser:(NSString *)keyword
+            domain:(NSString *)domainId
+        searchType:(WFCCSearchUserType)searchType
+          userType:(WFCCUserSearchUserType)userType
+              page:(int)page
+           success:(void(^)(NSArray<WFCCUserInfo *> *machedUsers))successBlock
+             error:(void(^)(int errorCode))errorBlock;
+
 
 -(void)modifyMyInfo:(NSDictionary<NSNumber */*ModifyMyInfoType*/, NSString *> *)values
             success:(void(^)(void))successBlock
@@ -312,6 +336,19 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
 - (NSArray<WFCCConversationInfo *> *)getConversationInfos:(NSArray<NSNumber *> *)conversationTypes
                                                     lines:(NSArray<NSNumber *> *)lines;
 
+/**
+ 获取会话信息
+ 
+ @param conversationTypes 会话类型
+ @param lines 默认传 @[@(0)]
+ @param count
+ @param offset
+ @return 会话信息
+ */
+- (NSArray<WFCCConversationInfo *> *)getConversationInfos:(NSArray<NSNumber *> *)conversationTypes
+                                                    lines:(NSArray<NSNumber *> *)lines
+                                                    count:(int)count
+                                                   offset:(int)offset;
 /**
  获取会话信息
  
@@ -513,6 +550,13 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
  @return YES设置成功，NO消息不存在或已经存在未读。
  */
 - (BOOL)markAsUnRead:(WFCCConversation *)conversation syncToOtherClient:(BOOL)sync;
+
+/**
+ 上传用户本地角标数字到IM服务，当IM服务推送时，会把此数字发送到推送服务，从而让推送角标显示准确
+ 
+ @param number 角标数
+ */
+- (void)uploadBadgeNumber:(int)number;
 
 /**
  设置媒体消息已播放（已经放开限制，所有消息都可以设置为已读状态）
@@ -846,6 +890,29 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
 - (void)getRemoteMessage:(long long)messageUid
                  success:(void(^)(WFCCMessage *message))successBlock
                    error:(void(^)(int error_code))errorBlock;
+
+/**
+ 获取服务器消息，可以获取对应messageUid之前或者之后的消息。**如果消息是不连续的，saveToDb要为false，避免存储在本地，需要特别注意这一点。**
+ 
+ @discussion 获取得到的消息数目有可能少于指定的count数，如果count不为0就意味着还有更多的消息可以获取，只有获取到的消息数为0才表示没有更多的消息了。
+ 
+ @param conversation 会话
+ @param messageUid 起始消息的ID
+ @param count 总数
+ @param before 是获取对应messageUid之前或者时候的消息
+ @param saveToDb 是否保存到本地DB中，如果是不连续的消息，千万要为false。
+ @param contentTypes 指定获取的类型。
+ @param successBlock 返回消息
+ @param errorBlock 返回错误码
+ */
+- (void)getRemoteMessages:(WFCCConversation *)conversation
+               messageUid:(long long)messageUid
+                    count:(NSUInteger)count
+                   before:(BOOL)before
+                 saveToDb:(BOOL)saveToDb
+             contentTypes:(NSArray<NSNumber *> *)contentTypes
+                  success:(void(^)(NSArray<WFCCMessage *> *messages))successBlock
+                    error:(void(^)(int error_code))errorBlock;
 /**
  获取消息
  
@@ -1336,7 +1403,7 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
              serverTime:(long long)serverTime;
 
 /**
- 更新消息内容。只更新本地消息内容，无法更新服务器和远端。
+ 更新消息内容。只更新本地消息内容，无法更新服务器和远端。不支持聊天室消息，因为聊天室消息本地不存储。
  
  @param messageId 消息ID
  @param content 消息内容
@@ -1345,7 +1412,7 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
               content:(WFCCMessageContent *)content;
 
 /**
- 更新消息内容及时间。只更新本地消息内容，无法更新服务器和远端。
+ 更新消息内容及时间。只更新本地消息内容，无法更新服务器和远端。不支持聊天室消息，因为聊天室消息本地不存储。
  
  @param messageId 消息ID
  @param content   消息内容
@@ -1390,6 +1457,31 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
  */
 - (int)getConversationMessageCount:(NSArray<NSNumber *> *)conversationTypes
                              lines:(NSArray<NSNumber *> *)lines;
+
+/**
+ 获取会话每天的消息数。用于会话的按时间查找消息，在日历上显示每天的消息数量。
+ 
+ 使用示例：
+ long long startTime = [WFCCUtilities startSecondOf:2025 month:7];
+ long long endTme = [WFCCUtilities endSendOf:2025 month:7];
+ NSDictionary<NSString *, NSNumber *> *counts = [[WFCCIMService sharedWFCIMService] getMessageCountByDay:self.conversation contentTypes:nil startTime:startTime endTime:endTme];
+ NSLog(@"the count are %@", counts);
+ 输出：
+ the count are {
+     "2025-07-04" = 3;
+     "2025-07-16" = 3;
+     "2025-07-20" = 3;
+ }
+ 
+ @param conversation 会话。
+ @param contentTypes 消息类型
+ @param startTime 起始时间。
+ @param endTime 结束时间。
+ 
+ @return 这个时间范围内每天的消息数。
+ @discussion 如果获取某天的消息，可以用 getMessagesV2:contentTypes:from:count:withUser:success:error: 方法，其中from可以用当天时间的毫秒数（也可用消息ID）。如果获取这天的消息，以降序排列，from就是这天的最后一秒毫秒数，然后count为正值。如果以升序排列，from为这一天的第一秒，count值为负值。
+ */
+- (NSDictionary<NSString *, NSNumber *> *)getMessageCountByDay:(WFCCConversation *)conversation contentTypes:(NSArray<NSNumber *> *)contentTypes startTime:(int64_t)startTime endTime:(int64_t)endTime;
 #pragma mark - 用户相关
 /**
  获取用户信息
@@ -1451,6 +1543,25 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
 - (void)searchUser:(NSString *)keyword
             domain:(NSString *)domainId
         searchType:(WFCCSearchUserType)searchType
+              page:(int)page
+           success:(void(^)(NSArray<WFCCUserInfo *> *machedUsers))successBlock
+             error:(void(^)(int errorCode))errorBlock;
+
+/**
+ 搜索用户
+ 
+ @param keyword 关键词
+ @param domainId 域ID
+ @param searchType 搜索类型
+ @param userType 用户类型
+ @param page page
+ @param successBlock 成功的回调
+ @param errorBlock 失败的回调
+ */
+- (void)searchUser:(NSString *)keyword
+            domain:(NSString *)domainId
+        searchType:(WFCCSearchUserType)searchType
+          userType:(WFCCUserSearchUserType)userType
               page:(int)page
            success:(void(^)(NSArray<WFCCUserInfo *> *machedUsers))successBlock
              error:(void(^)(int errorCode))errorBlock;
@@ -1538,6 +1649,90 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
 - (NSArray<WFCCGroupSearchInfo *> *)searchGroups:(NSString *)keyword;
 
 /**
+ 发送加群申请。仅当群组的加入模式是3（3入群需要批准）时才可以使用加群申请相关接口。只有专业版才支持。
+ 
+ @param groupId    群组ID
+ @param memberIds 被邀请人ID
+ @param reason      加入理由
+ @param extra extra
+ @param successBlock 成功回调
+ @param errorBlock   失败回调
+ */
+- (void)sendJoinGroupRequest:(NSString *)groupId members:(NSArray<NSString *> *)memberIds reason:(NSString *)reason extra:(NSString *)extra success:(void(^)(void))successBlock error:(void(^)(int errorCode))errorBlock;
+
+
+/**
+ 处理加群申请。仅当群组的加入模式是3（3入群需要批准）时才可以使用加群申请相关接口。只有专业版才支持。
+ @param groupId    群组ID
+ @param memberId 被邀请人ID
+ @param status     1同意进入，2拒绝进入
+ @param memberExtra 接受时，群成员的extra
+ @param notifyLines 默认传 @[@(0)]
+ @param successBlock 成功回调
+ @param errorBlock   失败回调
+ */
+- (void)handleJoinGroupRequest:(NSString *)groupId
+                      memberId:(NSString *)memberId
+                       inviter:(NSString *)inviter
+                        status:(int)status
+                   memberExtra:(NSString *)memberExtra
+                   notifyLines:(NSArray<NSNumber *> *)notifyLines
+                       success:(void(^)(void))successBlock
+                         error:(void(^)(int errorCode))errorBlock;
+
+/**
+ 根据状态加群请求记录。仅当群组的加入模式是3（3入群需要批准）时才可以使用加群申请相关接口。只有专业版才支持。
+ @param groupId 群组ID
+ @param userId 对方用户ID，如果用户ID为空，则获取所有用户的加群记录
+ @param status 0 未处理的；1 已经同意的； -1是全部的。
+ 
+ @return 加群请求列表
+ */
+- (NSArray<WFCCJoinGroupRequest *> *)getJoinGroupRequests:(NSString *)groupId memberId:(NSString *)userId status:(int)status;
+
+/**
+ 清理加群请求。仅当群组的加入模式是3（3入群需要批准）时才可以使用加群申请相关接口。
+ @param groupId 群组ID
+ @param memberId 被邀请者ID，可以为空
+ @param inviter 邀请者ID，可以为空
+ 
+ @return 返回true表示清理成功，返回false表示没有符合条件的请求
+ */
+- (BOOL)clearJoinGroupRequest:(NSString *)groupId
+                     memberId:(NSString *)memberId
+                      inviter:(NSString *)inviter;
+
+/**
+ 获取所有的未读的加群请求数
+
+ @return 未读数
+ */
+- (int)getAllJoinGroupRequestUnread;
+
+/**
+ 获取指定群的未读的加群请求数
+ @param groupId 群组ID
+ 
+ @return 未读数
+ */
+- (int)getJoinGroupRequestUnread:(NSString *)groupId;
+
+/**
+ 清除加群请求的未读数
+ @param groupId 群组ID
+ */
+- (void)clearJoinGroupRequestUnread:(NSString *)groupId;
+
+/**
+ 清除服务端的属于当前用户的好友请求
+ 
+ @param successBlock 成功回调
+ @param errorBlock 失败回调
+ */
+- (void)clearRemoteJoinGroupRequest:(void(^)(void))successBlock
+                              error:(void(^)(int errorCode))errorBlock;
+
+/**
  获取收到的好友请求
 
  @return 好友请求
@@ -1566,6 +1761,25 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
  @return 好友请求
  */
 - (WFCCFriendRequest *)getFriendRequest:(NSString *)uerId direction:(int)direction;
+
+/**
+ 根据状态好友请求记录
+ @param status 状态
+ @param direction 0 发送的好友请求；1 收到的好友请求。
+ 
+ @return 好友请求列表
+ */
+- (NSArray<WFCCFriendRequest *> *)getFriendRequestByStatus:(int)status direction:(int)direction;
+
+
+/**
+ 根据状态好友请求记录条数
+ @param status 状态
+ @param direction 0 发送的好友请求；1 收到的好友请求。
+ 
+ @return 好友请求条数
+ */
+- (int)getFriendRequestCountByStatus:(int)status direction:(int)direction;
 
 /**
  清理好友请求
@@ -1650,6 +1864,11 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
           success:(void(^)(void))successBlock
             error:(void(^)(int error_code))errorBlock;
 
+- (void)setFriend:(NSString *)friendId
+            extra:(NSString *)extra
+          success:(void(^)(void))successBlock
+            error:(void(^)(int error_code))errorBlock;
+
 - (NSString *)getFriendExtra:(NSString *)friendId;
 /**
  查询用户是否被加入黑名单
@@ -1711,6 +1930,47 @@ typedef NS_ENUM(NSInteger, WFCCFileRecordOrder) {
  */
 - (NSArray<WFCCGroupMember *> *)getGroupMembers:(NSString *)groupId
                                           count:(int)count;
+
+/**
+ 分批获取群成员信息
+ 
+ @param groupId 群ID
+ @param types 群成员类型，nil为所有
+ @param offset offset
+ @param count 群成员类型个数
+ @return 群成员信息列表
+ */
+- (NSArray<WFCCGroupMember *> *)getGroupMembers:(NSString *)groupId
+                                          types:(NSArray<NSNumber *> *)types
+                                         offset:(int)offset
+                                          count:(int)count;
+
+/**
+ 获取群成员ID
+ 
+ @param groupId 群ID
+ @param types 群成员类型，nil为所有
+ @return 群成员ID列表
+ */
+- (NSArray<NSString *> *)getGroupMemberIds:(NSString *)groupId
+                                     types:(NSArray<NSNumber *> *)types;
+/**
+ 获取群成员数量
+ 
+ @param groupId 群ID
+ @param types 群成员类型，nil为所有
+ @return 群成员的数量
+ */
+-(int)getGroupMembersCount:(NSString *)groupId types:(NSArray<NSNumber *> *)types;
+
+
+/**
+ 从远程服务同步群组成员
+ 
+ @param groupId 群ID
+ */
+-(void)loadGroupMemberFromRemote:(NSString *)groupId;
+
 /**
  获取群成员信息
  @discussion refresh 为true会导致一次网络同步，代价特别大，应该尽量避免使用true，仅当在进入此人的群聊会话详情中时使用一次true。
@@ -2816,6 +3076,7 @@ amr文件转成wav数据
             success:(void(^)(void))successBlock
               error:(void(^)(int error_code))errorBlock;
 
+- (void)postMomentsRequest:(NSString *)path data:(NSData *)data success:(void(^)(NSData *responseData))successBlock error:(void(^)(int error_code))errorBlock;
 //内部调用，请勿使用
 - (void)putUseOnlineStates:(NSArray<WFCCUserOnlineState *> *)states;
 @end

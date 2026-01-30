@@ -40,6 +40,8 @@ extern NSString *kSecretMessageStartBurning;
 extern NSString *kSecretMessageBurned;
 //域信息更新通知
 extern NSString *kDomainInfoUpdated;
+//加群邀请有更新
+extern NSString *kJoinGroupRequestUpdated;
 
 #pragma mark - 枚举值定义
 /**
@@ -348,6 +350,12 @@ typedef NS_ENUM(NSInteger, ConnectedNetworkType) {
  */
 @property (nonatomic, strong)NSString *sendLogCommand;
 
+
+/**
+ 设备是否以Pad平台登录
+ */
+@property (nonatomic, assign)BOOL isPad;
+
 /**
  开启Log
  */
@@ -401,6 +409,11 @@ typedef NS_ENUM(NSInteger, ConnectedNetworkType) {
  */
 - (void)setHeartBeatInterval:(int)second;
 
+
+/**
+ 时间偏移。一般用于时间不正确的设置，可以设置时间偏移确保能够设备能够正常使用。时间是服务器时间-当前时间
+ */
+@property (nonatomic, assign)int timeOffset;
 /**
  获取客户端id
  

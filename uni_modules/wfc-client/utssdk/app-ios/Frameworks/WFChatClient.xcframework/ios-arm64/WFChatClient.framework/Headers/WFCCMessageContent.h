@@ -20,6 +20,9 @@
  - Media_Type_FAVORITE: 收藏
  - Media_Type_STICKER：动态表情
  - Media_Type_MOMENTS：朋友圈
+ - Media_Type_CUSTOM1：客户保留类型1
+ - Media_Type_CUSTOM2：客户保留类型1
+ - Media_Type_CUSTOM3：客户保留类型1
  */
 typedef NS_ENUM(NSInteger, WFCCMediaType) {
     Media_Type_GENERAL = 0,
@@ -30,9 +33,14 @@ typedef NS_ENUM(NSInteger, WFCCMediaType) {
     Media_Type_PORTRAIT = 5,
     Media_Type_FAVORITE = 6,
     Media_Type_STICKER = 7,
-    Media_Type_MOMENTS = 8
+    Media_Type_MOMENTS = 8,
+    Media_Type_CUSTOM1 = 9,
+    Media_Type_CUSTOM2 = 10,
+    Media_Type_CUSTOM3 = 11,
 };
 
+
+#define WFCCString(key) [[NSBundle bundleForClass:[self class]] localizedStringForKey:key value:@"" table:@"wfc_client"]
 
 /**
  消息存储类型
@@ -132,6 +140,7 @@ typedef NS_ENUM(NSInteger, WFCCPersistFlag) {
 @end
 
 @class WFCCMessage;
+@class WFCCDictionary;
 /**
  消息协议，所有消息(包括自定义消息均需要实现此协议)
  */
@@ -188,7 +197,5 @@ typedef NS_ENUM(NSInteger, WFCCPersistFlag) {
  */
 @property (nonatomic, assign)BOOL notLoaded;
 
-- (NSString *)getString:(NSDictionary *)dict ofKey:(NSString *)key;
-- (NSArray *)getArray:(NSDictionary *)dict ofKey:(NSString *)key;
-- (NSDictionary *)getDictionary:(NSDictionary *)dict ofKey:(NSString *)key;
+- (NSArray *)getArray:(WFCCDictionary *)dict ofKey:(NSString *)key;
 @end
