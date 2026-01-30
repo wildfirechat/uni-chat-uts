@@ -354,6 +354,10 @@ export function getConversationUnreadCount(conversation: string): string {
     return clientModule.getConversationUnreadCount(conversation)
 }
 
+export function getMessageCountByDay(conversation: string, contentTypes: number[], startTime: number, endTime: number): string {
+    return clientModule.getMessageCountByDay(conversation, contentTypes, startTime, endTime)
+}
+
 export function getFriendAlias(userId: string): string {
     return clientModule.getFriendAlias(userId)
 }

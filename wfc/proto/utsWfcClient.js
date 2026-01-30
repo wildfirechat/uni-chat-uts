@@ -152,7 +152,8 @@ import {
     chooseFile,
     kickoffPCClient,
     // 仅鸿蒙支持
-    saveToFile
+    saveToFile,
+    getMessageCountByDay
 
 } from "@/uni_modules/wfc-client";
 
@@ -309,6 +310,7 @@ class UtsWfcClient {
     chooseFile = chooseFile
     kickoffPCClient = kickoffPCClient
     saveToFile = saveToFile
+    getMessageCountByDay = getMessageCountByDay
 }
 
 const utsWfcClient = new UtsWfcClient()

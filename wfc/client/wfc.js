@@ -2138,6 +2138,18 @@ export class WfcManager {
         return impl.saveToFile(name, data)
     }
 
+    /**
+     * 按日期获取消息数量
+     * @param {Conversation} conversation
+     * @param {[number]} contentTypes
+     * @param {number} startTime
+     * @param {number} endTime
+     * @return {Map<string, number>}
+     */
+    getMessageCountByDay(conversation, contentTypes, startTime, endTime) {
+        return impl.getMessageCountByDay(conversation, contentTypes, startTime, endTime);
+    }
+
     _getStore() {
         return impl._getStore();
     }
