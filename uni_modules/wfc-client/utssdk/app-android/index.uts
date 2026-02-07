@@ -654,6 +654,14 @@ export function chooseFile(type:string, successCB: StringCallback, failCB: FailC
     clientModule.chooseFile(type, stringCallback(successCB), numberCallback(failCB))
 }
 
+export function getGroupRemark(groupId: string): string {
+    return clientModule.getGroupRemark(groupId)
+}
+
+export function setGroupRemark(groupId:string, remark:string, successCB: VoidCallback, failCB: FailCallback) {
+    clientModule.setGroupRemark(groupId, remark, voidCallback(successCB), numberCallback(failCB))
+}
+
 /*
 export function notify(title, content);
 

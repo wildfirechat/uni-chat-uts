@@ -312,6 +312,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)kickoffPCClient:(NSString *)clientId success:(JSCallback)successCB error:(JSCallback)errorCB;
 - (void)getCommonGroups:(NSString *)userId success:(JSCallback)successCB error:(JSCallback)errorCB;
+- (NSString* )getGroupRemark:(NSString *)groupId;
+- (void)setGroupRemark:(NSString *)groupId remark:(NSString*)remark success:(JSCallback)successCB error:(JSCallback)errorCB;
 @end
 
 NS_ASSUME_NONNULL_END

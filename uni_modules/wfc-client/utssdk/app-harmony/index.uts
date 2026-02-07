@@ -762,6 +762,14 @@ export function saveToFile(name: string, data: string):string {
     return _saveToFile(name, data)
 }
 
+export function getGroupRemark(groupId: string): string {
+    return clientModule.getGroupRemark(groupId)
+}
+
+export function setGroupRemark(groupId:string, remark:string, successCB: VoidCallback, failCB: FailCallback) {
+    clientModule.setGroupRemark(groupId, remark, voidCallback(successCB), numberCallback(failCB))
+}
+
 /*
 export function chooseFile()
 export function notify(title, content);

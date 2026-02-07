@@ -11,6 +11,7 @@ import Config from "../../config";
 import EventType from "./wfcEvent";
 import ConnectionStatus from "./connectionStatus";
 import NullUserInfo from "../model/nullUserInfo";
+import utsWfcClient from '../proto/utsWfcClient'
 
 export class WfcManager {
 
@@ -2149,6 +2150,26 @@ export class WfcManager {
     getMessageCountByDay(conversation, contentTypes, startTime, endTime) {
         return impl.getMessageCountByDay(conversation, contentTypes, startTime, endTime);
     }
+
+	/**
+	 * 获取群备注
+	 * @param {string} groupId
+	 * @return {string} 群备注
+	 */
+	getGroupRemark(groupId) {
+		return utsWfcClient.getGroupRemark(groupId)
+	}
+
+	/**
+	 * 设置群备注
+	 * @param {string} groupId 群 id
+	 * @param {string} remark 群备注
+	 * @param {function()} successCB 成功回调
+	 * @param {function(number)} failCB 失败回调
+	 */
+	setGroupRemark(groupId, remark, successCB, failCB) {
+		utsWfcClient.setGroupRemark(groupId, remark, successCB, failCB);
+	}
 
     _getStore() {
         return impl._getStore();

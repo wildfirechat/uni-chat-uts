@@ -645,6 +645,14 @@ export function kickoffPCClient(clientId:string, successCB: VoidCallback, failCB
     clientModule.kickoffPCClient(clientId, success=voidCallback(successCB), error=numberCallback(failCB))
 }
 
+export function getGroupRemark(groupId: string): string {
+    return clientModule.getGroupRemark(groupId)
+}
+
+export function setGroupRemark(groupId:string, remark:string, successCB: VoidCallback, failCB: FailCallback) {
+    clientModule.setGroupRemark(groupId, remark=remark, success=voidCallback(successCB), error=numberCallback(failCB))
+}
+
 /*
 export function notify(title, content);
 
