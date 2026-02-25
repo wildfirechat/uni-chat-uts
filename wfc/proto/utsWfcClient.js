@@ -152,7 +152,10 @@ import {
     chooseFile,
     kickoffPCClient,
     // 仅鸿蒙支持
+	// #ifdef APP-HARMONY
     saveToFile,
+	// #endif
+	getMessageCountByDay,
     getGroupRemark,
 	setGroupRemark
 
@@ -310,9 +313,9 @@ class UtsWfcClient {
     disconnect = disconnect
     chooseFile = chooseFile
     kickoffPCClient = kickoffPCClient
-    saveToFile = saveToFile
-    getMessageCountByDay = getMessageCountByDay
+	// #ifdef APP-HARMONY
 	saveToFile = saveToFile
+	// #endif
 	getMessageCountByDay = getMessageCountByDay
 	getGroupRemark = getGroupRemark
 	setGroupRemark = setGroupRemark

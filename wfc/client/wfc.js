@@ -2136,7 +2136,12 @@ export class WfcManager {
      * @return {string} 文件路径
      */
     saveToFile(name, data){
+		// #ifdef APP-HARMONY
         return impl.saveToFile(name, data)
+		// #else
+		console.log('本 API 仅鸿蒙支持')
+		return ''
+		// #endif
     }
 
     /**
