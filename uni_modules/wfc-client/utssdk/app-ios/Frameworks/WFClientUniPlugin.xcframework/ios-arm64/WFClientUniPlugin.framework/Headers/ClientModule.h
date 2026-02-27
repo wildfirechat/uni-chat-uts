@@ -209,6 +209,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSString *)getConversationUnreadCount:(NSString *)strConv;
 
+- (NSString *)getMessageCounts:(NSString *)strConv contentTypes:(NSArray<NSNumber *> *)contentTypes startTime:(int64_t)startTime endTime:(int64_t)endTime;
+
 - (void)clearUnreadStatus:(NSString *)strConv;
 
 - (BOOL)setLastReceivedMessageUnRead:(NSString *)strConv messageUid:(NSString *)messageUidStr timestamp:(NSString *)timestampStr;

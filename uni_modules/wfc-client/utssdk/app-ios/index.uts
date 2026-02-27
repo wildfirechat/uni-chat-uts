@@ -289,7 +289,7 @@ export function getConversationUnreadCount(conversation: string): string {
 }
 
 export function getMessageCountByDay(conversation: string, contentTypes: number[], startTime: number, endTime: number): string {
-    return clientModule.getMessageCountByDay(conversation, contentTypes=contentTypes, startTime=startTime.toInt64(), endTime=endTime.toInt64())
+    return clientModule.getMessageCounts(conversation, contentTypes=contentTypes, startTime=startTime.toInt64(), endTime=endTime.toInt64())
 }
 
 export function getFriendAlias(userId: string): string {
