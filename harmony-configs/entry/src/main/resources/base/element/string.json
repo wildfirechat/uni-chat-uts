@@ -10,8 +10,12 @@
     },
     {
       "name": "reason_microphone",
-      "value": "$string:app_name"
+      "value": "发送语音消息"
     },
+	{
+	  "name": "reason_tracking",
+	  "value": "离线推送"
+	},
 	{
 	  "name": "EntryAbility_label",
 	  "value": "发送语音消息"

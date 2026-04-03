@@ -38,13 +38,20 @@
       {
         "name": "ohos.permission.INTERNET"
       },
-	          {
-	                  "name": "ohos.permission.MICROPHONE",
-	                  "reason": "$string:reason_microphone",
-	                  "usedScene": {
-	                      "when": "inuse"
-	                  }
-	              }
+      {
+         "name": "ohos.permission.MICROPHONE",
+         "reason": "$string:reason_microphone",
+         "usedScene": {
+             "when": "inuse"
+         }
+      },
+      {
+        "name": "ohos.permission.APP_TRACKING_CONSENT",
+        "reason": "$string:reason_tracking",
+        "usedScene": {
+          "when": "inuse"
+        }
+      }
     ]
   }
 }

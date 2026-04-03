@@ -53,13 +53,23 @@
                     "NSMicrophoneUsageDescription" : "音频通话及语音消息",
                     "NSPhotoLibraryUsageDescription" : "发送图片消息"
                 },
-                "dSYMs" : false
+                "dSYMs" : false,
+                "idfa" : false
             },
             /* SDK配置 */
             "sdkConfigs" : {
                 "ad" : {},
                 "push" : {
-                    "unipush" : {}
+                    "unipush" : {
+                        "version" : "2",
+                        "offline" : true,
+                        "hms" : {},
+                        "vivo" : {},
+                        "oppo" : {},
+                        "mi" : {},
+                        "meizu" : {},
+                        "honor" : {}
+                    }
                 }
             },
             "icons" : {
@@ -110,7 +120,9 @@
     "vueVersion" : "3",
     "app-harmony" : {
         "distribute" : {
-            "modules" : {}
+            "modules" : {
+                "uni-push" : {}
+            }
         }
     }
 }

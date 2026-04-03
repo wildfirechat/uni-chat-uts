@@ -1,0 +1,8 @@
+{
+  "name": "wf-push-url",
+  "main": "index.js",
+  "dependencies": {},
+  "extensions": {
+    "uni-cloud-push": {}
+  }
+}

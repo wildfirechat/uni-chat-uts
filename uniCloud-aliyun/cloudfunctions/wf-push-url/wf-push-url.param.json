@@ -1,0 +1,12 @@
+// 本文件中的json内容将在云函数【运行】时作为参数传给云函数。
+// 配置教程参考：https://uniapp.dcloud.net.cn/uniCloud/rundebug.html#runparam
+// 这是用来测试的
+{
+	"clientId":"7d9d56d52a6011439ff2222be7ad702d",
+	"title": "push test title",
+	"content": "push test content",
+	"payload": {
+		"test": "test payload"
+	},
+	"category":{"harmony":"IM", "huawei":"IM", "vivo":"IM"}
+}

@@ -23,15 +23,22 @@ export default {
         this.avengineKit = avengineKit;
         this.store = store;
         this.conferenceManager = conferenceManager;
-        // #ifdef APP-PLUS
-        plus.push.getClientInfoAsync((info) => {
-            let cid = info["clientid"];
-            if (cid) {
-                console.log('push clientId', cid);
-                wfc.setDeviceToken(7, cid);
-            }
-        });
-        // #endif
+		
+   
+		uni.getPushClientId({
+			success(res) {
+				console.log('getPushClientId', res);
+				wfc.setDeviceToken(10/*unipush 2.0*/, res.cid);
+			},
+			fail(err) {
+				console.log('getPushClientId error', err)
+			}
+		});
+        
+		// 在线时，能收到，可以用来开发调试
+		uni.onPushMessage((res) => {
+			console.log("收到推送消息：",res) //监听推送消息
+		})
     },
     onShow: function () {
         console.log("App Show");

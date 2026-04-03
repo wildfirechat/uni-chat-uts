@@ -1,38 +1,125 @@
 {
-    "id": "wfc-client",
-    "name": "【官方】野火即时通讯IM插件(UTS)",
-    "displayName": "【官方】野火即时通讯IM插件(UTS)",
-    "version": "0.7.3",
-    "description": "野火官方发布的移动端实时音视频插件，包括Android和iOS平台，拥有完善的Demo，服务器和移动端免费使用，支持多人音频和多人视频通话，让您一步拥有完美的即时通讯软件。",
-    "keywords": [
-        "IM",
-        "即时通讯",
-        "音视频通话",
-        "voip",
-        "rtc"
-    ],
-    "dcloudext": {
-        "contact": {
-            "qq": "2973921150"
-        },
-        "declaration": {
-            "ads": "无",
-            "data": "插件使用的野火IM SDK会采集数据，详情可以参考：https://www.wildfirechat.net/wildfirechat_user_privacy.html",
-            "permissions": "SDCard 读写权限"
-        },
-        "npmurl": "",
-        "type": "uts"
+  "id": "wfc-client",
+  "name": "【官方】野火即时通讯IM插件(UTS)",
+  "displayName": "【官方】野火即时通讯IM插件(UTS)",
+  "version": "0.7.4",
+  "description": "野火官方发布的移动端实时音视频插件，包括Android和iOS平台，拥有完善的Demo，服务器和移动端免费使用，支持多人音频和多人视频通话，让您一步拥有完美的即时通讯软件。",
+  "keywords": [
+    "IM",
+    "即时通讯",
+    "音视频通话",
+    "voip",
+    "rtc"
+],
+  "dcloudext": {
+    "contact": {
+      "qq": "2973921150"
     },
-    "repository": "https://gitee.com/wfchat/uni-wfc-client/tree/uts/",
-    "uni_modules": {
-        "platforms": {
-            "client": {
-                "App": {
-                    "app-android": "u",
-                    "app-harmony": "u",
-                    "app-ios": "u"
-                }
-            }
+    "declaration": {
+      "ads": "无",
+      "data": "插件使用的野火IM SDK会采集数据，详情可以参考：https://www.wildfirechat.net/wildfirechat_user_privacy.html",
+      "permissions": "SDCard 读写权限"
+    },
+    "npmurl": "",
+    "type": "uts",
+    "darkmode": "x",
+    "i18n": "x",
+    "widescreen": "x",
+    "sale": {
+        "regular": {
+            "price": "0.00"
+        },
+        "sourcecode": {
+            "price": "0.00"
         }
     }
+  },
+  "repository": "https://gitee.com/wfchat/uni-wfc-client/tree/uts/",
+  "uni_modules": {
+    "platforms": {
+      "client": {
+        "uni-app": {
+          "vue": {
+            "vue2": {
+                "extVersion": "0.7.4",
+                "minVersion": ""
+            },
+            "vue3": {
+                "extVersion": "0.7.4",
+                "minVersion": ""
+            }
+          },
+          "web": {
+            "safari": "x",
+            "chrome": "x"
+          },
+          "app": {
+            "vue": "x",
+            "nvue": "x",
+            "android": {
+                "extVersion": "0.7.4",
+                "minVersion": "21"
+            },
+            "ios": {
+                "extVersion": "0.7.4",
+                "minVersion": "12"
+            },
+            "harmony": {
+                "extVersion": "0.7.4",
+                "minVersion": " 12"
+            }
+          },
+          "mp": {
+            "weixin": "x",
+            "alipay": "x",
+            "toutiao": "x",
+            "baidu": "x",
+            "kuaishou": "x",
+            "jd": "x",
+            "harmony": "x",
+            "qq": "x",
+            "lark": "x",
+            "xhs": "x"
+          },
+          "quickapp": {
+            "huawei": "x",
+            "union": "x"
+          }
+        },
+        "uni-app-x": {
+          "web": {
+            "safari": "-",
+            "chrome": "x"
+          },
+          "app": {
+            "android": {
+                "extVersion": "0.7.4",
+                "minVersion": "21"
+            },
+            "ios": {
+                "extVersion": "0.7.4",
+                "minVersion": "12"
+            },
+            "harmony": {
+                "extVersion": "0.7.4",
+                "minVersion": "12"
+            }
+          },
+          "mp": {
+            "weixin": "x"
+          }
+        }
+      },
+      "cloud": {
+        "tcb": "x",
+        "aliyun": "x",
+        "alipay": "x"
+      }
+    }
+  },
+  "engines": {
+    "HBuilderX": "^3.1.0",
+    "uni-app": "^4.84",
+    "uni-app-x": "^4.84"
+  }
 }

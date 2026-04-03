@@ -72,6 +72,40 @@
 2. ```iOS```端，请连接```Xcode```抓取
 3. `HarmonyOs`，请使用`hdc`或`DevEco Studio`抓取
 
+## 推送
+> 由于需要支持鸿蒙，故只能使用 uniPush 2.0
+1. `HBuilder X`里面选中`manifest.json`，然后`安卓/iOS模板配置` -> `Push`-> `uniPush 2.0` -> 离线推送（并选中需要支持的手机品牌）
+2. 参考[uni-push v2](https://uniapp.dcloud.net.cn/unipush-v2.html)，并进行相关配置，包括开通服务空间等。
+3. `HBuilder X`里面，选中`uniCloud`，右键 -> 关联云服务空间或项目(目前使用的是阿里云)
+4. `HBuilder X`里面，选中`uniCloud/database`，右键 -> 上传所有 DB Schema（含扩展）
+5. `HBuilder X`里面，选中`uniCloud/cloudfunctions/wf-push-url`，右键 -> 运行本地云函数，查看日志`收到推送消息`
+6. `HBuilder X`里面，选中`uniCloud/cloudfunctions/wf-push-url`，右键 -> 上传部署
+7. 进入服务空间后台，云函数列表，添加域名
+8. 进入服务空间，云函数/云对象 -> 云函数/云对象, 点击`wf-push-url`，云函数 URL 化，设置 URL 的 PATH 部分为`/push`
+9. 可通过 postman，或者 curl 进行测试，地址是 `http(s)://${上面添加的域名}/push`
+    ```
+    curl --location 'http://{你添加的域名}/push' \
+    --header 'X-User-Id: uiuJuJcc' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "clientId": "your push clientId, 应用启动的时候会打印出来",
+        "title": "test push title",
+        "content": "test push content",
+        "payload": {
+            "test": "test payload"
+        },
+        "category": {
+            "harmony": "IM",
+            "huawei": "IM",
+            "vivo": "IM"
+        }
+    }'
+    ```
+10. 编译、配置、部署 [push server](https://github.com/wildfirechat/push_server)
+11. `App.vue` 里面会调用`plus.push.getClientInfoAsync`获取推送相关的`clientId`，可以使用该`clientId`在`uni-push`后台测试推送功能。
+12. 当设备不在线时，`im-server`会调用`push-server`，然后`push-server`调用`uniCloud`进行推送
+
+
 ## 常见问题说明
 
 1. 如果希望普通电话，能打断音视频通话，则需要在`package.json`里面，添加如下权限声明:
