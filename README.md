@@ -1,10 +1,29 @@
-# 野火uni-app demo
+## 最重要的事，说三遍!!!
+> 以下说明，仅针对 Android 端，iOS 端可以直接配置`IM_SERVER_HOST`，鸿蒙 SDK 是付费的，需要[申请试用](https://wildfirechat.cn/trial/)
+
+**因反诈合规要求，本项目协议栈默认仅支持连接野火官方服务，不能连接到自行部署的服务。如需获取不受限版本，请联系官方微信（wfchat 或 wildfirechat）免费申请。**
+
+**严禁将本项目用于非法诈骗。**
+
+**因反诈合规要求，本项目协议栈默认仅支持连接野火官方服务，不能连接到自行部署的服务。如需获取不受限版本，请联系官方微信（wfchat 或 wildfirechat）免费申请。**
+
+**严禁将本项目用于非法诈骗。**
+
+**因反诈合规要求，本项目协议栈默认仅支持连接野火官方服务，不能连接到自行部署的服务。如需获取不受限版本，请联系官方微信（wfchat 或 wildfirechat）免费申请。**
+
+**严禁将本项目用于非法用途。**
+
+**给您带来不便，敬请谅解。**
+
+---------
+
+# 野火uni-app uts demo
 
 支持 Android、iOS 和 HarmonyOS 端
 
 ## HarmonyOS 特别说明
 
-1. Android、iOS 端，是免费的，可直接使用，可连接到自行部署的`im-server`
+1. Android、iOS 端，是免费的
 2. 野火IM 鸿蒙 SDK 是需要付费的，鸿蒙 5.0 上，默认只能连到官方服务，需要申请试用才能连到自行部署的`im-server`
 3. 申请试用，具体请看 [试用](https://docs.wildfirechat.cn/trial/)
 
@@ -16,7 +35,7 @@
     2. 对应的插件是[野火实时音视频RTC插件](https://ext.dcloud.net.cn/plugin?id=15619), 是使用原生的音视频SDK，但UI层使用nvue编写，UI和SDK使用uniapp插件的方式沟通。这种方案引入的SDK比较小，且修改方便，有利于大家做自定义相关 UI。
 3. 默认附带免费版本音视频，关于野火音视频可以参考[野火音视频使用说明](https://docs.wildfirechat.cn/webrtc/)和[野火音视频简介](https://docs.wildfirechat.cn/blogs/野火音视频简介.html)。 如果需要使用音视频高级版，请参考[音视频高级版切换方法](./README-AV.MD)。
 
-** 自 2023-11-29 起，uni-chat 将音视频通话方案切换到方案 2，方案1 相关的代码，保留到native-rtc-ui分支 **
+** 自 2023-11-29 起，已将音视频通话方案切换到方案 2，方案1 相关的代码，保留到`uni-chat`项目的`native-rtc-ui`分支 **
 
 ## 配置
 
@@ -60,11 +79,11 @@
 ## 源码地址
 
 1. Android 和 iOS uts 插件源码在[uni-wfc-client 项目 uts 分支](https://gitee.com/wfchat/uni-wfc-client)
-2. 本 demo 源码在[demo源码工程](https://gitee.com/wfchat/uni-chat)
+2. 本 demo 源码在[demo源码工程](https://gitee.com/wfchat/uni-chat-uts)
 
 ## 技术支持
 
-如果遇到问题，可以去[插件源码工程](https://gitee.com/wfchat/uni-wfc-client)或者[demo源码工程](https://gitee.com/wfchat/uni-chat)提issue，也可以去[野火论坛](https://bbs.wildfirechat.cn)发帖子问题，我们会尽快回复。谢谢大家的支持。
+如果遇到问题，可以去[插件源码工程](https://gitee.com/wfchat/uni-wfc-client)或者[demo源码工程](https://gitee.com/wfchat/uni-chat-uts)提issue，也可以去[野火论坛](https://bbs.wildfirechat.cn)发帖子问题，我们会尽快回复。谢谢大家的支持。
 
 ## 抓取原生插件的日志
 
@@ -85,7 +104,7 @@
 9. 可通过 postman，或者 curl 进行测试，地址是 `http(s)://${上面添加的域名}/push`
     ```
     curl --location 'http://{你添加的域名}/push' \
-    --header 'X-User-Id: uiuJuJcc' \
+    --header 'X-User-Id: 你的用户 id' \
     --header 'Content-Type: application/json' \
     --data '{
         "clientId": "your push clientId, 应用启动的时候会打印出来",
@@ -112,15 +131,9 @@
     ```xml
        <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" />
     ```
-2. 如何集成推送功能
-    1. `HBuilder X`里面选中`manifest.json`，然后选中`Push`-> `uniPush 1.0`
-    2. 参考[uni-push v1](https://uniapp.dcloud.net.cn/unipush-v1.html)，并进行相关配置
-    3. 编译、配置、部署 [push server](https://github.com/wildfirechat/push_server)
-    4. `App.vue` 里面会调用`plus.push.getClientInfoAsync`获取推送相关的`clientId`，可以使用该`clientId`在`uni-push`后台测试推送功能。
-    5. 当设备不在线时，`im-server`会调用`push-server`，然后`push-server`调用`个推`进行推送
 
-3. 打包失败：请确认是否执行过```npm install```命令。
-4. iPhone上打开会话页面报错`SyntaxError: Invalid regular expression: invalid group specifier name __ERROR`
+2. 打包失败：请确认是否执行过```npm install```命令。
+3. iPhone上打开会话页面报错`SyntaxError: Invalid regular expression: invalid group specifier name __ERROR`
 
    `anchorme`只能使用`2.1.2`版本，不支持`3.x`版本，可参数这个[issue](https://github.com/alexcorvi/anchorme.js/issues/133)
 
