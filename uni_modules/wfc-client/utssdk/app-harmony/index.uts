@@ -3,7 +3,6 @@
 import clientModule, {sendMessageEx, saveToFile as _saveToFile, uploadMediaFile as _uploadMediaFile} from "@wfc/marswrapper"
 import {pinyin4js} from '@ohos/pinyin4js';
 import fs from '@ohos.file.fs';
-import {pushService} from '@kit.PushKit';
 
 import {FailCallback, StringCallback, SuccessCallback, VoidCallback} from "../interface.uts";
 
