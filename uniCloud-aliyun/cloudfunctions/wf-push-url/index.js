@@ -14,17 +14,19 @@ exports.main = async (event, context) => {
 		data = JSON.parse(data);
 	}
 	
-	const cid = data.clientId;
+	const cid = data.clientId ? data.clientId : data.push_clientid;
 	const title = data.title;
 	const content = data.content;
 	const payload = data.payload;
-	const categroy = data.categroy;
+	const category = data.category;
+	const forceNotification = data.forceNotification ? data.forceNotification : data.force_notification;
 	
 	return await uniPush.sendMessage({
 		"push_clientid": cid, 	//填写上一步在uni-app客户端获取到的客户端推送标识push_clientid
 		"title": title,	
 		"content": content,
 		"payload": payload,
-		"category": categroy
+		"category": category,
+		"force_notification": !!forceNotification
 	})
 };
