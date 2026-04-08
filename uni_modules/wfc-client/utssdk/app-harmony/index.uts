@@ -31,6 +31,8 @@ export function initProto(): void {
     // 这儿拿不到 context，暂时放到了 entryAbility 里面去设置 dbpath
     const context: Context = getContext();
     clientModule.setDBPath(context.filesDir);
+    // 默认开启日志
+    clientModule.startLog();
 
     //     'onClearMessage': null,
     //     'onConversationDraftUpdate': null,
