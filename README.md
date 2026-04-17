@@ -15,6 +15,8 @@
 
 **给您带来不便，敬请谅解。**
 
+> 联系官方获取到不受限制版本后，请替换`./uni_modules/wfc-client/utssdk/app-android/libs/mars-core-release.aar`文件，并重新制作基座
+
 ---------
 
 # 野火uni-app uts demo
