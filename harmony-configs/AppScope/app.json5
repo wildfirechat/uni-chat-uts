@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "cn.wildfirechat.chat.uni",
+    "bundleName": "cn.wildfirechat.messenger.open.uts",
     "vendor": "wildfirechat",
     "versionCode": 1000000,
     "versionName": "1.0.0",

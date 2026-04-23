@@ -122,7 +122,8 @@
         "distribute" : {
             "modules" : {
                 "uni-push" : {}
-            }
+            },
+            "bundleName" : "cn.wildfirechat.messenger.open.uts"
         }
     }
 }
