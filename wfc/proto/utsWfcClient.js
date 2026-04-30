@@ -157,7 +157,8 @@ import {
 	// #endif
 	getMessageCountByDay,
     getGroupRemark,
-	setGroupRemark
+	setGroupRemark,
+	notify
 
 } from "@/uni_modules/wfc-client";
 
@@ -319,6 +320,7 @@ class UtsWfcClient {
 	getMessageCountByDay = getMessageCountByDay
 	getGroupRemark = getGroupRemark
 	setGroupRemark = setGroupRemark
+	notify = notify
 }
 
 const utsWfcClient = new UtsWfcClient()

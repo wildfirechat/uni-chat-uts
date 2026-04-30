@@ -653,11 +653,9 @@ export function setGroupRemark(groupId:string, remark:string, successCB: VoidCal
     clientModule.setGroupRemark(groupId, remark=remark, success=voidCallback(successCB), error=numberCallback(failCB))
 }
 
-/*
-export function notify(title, content);
-
-
- */
+export function notify(title:string, content:string) {
+    clientModule.notify(title, content);
+}
 
 function voidCallback(@escaping cb: VoidCallback): (value?: any) => void {
 	function testVoid(value?: any):void {
