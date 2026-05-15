@@ -654,7 +654,7 @@ export function setGroupRemark(groupId:string, remark:string, successCB: VoidCal
 }
 
 export function notify(title:string, content:string) {
-    clientModule.notify(title, content);
+    clientModule.notify(title, content=content);
 }
 
 function voidCallback(@escaping cb: VoidCallback): (value?: any) => void {
