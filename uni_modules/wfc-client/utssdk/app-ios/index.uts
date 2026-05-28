@@ -59,20 +59,24 @@ export function getConnectionStatus(): number {
 }
 
 export function registerMessageFlag(type: number, flag: number) {
-    clientModule.registerMessageFlag(type.toInt32(), flag=flag.toInt32())
+    clientModule.registerMessageFlag(type.toInt32(), flag=flag.toInt32());
 }
 
 export function useSM4() {
-    clientModule.useSM4()
+    clientModule.useSM4();
+}
+
+export function setSendLogCommand(command: string) {
+    clientModule.setSendLogCommand(command);
 }
 
 export function setProxyInfo(host: string, ip: string, port: number, userName: string, password: string) {
-    clientModule.setProxyInfo(host, ip=ip, port=port.toInt32(), username=userName, password=password)
+    clientModule.setProxyInfo(host, ip=ip, port=port.toInt32(), username=userName, password=password);
 }
 
 
 export function disconnect(disablePush: boolean, clearSession: boolean) {
-    clientModule.disconnect(disablePush, clearSession=clearSession)
+    clientModule.disconnect(disablePush, clearSession=clearSession);
 }
 
 export const getUserId = function (): string {

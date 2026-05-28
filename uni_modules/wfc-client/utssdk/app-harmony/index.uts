@@ -114,6 +114,10 @@ export function useSM4() {
     clientModule.useSM4()
 }
 
+export function setSendLogCommand(command: string) {
+	clientModule.setSendLogCommand(command)
+}
+
 export function setProxyInfo(host: string, ip: string, port: number, userName: string, password: string) {
     clientModule.setProxyInfo(host, ip, port, userName, password)
 }

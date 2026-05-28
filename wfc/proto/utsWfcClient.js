@@ -144,6 +144,7 @@ import {
     uploadMedia,
     uploadMediaFile,
     useSM4,
+	setSendLogCommand,
     getMessageByUid,
     getGroupMember,
     addMembers,
@@ -307,6 +308,7 @@ class UtsWfcClient {
     uploadMedia = uploadMedia
     uploadMediaFile = uploadMediaFile
     useSM4 = useSM4
+	setSendLogCommand=setSendLogCommand
     getMessageByUid = getMessageByUid
     getGroupMember = getGroupMember
     addMembers = addMembers

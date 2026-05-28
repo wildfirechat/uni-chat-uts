@@ -69,12 +69,19 @@ export class WfcManager {
         return impl.getClientId();
     }
 
-    /*
+    /**
      * 启用国密加密。注意需要服务器端同步开启国密配置
      */
     useSM4() {
         impl.useSM4();
     }
+	
+	/**
+	 * @param {string} command 发送日志的命令
+	 */
+	setSendLogCommand(command) {
+		impl.setSendLogCommand(command);
+	}
 
     /**
      * 连接服务器
