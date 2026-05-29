@@ -1,6 +1,6 @@
 /* 引入 interface.uts 文件中定义的变量 */
 
-import clientModule, {sendMessageEx, saveToFile as _saveToFile, uploadMediaFile as _uploadMediaFile} from "@wfc/marswrapper"
+import clientModule, {sendMessageEx, setSendLogCommand as _setSendLogCommand, saveToFile as _saveToFile, uploadMediaFile as _uploadMediaFile} from "@wfc/marswrapper"
 import {pinyin4js} from '@ohos/pinyin4js';
 import fs from '@ohos.file.fs';
 
@@ -115,7 +115,7 @@ export function useSM4() {
 }
 
 export function setSendLogCommand(command: string) {
-	clientModule.setSendLogCommand(command)
+	_setSendLogCommand(command)
 }
 
 export function setProxyInfo(host: string, ip: string, port: number, userName: string, password: string) {

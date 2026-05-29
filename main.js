@@ -116,7 +116,10 @@ app.config.globalProperties.$eventBus = eventBus
 app.config.globalProperties.$set = (obj, key, value) => obj[key] = value
 
 wfc.init();
-console.log('xxxxxxxx proto init end')
+if(Config.SEND_LOG_COMMAND) {
+    wfc.setSendLogCommand(Config.SEND_LOG_COMMAND)
+}
+console.log('proto init end')
 CustomMessageConfig.registerCustomMessages();
 // 如果不进行初始化，则无法弹出音视频通话界面，不能进行音视频通话。
 // #ifdef APP-HARMONY

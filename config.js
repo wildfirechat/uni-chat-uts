@@ -75,6 +75,9 @@ export default class Config {
     // 文件传输助手ID
     static FILE_HELPER_ID = 'wfc_file_transfer';
 
+    // 发送日志命令，当发送此文本消息时，会把协议栈日志发送到当前会话中，为空时关闭此功能。
+    static SEND_LOG_COMMAND = '*#marslog#';
+
     /**
      * 允许重新编辑多长时间内的撤回消息，单位是秒
      */
