@@ -81,6 +81,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)clearUnreadFriendRequestStatus;
 
+- (void)clearFriendRequest:(int)direction beforeTime:(int64_t)beforeTime;
+
+- (void)deleteFriendRequest:(NSString *)userId direction:(int)direction;
+
 - (void)deleteFriend:(NSString *)userId success:(JSCallback)successCB error:(JSCallback)errorCB;
 
 - (void)handleFriendRequest:(NSString *)userId accept:(BOOL)accept success:(JSCallback)successCB error:(JSCallback)errorCB extra:(NSString *)extra;
@@ -313,6 +317,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)searchMyFiles:(NSString *)keyword beforeUid:(NSString *)beforeUid count:(int)count success:(JSCallback)successCB error:(JSCallback)errorCB;
 
 - (void)kickoffPCClient:(NSString *)clientId success:(JSCallback)successCB error:(JSCallback)errorCB;
+- (void)lockPCClient:(NSString *)clientId isLock:(BOOL)isLock success:(JSCallback)successCB error:(JSCallback)errorCB;
+- (BOOL)isPCClientLocked:(NSString *)clientId;
+
 - (void)getCommonGroups:(NSString *)userId success:(JSCallback)successCB error:(JSCallback)errorCB;
 - (NSString* )getGroupRemark:(NSString *)groupId;
 - (void)setGroupRemark:(NSString *)groupId remark:(NSString*)remark success:(JSCallback)successCB error:(JSCallback)errorCB;
