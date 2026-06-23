@@ -456,7 +456,7 @@ export class WfcManager {
 	 * @param {string} userId 用户ID
 	 * @param {boolean} incomming 是否是收到的好友请求
 	 */
-	deleteFriendRequest(userId, incomming): void {
+	deleteFriendRequest(userId, incomming) {
 		clientModule.deleteFriendRequest(userId, incomming);
 	}
 
