@@ -72,6 +72,8 @@ import {
     getUserMessagesV2,
     getUserSetting,
     handleFriendRequest,
+	clearFriendRequest,
+	deleteFriendRequest,
 
     insertMessage,
     isBlackListed,
@@ -201,6 +203,8 @@ class UtsWfcClient {
     clearRemoteConversationMessages = clearRemoteConversationMessages
     clearUnreadFriendRequestStatus = clearUnreadFriendRequestStatus
     clearUnreadStatus = clearUnreadStatus
+	clearFriendRequest = clearFriendRequest
+	deleteFriendRequest = deleteFriendRequest
     configApplication = configApplication
     createChannel = createChannel
     createGroup = createGroup

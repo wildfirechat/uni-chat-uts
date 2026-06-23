@@ -441,6 +441,24 @@ export class WfcManager {
     clearUnreadFriendRequestStatus() {
         impl.clearUnreadFriendRequestStatus();
     }
+	
+	/**
+	 * 清除好友请求
+	 * @param {boolean} incomming 是否是收到的好友请求
+	 * @param {number} beforeTime 指定时间之前的请求，0是全清除
+	 */
+	clearFriendRequest(incomming, beforeTime=0) {
+		impl.clearFriendRequest(incomming, beforeTime);
+	}
+	
+	/**
+	 * 清除一条好友请求
+	 * @param {string} userId 用户ID
+	 * @param {boolean} incomming 是否是收到的好友请求
+	 */
+	deleteFriendRequest(userId, incomming): void {
+		clientModule.deleteFriendRequest(userId, incomming);
+	}
 
     /**
      * 删除好友

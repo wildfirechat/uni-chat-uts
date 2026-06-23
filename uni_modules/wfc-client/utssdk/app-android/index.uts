@@ -221,6 +221,14 @@ export function clearUnreadFriendRequestStatus(): void {
     clientModule.clearUnreadFriendRequestStatus()
 }
 
+export function clearFriendRequest(direction: number, beforeTime: number): void {
+	clientModule.clearFriendRequest(direction, beforeTime);
+}
+
+export function deleteFriendRequest(userId: string, direction: number): void {
+	clientModule.deleteFriendRequest(userId, direction);
+}
+
 export function clearUnreadStatus(conversation: string): void {
     clientModule.clearUnreadStatus(conversation)
 }
