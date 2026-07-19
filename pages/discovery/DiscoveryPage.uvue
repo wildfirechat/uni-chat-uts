@@ -1,0 +1,104 @@
+<template>
+    <view class="discovery-container">
+        <view class="item" @tap="showChatroomList">
+            <image class="item-icon" src="/static/image/icon/ic_chatroom.png" />
+            <text class="item-text">聊天室</text>
+            <text class="icomoon arrow">&#xf3d3;</text>
+        </view>
+        <view class="item" @tap="showRobotConversation">
+            <image class="item-icon" src="/static/image/icon/ic_robot.png" />
+            <text class="item-text">机器人</text>
+            <text class="icomoon arrow">&#xf3d3;</text>
+        </view>
+        <view class="item" @tap="showChannelList">
+            <image class="item-icon" src="/static/image/icon/ic_channel.png" />
+            <text class="item-text">频道</text>
+            <text class="icomoon arrow">&#xf3d3;</text>
+        </view>
+        <view class="item" @tap="showDevGuide">
+            <image class="item-icon" src="/static/image/icon/ic_dev_docs.png" />
+            <text class="item-text">开发手册</text>
+            <text class="icomoon arrow">&#xf3d3;</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store from "../../store.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+
+export default {
+    name: "DiscoveryPage",
+    methods: {
+        showChatroomList() {
+            uni.navigateTo({
+                url: '/pages/discovery/ChatroomListPage',
+                fail: (e) => {
+                    console.log(e)
+                }
+            } as NavigateToOptions);
+        },
+        showRobotConversation() {
+            const conversation = new Conversation(ConversationType.Single, "FireRobot", 0);
+            store.setCurrentConversation(conversation);
+            go2ConversationPage();
+        },
+        showChannelList() {
+            uni.navigateTo({
+                url: '/pages/contact/ChannelListPage',
+                fail: (e) => {
+                    console.log(e)
+                }
+            } as NavigateToOptions);
+        },
+        showDevGuide() {
+            uni.navigateTo({
+                url: '/pages/misc/WebViewPage?url=https://docs.wildfirechat.cn/',
+                fail: (e) => {
+                    console.log(e)
+                }
+            } as NavigateToOptions);
+        }
+    }
+}
+</script>
+
+<style scoped>
+.discovery-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1;
+    background-color: #fafafa;
+    overflow: hidden;
+}
+
+.item {
+    width: 100%;
+    padding: 15px 10px;
+    margin: 5px 0;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.item-icon {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+}
+
+.item-text {
+    flex: 1;
+    font-size: 15px;
+}
+
+.arrow {
+    color: #d6d6d6;
+    font-size: 16px;
+}
+</style>

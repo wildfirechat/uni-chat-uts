@@ -1,0 +1,38 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from './messageContent.uts'
+import MessageContentType from './messageContentType.uts';
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+// 本消息由调用server api删除消息触发，请勿直接发送本消息
+export default class DeleteMessageContent extends MessageContent {
+    operatorId = '';
+    // 64 位 id，string 表示
+    messageUid = '0';
+
+    constructor(operatorId: string = '', messageUid: string = '0') {
+        super(MessageContentType.DeleteMessage_Notification);
+        this.operatorId = operatorId;
+        this.messageUid = messageUid;
+    }
+
+    override digest(message: any | null): string {
+        return "消息已删除";
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.operatorId;
+        payload.binaryContent = utf8_to_b64(this.messageUid);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.operatorId = payload.content;
+        this.messageUid = b64_to_utf8(payload.binaryContent);
+    }
+}

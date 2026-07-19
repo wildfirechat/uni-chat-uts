@@ -1,0 +1,103 @@
+<template>
+    <view class="multi-selection-action-container">
+        <view class="action" @tap="forwardOneByOne">
+            <view class="icon">
+                <text class="icomoon action-icon">&#xf2f6;</text>
+            </view>
+            <text class="action-text">逐条转发</text>
+        </view>
+        <view class="action" @tap="forwardComposite">
+            <view class="icon">
+                <text class="icomoon action-icon">&#xf347;</text>
+            </view>
+            <text class="action-text">合并转发</text>
+        </view>
+        <view class="action" @tap="deleteMultiMessage">
+            <view class="icon">
+                <text class="icomoon action-icon">&#xf37f;</text>
+            </view>
+            <text class="action-text">删除</text>
+        </view>
+        <view class="action" @tap="hideMultiSelectionActionView">
+            <view class="icon">
+                <text class="icomoon action-icon">&#xf12a;</text>
+            </view>
+            <text class="action-text">取消</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { pickState } from "@/store.uts";
+import Message from "@/wfc/messages/message.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import { forward } from "@/common/forward.uts";
+
+export default {
+    name: "MessageMultiSelectionActionView",
+    methods: {
+        deleteMultiMessage() {
+            store.deleteSelectedMessages();
+        },
+
+        hideMultiSelectionActionView() {
+            store.toggleMessageMultiSelection(null);
+        },
+
+        forwardOneByOne() {
+            const messages: Message[] = pickState.messages.slice(0);
+            forward(ForwardType.ONE_BY_ONE, messages);
+            store.toggleMessageMultiSelection(null);
+        },
+
+        forwardComposite() {
+            const messages: Message[] = pickState.messages.slice(0);
+            forward(ForwardType.COMPOSITE, messages);
+            store.toggleMessageMultiSelection(null);
+        },
+    },
+}
+</script>
+
+<style scoped>
+.multi-selection-action-container {
+    width: 100%;
+    height: 203px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    border-top: 1px solid #e2e2e2;
+    background-color: #f3f3f3;
+}
+
+.action {
+    font-size: 13px;
+    padding: 0 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.icon {
+    width: 60px;
+    height: 60px;
+    background-color: #ffffff;
+    border-radius: 30px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.action-icon {
+    font-size: 20px;
+    color: #333333;
+}
+
+.action-text {
+    padding-top: 10px;
+    font-size: 13px;
+}
+</style>

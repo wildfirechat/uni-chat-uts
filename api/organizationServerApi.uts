@@ -1,0 +1,145 @@
+import Config from "../config.uts";
+import { getItem, setItem } from "../pages/util/storageHelper.uts";
+import wfc from "../wfc/client/wfc.uts";
+import OrganizationServerError from "./organizationServerError.uts";
+import UserInfo from "../wfc/model/userInfo.uts";
+
+export class OrganizationServerApi {
+    isServiceAvailable = true;
+
+    login(): Promise<UTSJSONObject | null> {
+        return new Promise<UTSJSONObject | null>((resolve, reject) => {
+            if (Config.ORGANIZATION_SERVER == '') {
+                reject(new OrganizationServerError(-1, '未配置组织结构服务'));
+                return
+            }
+            wfc.getAuthCode('admin', 2, '', (code: string) => {
+                const path = Config.ORGANIZATION_SERVER + '/api/user_login';
+                uni.request<UTSJSONObject>({
+                    url: path,
+                    data: { authCode: code } as UTSJSONObject,
+                    header: {
+                        'content-type': 'application/json',
+                    } as UTSJSONObject,
+                    method: 'POST',
+                    success: (res) => {
+                        const body = res.data
+                        if (res.statusCode == 200 && body != null) {
+                            const resultCode = body.getNumber('code') ?? -1
+                            if (resultCode == 0) {
+                                let appAuthToken = res.header.getString('authtoken')
+                                if (appAuthToken == null) {
+                                    appAuthToken = res.header.getString('authToken')
+                                }
+                                if (appAuthToken != null) {
+                                    setItem('authToken-org', appAuthToken);
+                                }
+                                this.isServiceAvailable = true;
+                                resolve(body.getJSON('result'));
+                            } else {
+                                reject(new OrganizationServerError(resultCode, body.getString('message') ?? ''));
+                            }
+                        } else {
+                            reject(new OrganizationServerError(-1, 'request error, status code: ' + res.statusCode));
+                        }
+                    },
+                    fail: (err) => {
+                        reject(new OrganizationServerError(-1, 'request error: ' + err.errMsg));
+                    }
+                } as RequestOptions<UTSJSONObject>);
+            }, (error: number) => {
+                console.error('getAuthCode error', error);
+                reject(new OrganizationServerError(-1, '未登录，或服务不可用'));
+            })
+        })
+    }
+
+    getRootOrganization(): Promise<any | null> {
+        return this._post('/api/organization/root', {} as UTSJSONObject);
+    }
+
+    getRelationShip(employeeId: string): Promise<any | null> {
+        return this._post('/api/relationship/employee', { employeeId: employeeId } as UTSJSONObject);
+    }
+
+    getOrganizationEx(orgId: number): Promise<any | null> {
+        return this._post('/api/organization/query_ex', { id: orgId } as UTSJSONObject);
+    }
+
+    getOrganizations(orgIds: number[]): Promise<any | null> {
+        return this._post('/api/organization/query_list', { ids: orgIds } as UTSJSONObject);
+    }
+
+    getOrgEmployees(orgId: number): Promise<any | null> {
+        return this._post('/api/organization/employees', { ids: orgId } as UTSJSONObject);
+    }
+
+    getEmployee(employeeId: string): Promise<any | null> {
+        return this._post('/api/employee/query', { employeeId: employeeId } as UTSJSONObject);
+    }
+
+    getEmployeeEx(employeeId: string): Promise<any | null> {
+        return this._post('/api/employee/query_ex', { employeeId: employeeId } as UTSJSONObject);
+    }
+
+    getEmployeeList(employeeIds: string[]): Promise<any | null> {
+        return this._post('/api/employee/query_list', { employeeIds: employeeIds } as UTSJSONObject)
+    }
+
+    searchEmployee(orgId: number, keyword: string): Promise<any | null> {
+        return this._post('/api/employee/search', { organizationId: orgId, keyword: keyword } as UTSJSONObject);
+    }
+
+    employeeToUserInfo(employee: UTSJSONObject): UserInfo {
+        const userInfo = new UserInfo();
+        userInfo.uid = employee.getString('employeeId') ?? '';
+        userInfo.name = employee.getString('name') ?? '';
+        userInfo.displayName = employee.getString('name') ?? '';
+        const portrait = employee.getString('portrait')
+        userInfo.portrait = portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL;
+        userInfo.gender = employee.getNumber('gender') ?? 0;
+        userInfo.mobile = employee.getString('mobile') ?? '';
+        userInfo.email = employee.getString('email') ?? '';
+        userInfo.updateDt = employee.getNumber('updateDt') ?? 0;
+        userInfo.type = 1;
+        userInfo.deleted = 0;
+        return userInfo;
+    }
+
+    /**
+     * 通用 post，resolve 的是 response.data.result（可能是对象或数组）
+     */
+    _post(path: string, data: UTSJSONObject): Promise<any | null> {
+        return new Promise<any | null>((resolve, reject) => {
+            const url = Config.ORGANIZATION_SERVER + path;
+            uni.request<UTSJSONObject>({
+                url: url,
+                data: data,
+                header: {
+                    'content-type': 'application/json',
+                    'authToken': getItem('authToken-org'),
+                } as UTSJSONObject,
+                method: 'POST',
+                success: (res) => {
+                    const body = res.data
+                    if (res.statusCode == 200 && body != null) {
+                        const code = body.getNumber('code') ?? -1
+                        if (code == 0) {
+                            resolve(body.get('result'));
+                        } else {
+                            reject(new OrganizationServerError(code, body.getString('message') ?? ''))
+                        }
+                    } else {
+                        reject(new OrganizationServerError(-1, 'request error, status code: ' + res.statusCode))
+                    }
+                },
+                fail: (err) => {
+                    reject(new OrganizationServerError(-1, 'request error: ' + err.errMsg))
+                }
+            } as RequestOptions<UTSJSONObject>);
+        });
+    }
+}
+
+const organizationServerApi = new OrganizationServerApi();
+export default organizationServerApi;

@@ -1,0 +1,174 @@
+<template>
+    <view class="TUI-message-input-main" @longpress="handleLongPress" @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd">
+        <text class="record-text">{{ text }}</text>
+        <view class="record-modal" v-if="popupToggle">
+            <view class="wrapper">
+                <view class="modal-loading"></view>
+            </view>
+            <text class="modal-title">{{ title }}</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import wfc from "../../../wfc/client/wfc.uts";
+import ConversationInfo from "../../../wfc/model/conversationInfo.uts";
+import SoundMessageContent from "../../../wfc/messages/soundMessageContent.uts";
+
+export default {
+    name: 'AudioInputView',
+    props: {
+        conversationInfo: {
+            type: Object as PropType<ConversationInfo>,
+            required: true,
+        }
+    },
+    data() {
+        return {
+            popupToggle: false,
+            isRecording: false,
+            canSend: true,
+            text: '按住说话',
+            title: ' ',
+            recordTime: 0,
+            recordTimer: 0,
+            longPressClientY: 0,
+        }
+    },
+    mounted() {
+        const recorderManager = uni.getRecorderManager();
+        recorderManager.onStop((res) => {
+            if (this.recordTimer != 0) {
+                clearInterval(this.recordTimer);
+                this.recordTimer = 0;
+            }
+            uni.hideLoading();
+            if (this.canSend) {
+                if (this.recordTime < 1) {
+                    uni.showToast({
+                        title: '录音时间太短',
+                        icon: 'none'
+                    } as ShowToastOptions);
+                } else {
+                    let filePath = res.tempFilePath;
+                    if (filePath.startsWith('file://')) {
+                        filePath = filePath.substring('file://'.length);
+                    }
+                    const soundMessageContent = new SoundMessageContent(filePath, '', this.recordTime)
+                    wfc.sendConversationMessage(this.conversationInfo.conversation, soundMessageContent);
+                }
+            }
+            this.popupToggle = false;
+            this.isRecording = false;
+            this.canSend = true;
+            this.title = ' ';
+            this.text = '按住说话'
+        });
+        recorderManager.onError((res) => {
+            console.log('recorderManager.onError', res);
+        })
+    },
+    methods: {
+        handleLongPress(e: UniTouchEvent) {
+            console.log('to start record');
+            if (e.changedTouches.length > 0) {
+                this.longPressClientY = e.changedTouches[e.changedTouches.length - 1].clientY;
+            }
+            this.popupToggle = true;
+            const recorderManager = uni.getRecorderManager();
+            recorderManager.start({
+                duration: 60000,
+                sampleRate: 44100,
+                format: 'mp3'
+            } as RecorderManagerStartOptions);
+            this.title = '正在录音';
+            this.isRecording = true;
+            this.recordTime = 0;
+            this.recordTimer = setInterval(() => {
+                this.recordTime++;
+            }, 1000);
+        },
+
+        // 录音时的手势上划移动距离对应文案变化
+        handleTouchMove(e: UniTouchEvent) {
+            if (this.isRecording && e.changedTouches.length > 0) {
+                const clientY = e.changedTouches[e.changedTouches.length - 1].clientY
+                if (Math.abs(this.longPressClientY - clientY) > 100) {
+                    this.text = '抬起停止';
+                    this.title = '松开手指，取消发送';
+                    this.canSend = false;
+                } else if (Math.abs(this.longPressClientY - clientY) > 20) {
+                    this.text = '抬起停止';
+                    this.title = '上划可取消';
+                    this.canSend = true;
+                } else {
+                    this.text = '抬起停止';
+                    this.title = '正在录音';
+                    this.canSend = true;
+                }
+            }
+        },
+        // 手指离开页面滑动
+        handleTouchEnd() {
+            this.isRecording = false;
+            this.popupToggle = false;
+            this.text = '按住说话';
+            uni.hideLoading();
+            uni.getRecorderManager().stop();
+        },
+    },
+}
+</script>
+
+<style scoped>
+.TUI-message-input-main {
+    background-color: #ffffff;
+    flex: 1;
+    height: 33px;
+    margin: 0 5px;
+    padding: 0 3px;
+    border-radius: 3px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.record-text {
+    font-size: 15px;
+}
+
+.record-modal {
+    height: 150px;
+    width: 220px;
+    background-color: rgba(0, 0, 0, 0.8);
+    position: fixed;
+    top: 300px;
+    z-index: 9999;
+    left: 70px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: row;
+    height: 100px;
+    padding: 35px;
+}
+
+.modal-loading {
+    width: 20px;
+    height: 8px;
+    border-radius: 2px;
+    background-color: #006fff;
+}
+
+.modal-title {
+    text-align: center;
+    color: #ffffff;
+    font-size: 14px;
+}
+</style>

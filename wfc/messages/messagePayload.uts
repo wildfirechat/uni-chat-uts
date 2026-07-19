@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class MessagePayload {
+    type = 0;
+    searchableContent = '';
+    pushContent = '';
+    pushData = '';
+    content = '';
+    binaryContent = ''; // base64 string, 图片时，不包含头部信息:data:image/png;base64,
+    localContent = '';
+    mediaType = 0;
+    remoteMediaUrl = '';
+    localMediaPath = '';
+    mentionedType = 0;
+    mentionedTargets: string[] = [];
+    extra = '';
+
+    /**
+     * 序列化为传递给 native 的 json 对象
+     */
+    toJsonObject(): UTSJSONObject {
+        return {
+            type: this.type,
+            searchableContent: this.searchableContent,
+            pushContent: this.pushContent,
+            pushData: this.pushData,
+            content: this.content,
+            binaryContent: this.binaryContent,
+            localContent: this.localContent,
+            mediaType: this.mediaType,
+            remoteMediaUrl: this.remoteMediaUrl,
+            localMediaPath: this.localMediaPath,
+            mentionedType: this.mentionedType,
+            mentionedTargets: this.mentionedTargets,
+            extra: this.extra,
+        } as UTSJSONObject
+    }
+
+    toJsonStr(): string {
+        return JSON.stringify(this.toJsonObject())!
+    }
+
+    static fromJsonObject(obj: UTSJSONObject | null): MessagePayload {
+        const p = new MessagePayload()
+        if (obj == null) {
+            return p
+        }
+        let type = obj.getNumber('type')
+        if (type == null) {
+            // 移动端会话列表 lastMessage 的 content 里，字段名可能是 messageContentType
+            type = obj.getNumber('messageContentType')
+        }
+        p.type = type ?? 0
+        p.searchableContent = obj.getString('searchableContent') ?? ''
+        p.pushContent = obj.getString('pushContent') ?? ''
+        p.pushData = obj.getString('pushData') ?? ''
+        p.content = obj.getString('content') ?? ''
+        p.binaryContent = obj.getString('binaryContent') ?? ''
+        p.localContent = obj.getString('localContent') ?? ''
+        p.mediaType = obj.getNumber('mediaType') ?? 0
+        p.remoteMediaUrl = obj.getString('remoteMediaUrl') ?? ''
+        p.localMediaPath = obj.getString('localMediaPath') ?? ''
+        p.mentionedType = obj.getNumber('mentionedType') ?? 0
+        // web 端字段名是 mentionedTarget，移动端是 mentionedTargets
+        let targets = obj.getArray<string>('mentionedTargets')
+        if (targets == null) {
+            targets = obj.getArray<string>('mentionedTarget')
+        }
+        p.mentionedTargets = targets ?? ([] as string[])
+        p.extra = obj.getString('extra') ?? ''
+        return p
+    }
+}

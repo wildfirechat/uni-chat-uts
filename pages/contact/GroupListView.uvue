@@ -1,0 +1,53 @@
+<template>
+    <view>
+        <view class="group-item" v-for="(group, index) in favGroupList" :key="index" @tap="showGroup(group)">
+            <image class="avatar" :src="group.portrait" />
+            <text class="group-name single-line">{{ group.name }}</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState } from "../../store.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import GroupInfo from "../../wfc/model/groupInfo.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+
+export default {
+    name: "GroupListView",
+    computed: {
+        favGroupList(): GroupInfo[] {
+            return contactState.favGroupList
+        }
+    },
+    methods: {
+        showGroup(group: GroupInfo) {
+            const conversation = new Conversation(ConversationType.Group, group.target, 0);
+            store.setCurrentConversation(conversation);
+            go2ConversationPage();
+        }
+    },
+}
+</script>
+
+<style scoped>
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.group-item {
+    height: 50px;
+    padding: 5px 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.group-name {
+    margin-left: 10px;
+    font-size: 13px;
+}
+</style>

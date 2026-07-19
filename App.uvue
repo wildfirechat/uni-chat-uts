@@ -1,0 +1,79 @@
+<script lang="uts">
+import wfc from './wfc/client/wfc.uts'
+import store, { miscState } from './store.uts'
+import Config from './config.uts'
+import CustomMessageConfig from './wfc_custom_message/customMessageConfig.uts'
+
+export default {
+    onLaunch: function () {
+        console.log("App Launch");
+
+        // 图标字体（原 css :before 方案 uni-app x 不支持，改为 loadFontFace + 文本内联 unicode）
+        uni.loadFontFace({
+            global: true,
+            family: 'customicons',
+            source: "url('/static/iconfonts/customicons.ttf')",
+            success: () => { },
+            fail: (err) => {
+                console.log('load customicons font fail', err)
+            }
+        } as LoadFontFaceOptions)
+        uni.loadFontFace({
+            global: true,
+            family: 'wxfont',
+            source: "url('/static/iconfonts/wx_iconfont.ttf')",
+            success: () => { },
+            fail: (err) => {
+                console.log('load wxfont fail', err)
+            }
+        } as LoadFontFaceOptions)
+        uni.loadFontFace({
+            global: true,
+            family: 'icomoon',
+            source: "url('/static/iconfonts/icomoon/fonts/icomoon.ttf')",
+            success: () => { },
+            fail: (err) => {
+                console.log('load icomoon font fail', err)
+            }
+        } as LoadFontFaceOptions)
+
+        // 初始化 IM
+        wfc.init();
+        if (Config.SEND_LOG_COMMAND != '') {
+            wfc.setSendLogCommand(Config.SEND_LOG_COMMAND)
+        }
+        CustomMessageConfig.registerCustomMessages();
+        store.init();
+
+        // 推送
+        uni.getPushClientId({
+            success: (res) => {
+                console.log('getPushClientId', res.cid);
+                wfc.setDeviceToken(10/*unipush 2.0*/, res.cid);
+            },
+            fail: (err) => {
+                console.log('getPushClientId error', err)
+            }
+        } as GetPushClientIdOptions);
+
+        // 在线时，能收到，可以用来开发调试
+        uni.onPushMessage((res) => {
+            console.log("收到推送消息：", res.type)
+        })
+    },
+    onShow: function () {
+        console.log("App Show");
+        miscState.isAppHidden = false;
+    },
+    onHide: function () {
+        console.log("App Hide");
+        miscState.isAppHidden = true;
+    },
+}
+</script>
+
+<style>
+/*每个页面公共css */
+@import './global.css';
+@import './wfc.css';
+</style>

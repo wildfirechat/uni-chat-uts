@@ -1,0 +1,33 @@
+import CustomMessageContentType from "./customMessageContentType.uts";
+import MessageContent from '../wfc/messages/messageContent.uts'
+import MessagePayload from '../wfc/messages/messagePayload.uts'
+
+/**
+ * 对应的 UI，请参考 TestCustomMessageContentView
+ */
+export default class TestCustomMessageContent extends MessageContent {
+    content = '';
+
+    constructor(content: string = '') {
+        super(CustomMessageContentType.MESSAGE_CONTENT_TYPE_CUSTOM_MESSAGE_TEST);
+        this.content = content;
+    }
+
+    // 会话列表显示对应会话时，会显示会话最后一条消息的摘要信息
+    override digest(message: any | null): string {
+        return this.content;
+    }
+
+    // 发送消息时，会进行 encode 操作，实际发送的是 payload
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.content;
+        return payload;
+    }
+
+    // 收到消息时，会执行 decode 操作，从 payload 解析到具体的消息内容，encode 和 decode 的操作要对应起来
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.content = payload.searchableContent;
+    }
+}

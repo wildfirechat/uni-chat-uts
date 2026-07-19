@@ -1,0 +1,87 @@
+/**
+ * 页面跳转与页面间参数传递工具。
+ *
+ * 替代原 main.js 中的 app.config.globalProperties.$navigateToPage / $go2ConversationPage，
+ * 以及基于 eventChannel 的 options 传递（uni-app x 下改用全局暂存）。
+ *
+ * 用法：
+ * - 跳转方：navigateToPage('/pages/xx/XxPage', options)
+ * - 页面方：onLoad 里 const options = takePageOptions()
+ */
+
+let pendingOptionsStack: Array<any | null> = []
+
+/**
+ * 跳转页面，options 会暂存，目标页面 onLoad 时通过 takePageOptions() 获取
+ */
+export function navigateToPage(url: string, options: any | null): void {
+    if (options != null) {
+        pendingOptionsStack.push(options)
+    }
+    uni.navigateTo({
+        url: url,
+        fail: (e) => {
+            console.log('navigate to page error', url, e)
+            if (options != null) {
+                // 跳转失败，移除暂存的参数
+                const index = pendingOptionsStack.indexOf(options)
+                if (index >= 0) {
+                    pendingOptionsStack.splice(index, 1)
+                }
+            }
+        }
+    } as NavigateToOptions)
+}
+
+/**
+ * 页面 onLoad 时调用，取出跳转方传递的 options；没有时返回 null
+ */
+export function takePageOptions(): any | null {
+    if (pendingOptionsStack.length > 0) {
+        return pendingOptionsStack.pop()
+    }
+    return null
+}
+
+/**
+ * 如果不存在会话页面，则入栈；如果已经存在会话页面，则返回到该页面
+ */
+export function go2ConversationPage(): void {
+    const pages = getCurrentPages();
+    const cvRoute = 'pages/conversation/ConversationPage'
+    let delta = 0;
+    let found = false;
+    for (let i = pages.length - 1; i >= 0; i--) {
+        if (pages[i].route == cvRoute) {
+            found = true;
+            break;
+        } else {
+            delta++;
+        }
+    }
+    if (found) {
+        uni.navigateBack({
+            delta: delta,
+            fail: (err) => {
+                console.log('nav back to conversationView err', err);
+            }
+        } as NavigateBackOptions);
+    } else {
+        uni.navigateTo({
+            url: '/pages/conversation/ConversationPage',
+            fail: (err) => {
+                console.log('nav to conversationPage err', err);
+            }
+        } as NavigateToOptions)
+    }
+}
+
+/**
+ * 替代原 $notify
+ */
+export function notify(text: string): void {
+    uni.showToast({
+        title: text,
+        icon: 'none',
+    } as ShowToastOptions)
+}

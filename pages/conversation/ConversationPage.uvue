@@ -1,0 +1,524 @@
+<template>
+    <view class="conversation-page">
+        <NavBar :title="navTitle" :showBack="true" :rightIcon1="conversationInfo != null ? moreIcon : ''"
+            @right1Tap="showConversationInfo" />
+        <view v-if="conversationInfo == null" class="conversation-empty-container">
+            <text>^~^</text>
+        </view>
+        <view v-else class="conversation-content-container">
+            <view class="message-list-container">
+                <scroll-view class="message-list" direction="vertical" :scroll-top="scrollTop"
+                    :refresher-enabled="true" :refresher-triggered="triggered" :refresher-threshold="45"
+                    @refresherrefresh="onRefresh" @refresherrestore="onRestore" @refresherabort="onAbort"
+                    @touchstart="onTouchStart" @touchmove="onTouchMove">
+                    <view v-for="(message, index) in messageList" :id="'id-' + message.messageId" :key="index"
+                        @tap="clickMessageItem(message)">
+                        <NotificationMessageContentView :message="message" v-if="isNotificationMessage(message)" />
+                        <RecallNotificationMessageContentView :message="message"
+                            v-else-if="isRecallNotificationMessage(message)" />
+                        <ContextableNotificationMessageContentContainerView :message="message"
+                            v-else-if="isContextableNotificationMessage(message)" />
+                        <NormalOutMessageContentView :message="message" v-else-if="message.direction == 0" />
+                        <NormalInMessageContentView :message="message" v-else />
+                    </view>
+                </scroll-view>
+            </view>
+            <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
+                :x="contextMenuX" :y="contextMenuY" direction="column" theme="dark" :triangle="false" :dynamic="true" />
+            <MessageInputView v-if="!enableMessageMultiSelection" :conversationInfo="conversationInfo"
+                class="message-input-container" ref="messageInputView" />
+            <MultiSelectActionView v-if="enableMessageMultiSelection" />
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import NavBar from "@/pages/common/NavBar.uvue";
+import MessageInputView from "@/pages/conversation/MessageInputView.uvue";
+import NormalOutMessageContentView from "@/pages/conversation/message/NormalOutMessageContentContainerView.uvue";
+import NormalInMessageContentView from "@/pages/conversation/message/NormalInMessageContentContainerView.uvue";
+import NotificationMessageContentView from "@/pages/conversation/message/NotificationMessageContentView.uvue";
+import RecallNotificationMessageContentView from "@/pages/conversation/message/RecallNotificationMessageContentView.uvue";
+import ContextableNotificationMessageContentContainerView from "./message/ContextableNotificationMessageContentContainerView.uvue";
+import MultiSelectActionView from "@/pages/conversation/MessageMultiSelectActionView.uvue";
+import NotificationMessageContent from "@/wfc/messages/notification/notificationMessageContent.uts";
+import RichNotificationMessageContent from "../../wfc/messages/notification/richNotificationMessageContent.uts";
+import ArticlesMessageContent from "../../wfc/messages/articlesMessageContent.uts";
+import TextMessageContent from "@/wfc/messages/textMessageContent.uts";
+import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
+import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
+import SoundMessageContent from "@/wfc/messages/soundMessageContent.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import Message from "@/wfc/messages/message.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import GroupMemberType from "@/wfc/model/groupMemberType.uts";
+import store, { conversationState } from "@/store.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import Config from "../../config.uts";
+import { getItem, setItem } from "../util/storageHelper.uts";
+import { copyText } from "@/pages/util/clipboard.uts";
+import { PopupMenuItem } from "@/components/chunLei-popups/popupMenu.uts";
+import { navigateToPage } from "@/common/nav.uts";
+import { forward } from "@/common/forward.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import eventBus from "@/common/eventBus.uts";
+import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
+
+let innerAudioContext: InnerAudioContext | null = null;
+
+export default {
+    name: 'ConversationPage',
+    components: {
+        NavBar,
+        ContextableNotificationMessageContentContainerView,
+        MultiSelectActionView,
+        NotificationMessageContentView,
+        RecallNotificationMessageContentView,
+        NormalInMessageContentView,
+        NormalOutMessageContentView,
+        MessageInputView,
+    },
+    data() {
+        return {
+            moreIcon: '',
+
+            isScroll: false,
+            touchStartX: 0,
+            touchStartY: 0,
+
+            showContextMenu: false,
+            contextMenuX: 0,
+            contextMenuY: 0,
+            contextMenuItems: [] as PopupMenuItem[],
+            contextMenuMessage: null as Message | null,
+
+            keyboardHeight: 0,
+            scrollTop: 0,
+            triggered: false,
+            freshing: false,
+        };
+    },
+
+    computed: {
+        conversationInfo(): ConversationInfo | null {
+            return conversationState.currentConversationInfo
+        },
+        messageList(): Message[] {
+            return conversationState.currentConversationMessageList
+        },
+        enableMessageMultiSelection(): boolean {
+            return conversationState.enableMessageMultiSelection
+        },
+        conversationTitle(): string {
+            const info = conversationState.currentConversationInfo;
+            if (info == null) {
+                return ''
+            }
+            const target = info.conversation._target
+            return target != null ? target._displayName : '';
+        },
+        targetUserOnlineStateDesc(): string {
+            const info = conversationState.currentConversationInfo;
+            return info != null ? info.conversation._targetOnlineStateDesc : '';
+        },
+        navTitle(): string {
+            return this.targetUserOnlineStateDesc != ''
+                ? this.conversationTitle + `(${this.targetUserOnlineStateDesc})`
+                : this.conversationTitle
+        },
+        // 用于控制同时只能播放一个语音
+        currentVoiceMessage(): Message | null {
+            const voice = conversationState.currentVoiceMessage;
+            if (voice != null) {
+                this.playVoice(voice);
+            } else {
+                const ctx = innerAudioContext
+                if (ctx != null) {
+                    ctx.stop();
+                    innerAudioContext = null;
+                }
+            }
+            return voice;
+        },
+    },
+
+    watch: {
+        messageList: {
+            handler(_newList: Message[], _old: Message[]) {
+                if (conversationState.shouldAutoScrollToBottom) {
+                    this.scrollToBottom();
+                }
+                const info = conversationState.currentConversationInfo
+                if (info != null && info.unreadCount.unread > 0) {
+                    store.clearConversationUnreadStatus(info.conversation);
+                }
+            },
+            deep: false,
+        },
+        // 触发 currentVoiceMessage computed 的求值
+        currentVoiceMessage: {
+            handler(_n: Message | null, _o: Message | null) {
+            },
+            immediate: true
+        }
+    },
+
+    onUnload() {
+        store.setCurrentConversationInfo(null);
+        eventBus.$off('openMessageContextMenu', this.onOpenMessageContextMenu)
+        eventBus.$off('reeditMessage', this.onReeditMessage)
+    },
+
+    mounted() {
+        this.scrollToBottom();
+        const info = conversationState.currentConversationInfo
+        if (info != null) {
+            store.clearConversationUnreadStatus(info.conversation);
+        }
+
+        const savedKeyboardHeight = getItem('keyboardHeight');
+        if (savedKeyboardHeight != '') {
+            this.keyboardHeight = parseInt(savedKeyboardHeight);
+        }
+        uni.onKeyboardHeightChange((res) => {
+            if (this.keyboardHeight != res.height && res.height > 0) {
+                this.keyboardHeight = res.height;
+                setItem('keyboardHeight', '' + this.keyboardHeight)
+            }
+            const inputView = this.$refs['messageInputView']
+            if (inputView != null && res.height > 0) {
+                (inputView as ComponentPublicInstance).$callMethod('onKeyboardHeightChange', this.keyboardHeight, res.height);
+            }
+            this.scrollToBottom();
+        });
+
+        eventBus.$on('openMessageContextMenu', this.onOpenMessageContextMenu);
+        eventBus.$on('reeditMessage', this.onReeditMessage);
+    },
+
+    methods: {
+        onOpenMessageContextMenu(data: any | null) {
+            if (data instanceof OpenMessageContextMenuEvent) {
+                const e = data as OpenMessageContextMenuEvent
+                this.showMessageContextMenu(e.event, e.message)
+            }
+        },
+
+        onReeditMessage(data: any | null) {
+            if (data != null) {
+                const inputView = this.$refs['messageInputView']
+                if (inputView != null) {
+                    (inputView as ComponentPublicInstance).$callMethod('insertText', '' + data);
+                }
+            }
+        },
+
+        showConversationInfo() {
+            const info = conversationState.currentConversationInfo
+            if (info == null) {
+                return
+            }
+            if (info.conversation.type == ConversationType.Single) {
+                navigateToPage('/pages/conversation/SingleConversationInfoPage', info);
+            } else if (info.conversation.type == ConversationType.Group) {
+                navigateToPage('/pages/conversation/GroupConversationInfoPage', info);
+            } else {
+                uni.showToast({
+                    title: 'TODO 暂不支持该会话类型',
+                    icon: 'none'
+                } as ShowToastOptions)
+            }
+        },
+
+        clickMessageItem(message: Message) {
+            if (message.messageContent instanceof NotificationMessageContent) {
+                return;
+            }
+            if (conversationState.enableMessageMultiSelection) {
+                store.selectOrDeselectMessage(message);
+            }
+        },
+
+        isNotificationMessage(message: Message): boolean {
+            return message.messageContent instanceof NotificationMessageContent
+                && message.messageContent.type != MessageContentType.RecallMessage_Notification
+                && message.messageContent.type != MessageContentType.Rich_Notification;
+        },
+
+        isContextableNotificationMessage(message: Message): boolean {
+            return message.messageContent instanceof RichNotificationMessageContent || message.messageContent instanceof ArticlesMessageContent;
+        },
+
+        isRecallNotificationMessage(message: Message): boolean {
+            return message.messageContent.type == MessageContentType.RecallMessage_Notification;
+        },
+
+        // 目前仅文本消息支持复制
+        isCopyable(message: Message): boolean {
+            return message.messageContent instanceof TextMessageContent;
+        },
+
+        isDownloadAble(message: Message): boolean {
+            return message.messageContent instanceof ImageMessageContent
+                || message.messageContent instanceof FileMessageContent
+                || message.messageContent instanceof VideoMessageContent;
+        },
+
+        isForwardable(message: Message): boolean {
+            if (message.messageContent instanceof SoundMessageContent) {
+                return false;
+            }
+            return true;
+        },
+
+        isRecallable(message: Message): boolean {
+            if (message.conversation.type == ConversationType.Group) {
+                const groupInfo = wfc.getGroupInfo(message.conversation.target);
+                const selfUserId = wfc.getUserId();
+                if (groupInfo.owner == selfUserId) {
+                    return true;
+                }
+
+                const groupMember = wfc.getGroupMember(message.conversation.target, selfUserId);
+                if (groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner) {
+                    return true;
+                }
+            }
+            const delta = wfc.getServerDeltaTime();
+            const now = new Date().getTime();
+            if (message.direction == 0 && now - (message.timestamp - delta) < 60 * 1000) {
+                return true;
+            }
+            return false;
+        },
+
+        isQuotable(message: Message): boolean {
+            return [MessageContentType.VOIP_CONTENT_TYPE_START,
+            MessageContentType.Voice,
+            MessageContentType.Video,
+            MessageContentType.Composite_Message,
+            MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE].indexOf(message.messageContent.type) <= -1;
+        },
+
+        copy(message: Message) {
+            const content = message.messageContent;
+            if (content instanceof TextMessageContent) {
+                copyText((content as TextMessageContent).content)
+            }
+        },
+
+        recallMessage(message: Message) {
+            wfc.recallMessage(message.messageUid, null, null);
+        },
+
+        forwardMessage(message: Message) {
+            forward(ForwardType.NORMAL, [message]);
+        },
+
+        multiSelect(message: Message) {
+            store.toggleMessageMultiSelection(message);
+        },
+
+        // 同时只能播放一个语音，逻辑放在会话页统一控制
+        playVoice(message: Message) {
+            let ctx = innerAudioContext
+            if (ctx != null) {
+                ctx.stop();
+            }
+            const content = message.messageContent
+            if (!(content instanceof SoundMessageContent)) {
+                return
+            }
+            const voice = content as SoundMessageContent;
+            let mp3RemotePath = voice.remotePath
+            if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS != '') {
+                mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
+            }
+            ctx = uni.createInnerAudioContext();
+            innerAudioContext = ctx;
+            ctx.autoplay = false;
+            ctx.src = mp3RemotePath;
+            ctx.onPlay(() => {
+                voice._isPlaying = true;
+            });
+            ctx.onError((res) => {
+                console.log('play voice error', res)
+                voice._isPlaying = false;
+                store.playVoice(null)
+            });
+            ctx.onEnded(() => {
+                voice._isPlaying = false;
+                store.playVoice(null)
+            })
+            ctx.onCanplay(() => {
+                innerAudioContext?.play();
+            })
+        },
+
+        onTouchStart(e: UniTouchEvent) {
+            this.isScroll = false
+            if (e.touches.length > 0) {
+                this.touchStartX = e.touches[0].clientX
+                this.touchStartY = e.touches[0].clientY
+            }
+        },
+
+        onTouchMove(e: UniTouchEvent) {
+            uni.hideKeyboard();
+            if (e.touches.length > 0) {
+                const delX = e.touches[0].clientX - this.touchStartX
+                const delY = e.touches[0].clientY - this.touchStartY
+                if (Math.abs(delX) > 5 || Math.abs(delY) > 5) {
+                    this.isScroll = true
+                }
+            }
+        },
+
+        showMessageContextMenu(e: UniTouchEvent, message: Message) {
+            if (this.isScroll) {
+                return;
+            }
+            if (e.touches.length > 0) {
+                this.contextMenuX = e.touches[0].clientX;
+                this.contextMenuY = e.touches[0].clientY;
+            }
+            this.contextMenuMessage = message;
+
+            const items: PopupMenuItem[] = [];
+            if (this.isCopyable(message)) {
+                items.push(new PopupMenuItem('复制', 'copy'))
+            }
+            if (this.isDownloadAble(message)) {
+                items.push(new PopupMenuItem('下载', 'download'))
+            }
+            items.push(new PopupMenuItem('本地删除', 'delete'))
+            items.push(new PopupMenuItem('远程删除', 'deleteRemote'))
+            if (this.isForwardable(message)) {
+                items.push(new PopupMenuItem('转发', 'forward'))
+            }
+            if (this.isRecallable(message)) {
+                items.push(new PopupMenuItem('撤回', 'recall'))
+            }
+            if (this.isQuotable(message)) {
+                items.push(new PopupMenuItem('引用', 'quote'))
+            }
+            items.push(new PopupMenuItem('多选', 'multiSelection'))
+            this.contextMenuItems = items;
+            this.showContextMenu = true;
+        },
+
+        onContextMenuItemSelect(t: PopupMenuItem) {
+            const message = this.contextMenuMessage
+            if (message == null) {
+                return
+            }
+            switch (t.tag) {
+                case 'delete':
+                    wfc.deleteMessage(message.messageId);
+                    break;
+                case 'deleteRemote':
+                    wfc.deleteRemoteMessageByUid(message.messageUid, () => {
+                        console.log('delete remote message success')
+                    }, (err: number) => {
+                        console.log('delete remote message fail', err);
+                    })
+                    break;
+                case 'forward':
+                    this.forwardMessage(message)
+                    break;
+                case 'recall':
+                    this.recallMessage(message);
+                    break;
+                case 'quote':
+                    store.quoteMessage(message);
+                    break;
+                case 'multiSelection':
+                    this.multiSelect(message);
+                    break;
+                case 'copy':
+                    this.copy(message);
+                    break;
+                default:
+                    uni.showToast({
+                        title: 'TODO ' + t.title,
+                        icon: 'none'
+                    } as ShowToastOptions)
+                    break;
+            }
+            eventBus.$emit('contextMenuClosed', null)
+        },
+
+        onRefresh() {
+            console.log('onRefresh...')
+            if (this.freshing) {
+                return;
+            }
+
+            this.freshing = true;
+            this.triggered = true;
+            store.loadConversationHistoryMessages(() => {
+                this.triggered = false;
+                this.freshing = false;
+            }, () => {
+                this.triggered = false;
+                this.freshing = false;
+            });
+        },
+        onRestore() {
+            console.log("onRestore");
+        },
+        onAbort() {
+            console.log("onAbort");
+        },
+
+        scrollToBottom() {
+            setTimeout(() => {
+                this.scrollTop = this.scrollTop == 999999 ? 999998 : 999999;
+            }, 200)
+        }
+    },
+};
+</script>
+
+<style scoped>
+.conversation-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.conversation-empty-container {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.conversation-content-container {
+    position: relative;
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    flex-direction: column;
+    background-color: #f3f3f3;
+}
+
+.message-list-container {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.message-list {
+    flex: 1;
+}
+
+.message-input-container {
+    width: 100%;
+}
+</style>

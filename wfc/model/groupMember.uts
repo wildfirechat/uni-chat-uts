@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class GroupMember {
+    groupId = '';
+    memberId = '';
+    alias = '';
+    extra = '';
+    type = 0;
+    updateDt = 0;
+    createDt = 0;
+
+    static fromJsonObject(obj: UTSJSONObject): GroupMember {
+        const m = new GroupMember()
+        m.groupId = obj.getString('groupId') ?? ''
+        m.memberId = obj.getString('memberId') ?? ''
+        m.alias = obj.getString('alias') ?? ''
+        m.extra = obj.getString('extra') ?? ''
+        m.type = obj.getNumber('type') ?? 0
+        m.updateDt = obj.getNumber('updateDt') ?? 0
+        m.createDt = obj.getNumber('createDt') ?? 0
+        return m
+    }
+}

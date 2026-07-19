@@ -1,0 +1,66 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import GroupNotificationContent from './groupNotification.uts'
+import MessageContentType from '../messageContentType.uts'
+import { getGroupMemberDisplayName } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessagePayload from '../messagePayload.uts';
+
+export default class AllowGroupMemberNotification extends GroupNotificationContent {
+    operator = ''
+    // 操作类型，1允许发言，0禁止发言
+    allowType = 0
+    memberIds: string[] = []
+
+    constructor(operator: string, allowType: number, memberIds: string[]) {
+        super(MessageContentType.MuteGroupMember_Notification)
+        this.operator = operator
+        this.allowType = allowType
+        this.memberIds = memberIds
+    }
+
+    override formatNotification(message: any | null): string {
+        let notifyStr = ''
+        if (this.fromSelf) {
+            notifyStr += '您'
+        } else {
+            notifyStr += getGroupMemberDisplayName(this.groupId, this.operator)
+        }
+        notifyStr += '把'
+        for (let i = 0; i < this.memberIds.length; i++) {
+            notifyStr += ' '
+            notifyStr += getGroupMemberDisplayName(this.groupId, this.memberIds[i])
+        }
+        if (this.allowType == 0) {
+            notifyStr += '取消群禁言时发言权限'
+        } else {
+            notifyStr += '允许群禁言时发言'
+        }
+        return notifyStr
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode()
+        const obj = {
+            g: this.groupId,
+            o: this.operator,
+            n: this.allowType.toString(),
+            ms: this.memberIds,
+        } as UTSJSONObject
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!)
+        return payload
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload)
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent))
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? ''
+            this.operator = obj.getString('o') ?? ''
+            this.allowType = parseInt(obj.getString('n') ?? '0')
+            this.memberIds = obj.getArray<string>('ms') ?? ([] as string[])
+        }
+    }
+}

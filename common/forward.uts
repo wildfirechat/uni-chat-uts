@@ -1,0 +1,39 @@
+/**
+ * 消息转发工具，替代原 $forward 全局属性。
+ *
+ * 用法：
+ *   forward(forwardType, messages) → 跳转 ForwardMessagePage
+ *   ForwardMessagePage 内：currentForwardOptions() 获取参数
+ */
+import Message from "../wfc/messages/message.uts";
+import ForwardType from "../pages/conversation/message/forward/ForwardType.uts";
+
+export class ForwardOptions {
+    forwardType: number = ForwardType.NORMAL
+    messages: Message[] = []
+}
+
+let forwardOptions: ForwardOptions | null = null
+
+export function forward(forwardType: number, messages: Message[]): void {
+    const options = new ForwardOptions()
+    options.forwardType = forwardType
+    options.messages = messages
+    forwardOptions = options
+    uni.navigateTo({
+        url: '/pages/conversation/message/forward/ForwardMessagePage',
+        fail: (err) => {
+            console.log('nav to ForwardMessagePage error', err)
+            forwardOptions = null
+        }
+    } as NavigateToOptions)
+}
+
+export function currentForwardOptions(): ForwardOptions | null {
+    const options = forwardOptions
+    return options
+}
+
+export function clearForwardOptions(): void {
+    forwardOptions = null
+}

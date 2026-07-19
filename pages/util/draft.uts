@@ -1,0 +1,64 @@
+import wfc from "../../wfc/client/wfc.uts";
+import { _patchToJavaLong, _reverseToJsLongString, stringValue } from "../../wfc/util/longUtil.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import ConversationInfo from "../../wfc/model/conversationInfo.uts";
+import Message from "../../wfc/messages/message.uts";
+import QuoteInfo from "../../wfc/model/quoteInfo.uts";
+import store from "@/store.uts";
+
+/**
+ * 草稿内容（含引用消息）
+ */
+export class DraftContent {
+    text = '';
+    quotedMessage: Message | null = null;
+}
+
+export default class Draft {
+
+    static setConversationDraft(conversation: Conversation, draftText: string, quoteInfo: QuoteInfo | null): void {
+        if (draftText == '' && quoteInfo == null) {
+            wfc.setConversationDraft(conversation, '');
+            return;
+        }
+        const obj = {
+            content: draftText,
+            quoteInfo: quoteInfo != null ? quoteInfo.encode() : null,
+        } as UTSJSONObject
+        let jsonStr = JSON.stringify(obj)!;
+        jsonStr = _patchToJavaLong(jsonStr, "u")
+        wfc.setConversationDraft(conversation, jsonStr);
+    }
+
+    static getConversationDraftEx(conversationInfo: ConversationInfo | null): DraftContent {
+        const obj = new DraftContent()
+        if (conversationInfo == null || conversationInfo.draft == '') {
+            return obj;
+        }
+        // 兼容处理
+        if (!conversationInfo.draft.startsWith("{")) {
+            obj.text = conversationInfo.draft;
+            return obj;
+        }
+        let draftStr = conversationInfo.draft;
+        draftStr = _reverseToJsLongString(draftStr, 'messageUid');
+        draftStr = _reverseToJsLongString(draftStr, 'u');
+        const draft = JSON.parseObject(draftStr);
+        if (draft == null) {
+            return obj
+        }
+        obj.text = draft.getString('content') ?? '';
+        const quoteObj = draft.getJSON('quoteInfo')
+        if (quoteObj != null) {
+            const quoteInfo = new QuoteInfo()
+            quoteInfo.decode(quoteObj)
+            obj.quotedMessage = store.getMessageByUid(quoteInfo.messageUid);
+        }
+        return obj;
+    }
+
+    static getConversationDraft(conversation: Conversation): DraftContent {
+        const conversationInfo = wfc.getConversationInfo(conversation);
+        return Draft.getConversationDraftEx(conversationInfo);
+    }
+}

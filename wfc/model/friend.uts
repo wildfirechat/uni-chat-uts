@@ -1,0 +1,19 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class Friend {
+    userId = '';
+    alias = '';
+    extra = '';
+    timestamp = 0;
+
+    static fromJsonObject(obj: UTSJSONObject): Friend {
+        const f = new Friend()
+        f.userId = obj.getString('userId') ?? ''
+        f.alias = obj.getString('alias') ?? ''
+        f.extra = obj.getString('extra') ?? ''
+        f.timestamp = obj.getNumber('timestamp') ?? 0
+        return f
+    }
+}

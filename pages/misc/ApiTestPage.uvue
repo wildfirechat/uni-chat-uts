@@ -1,0 +1,43 @@
+<template>
+    <view class="api-test-page">
+        <button @tap="setUserEnableReceipt">setUserEnableReceipt</button>
+        <button @tap="modifyMyInfo">modifyMyInfo</button>
+        <button @tap="systemInfo">SystemInfo</button>
+        <button @tap="setHiddenGroupMemberName">setHiddenGroupMemberName</button>
+    </view>
+</template>
+
+<script lang="uts">
+import wfc from "../../wfc/client/wfc.uts";
+
+export default {
+    name: "ApiTestPage",
+
+    methods: {
+        setUserEnableReceipt() {
+            wfc.setUserEnableReceipt(true, () => {
+                console.log('setUserEnableReceipt success')
+            }, (err: number) => {
+                console.log('setUserEnableReceipt fail', err)
+            })
+        },
+        modifyMyInfo() {
+            // 参考原实现，默认注释
+        },
+        systemInfo() {
+            const info = uni.getSystemInfoSync()
+            console.log('systemInfo', info.osName, info.osVersion, info.deviceType)
+        },
+        setHiddenGroupMemberName() {
+            // 参考原实现，默认注释
+        },
+    }
+}
+</script>
+
+<style scoped>
+.api-test-page {
+    flex: 1;
+    padding: 10px;
+}
+</style>

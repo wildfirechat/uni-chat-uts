@@ -1,0 +1,22 @@
+export function removeItem(key: string): void {
+    uni.removeStorageSync(key)
+}
+
+export function getItem(key: string): string {
+    const value = uni.getStorageSync(key)
+    if (value == null) {
+        return ''
+    }
+    if (typeof value == 'string') {
+        return value as string
+    }
+    return '' + value
+}
+
+export function setItem(key: string, value: string): void {
+    uni.setStorageSync(key, value)
+}
+
+export function clear(): void {
+    uni.clearStorageSync()
+}

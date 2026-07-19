@@ -1,0 +1,45 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessagePayload from "./messagePayload.uts";
+
+export default class MessageContent {
+    type = 0;
+    //0 普通消息, 1 部分提醒, 2 提醒全部
+    mentionedType = 0;
+    //提醒对象，mentionedType 1时有效
+    mentionedTargets: string[] = [];
+    extra = '';
+    pushContent = '';
+
+    constructor(type: number, mentionedType: number = 0, mentionedTargets: string[] = []) {
+        this.type = type;
+        this.mentionedType = mentionedType;
+        this.mentionedTargets = mentionedTargets;
+    }
+
+    /**
+     * @param message 原为 Message 类型；为避免循环依赖，这里用 any，需要时由子类转换
+     */
+    digest(message: any | null = null): string {
+        return '...digest...';
+    }
+
+    encode(): MessagePayload {
+        const payload = new MessagePayload();
+        payload.type = this.type;
+        payload.mentionedType = this.mentionedType;
+        payload.mentionedTargets = this.mentionedTargets;
+        payload.extra = this.extra;
+        return payload;
+    }
+
+    decode(payload: MessagePayload): void {
+        this.type = payload.type;
+        this.mentionedType = payload.mentionedType;
+        this.mentionedTargets = payload.mentionedTargets;
+        this.extra = payload.extra;
+        this.pushContent = payload.pushContent;
+    }
+}

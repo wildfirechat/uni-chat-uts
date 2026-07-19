@@ -1,0 +1,80 @@
+/**
+ * 选人工具，替代原 $pickUsers/$pickUser 全局属性（原实现基于 eventChannel，uni-app x 下改为模块级暂存）。
+ *
+ * 用法：
+ *   pickUsers(options)  → 跳转 PickUserPage，完成后回调 options.successCB
+ *   PickUserPage 内：currentPickUsersOptions() 获取参数，notifyPickedUsers(users) 通知结果
+ */
+import UserInfo from "../wfc/model/userInfo.uts";
+import { contactState } from "@/store.uts";
+
+export class PickUsersOptions {
+    users: UserInfo[] = []
+    initialCheckedUsers: UserInfo[] = []
+    uncheckableUsers: UserInfo[] = []
+    showCategoryLabel = true
+    confirmTitle = '确定'
+    successCB: ((users: UserInfo[]) => void) | null = null
+}
+
+export class PickUserOptions {
+    users: UserInfo[] = []
+    showCategoryLabel = true
+    confirmTitle = '确定'
+    successCB: ((user: UserInfo) => void) | null = null
+}
+
+let pickUsersOptions: PickUsersOptions | null = null
+let pickUserOptions: PickUserOptions | null = null
+
+export function pickUsers(options: PickUsersOptions): void {
+    if (options.users.length == 0) {
+        options.users = contactState.favContactList.concat(contactState.friendList)
+    }
+    pickUsersOptions = options
+    uni.navigateTo({
+        url: '/pages/pick/PickUserPage',
+        fail: (err) => {
+            console.log('nav to PickUserPage err', err)
+            pickUsersOptions = null
+        }
+    } as NavigateToOptions)
+}
+
+export function currentPickUsersOptions(): PickUsersOptions | null {
+    return pickUsersOptions
+}
+
+export function notifyPickedUsers(users: UserInfo[]): void {
+    const options = pickUsersOptions
+    pickUsersOptions = null
+    if (options != null) {
+        options.successCB?.(users)
+    }
+}
+
+export function pickUser(options: PickUserOptions): void {
+    if (options.users.length == 0) {
+        options.users = contactState.favContactList.concat(contactState.friendList)
+    }
+    pickUserOptions = options
+    uni.navigateTo({
+        url: '/pages/pick/PickSingleUserPage',
+        fail: (err) => {
+            console.log('nav to PickSingleUserPage err', err)
+            pickUserOptions = null
+        }
+    } as NavigateToOptions)
+}
+
+export function currentPickUserOptions(): PickUserOptions | null {
+    return pickUserOptions
+}
+
+export function notifyPickedUser(user: UserInfo): void {
+    const options = pickUserOptions
+    pickUserOptions = null
+    if (options != null) {
+        options.successCB?.(user)
+    }
+}

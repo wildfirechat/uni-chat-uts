@@ -1,0 +1,67 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import { getGroupMemberDisplayName, getUserInfos } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessageContentType from '../messageContentType.uts';
+import MessagePayload from '../messagePayload.uts';
+import GroupNotificationContent from './groupNotification.uts';
+
+export default class AddGroupMemberNotification extends GroupNotificationContent {
+    invitor = '';
+    invitees: string[] = [];
+
+    constructor(invitor: string, invitees: string[]) {
+        super(MessageContentType.AddGroupMember_Notification);
+        this.invitor = invitor;
+        this.invitees = invitees;
+    }
+
+    override formatNotification(message: any | null): string {
+        let notifyStr: string;
+        if (this.invitees.length == 1 && this.invitees[0] == this.invitor) {
+            if (this.fromSelf) {
+                return '您加入了群组';
+            } else {
+                return getGroupMemberDisplayName(this.groupId, this.invitor) + ' 加入了群组';
+            }
+        }
+
+        if (this.fromSelf) {
+            notifyStr = '您邀请:';
+        } else {
+            notifyStr = getGroupMemberDisplayName(this.groupId, this.invitor) + '邀请:';
+        }
+
+        let membersStr = '';
+        const userInfos = getUserInfos(this.invitees, this.groupId);
+        for (let i = 0; i < userInfos.length; i++) {
+            membersStr += ' ' + userInfos[i].displayName;
+        }
+
+        return notifyStr + membersStr + '加入了群组';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            g: this.groupId,
+            o: this.invitor,
+            ms: this.invitees,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const json = b64_to_utf8(payload.binaryContent);
+        const obj = JSON.parseObject(json);
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.invitor = obj.getString('o') ?? '';
+            this.invitees = obj.getArray<string>('ms') ?? ([] as string[]);
+        }
+    }
+}

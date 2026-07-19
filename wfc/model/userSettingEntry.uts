@@ -1,0 +1,21 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import UserSettingScope from "../client/userSettingScope.uts";
+
+export default class UserSettingEntry {
+    scope: number = UserSettingScope.kUserSettingCustomBegin;
+    key = '';
+    value = '';
+    updateDt = 0;
+
+    static fromJsonObject(obj: UTSJSONObject): UserSettingEntry {
+        const e = new UserSettingEntry()
+        e.scope = obj.getNumber('scope') ?? UserSettingScope.kUserSettingCustomBegin
+        e.key = obj.getString('key') ?? ''
+        e.value = obj.getString('value') ?? ''
+        e.updateDt = obj.getNumber('updateDt') ?? 0
+        return e
+    }
+}

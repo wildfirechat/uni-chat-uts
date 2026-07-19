@@ -1,0 +1,39 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import CustomMessageContentType from "./customMessageContentType.uts";
+import NotificationMessageContent from "../wfc/messages/notification/notificationMessageContent.uts";
+import MessagePayload from '../wfc/messages/messagePayload.uts'
+
+/**
+ * 对应的 UI 请参考 NotificationMessageContentView 或 RichNotificationMessageContentView
+ */
+export default class TestCustomNotificationMessageContent extends NotificationMessageContent {
+    tip = '';
+
+    constructor(tip: string = '') {
+        super(CustomMessageContentType.MESSAGE_CONTENT_TYPE_CUSTOM_MESSAGE_TEST_NOTIFICATION);
+        this.tip = tip;
+    }
+
+    // 会话界面显示通知时，将显示本函数的返回值
+    override formatNotification(message: any | null): string {
+        return this.tip;
+    }
+
+    override digest(message: any | null): string {
+        return this.tip;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.tip;
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.tip = payload.content;
+    }
+}

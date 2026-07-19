@@ -1,0 +1,73 @@
+/**
+ * 用户显示名等轻量查询，直接调用 wfc-client 插件的同步接口。
+ *
+ * 单独成模块的原因：消息类（通知消息的 formatNotification）需要查询用户显示名，
+ * 如果直接 import wfc 门面，会形成 wfc → messageConfig → 消息类 → wfc 的循环依赖。
+ */
+import { getUserInfo as nativeGetUserInfo, getUserInfos as nativeGetUserInfos, getUserId as nativeGetUserId } from '@/uni_modules/wfc-client'
+import UserInfo from '../model/userInfo.uts'
+import NullUserInfo from '../model/nullUserInfo.uts'
+
+export function getUserId(): string {
+    return nativeGetUserId()
+}
+
+export function getUserInfo(userId: string, fresh: boolean = false, groupId: string = ''): UserInfo {
+    if (userId == '') {
+        return new NullUserInfo('')
+    }
+    const userInfoStr = nativeGetUserInfo(userId, fresh, groupId)
+    if (userInfoStr == '') {
+        return new NullUserInfo(userId)
+    }
+    const obj = JSON.parseObject(userInfoStr)
+    if (obj == null) {
+        return new NullUserInfo(userId)
+    }
+    return UserInfo.fromJsonObject(obj)
+}
+
+export function getUserInfos(userIds: string[], groupId: string = ''): UserInfo[] {
+    const users: UserInfo[] = []
+    if (userIds.length == 0) {
+        return users
+    }
+    const userInfoStrs = nativeGetUserInfos(userIds, groupId)
+    if (userInfoStrs != '') {
+        const arr = JSON.parseArray(userInfoStrs)
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const obj = arr[i]
+                if (obj instanceof UTSJSONObject) {
+                    users.push(UserInfo.fromJsonObject(obj as UTSJSONObject))
+                }
+            }
+        }
+    }
+    return users
+}
+
+export function getUserDisplayName(userId: string): string {
+    const userInfo = getUserInfo(userId, false, '')
+    if (userInfo.friendAlias != '') {
+        return userInfo.friendAlias
+    }
+    if (userInfo.displayName != '') {
+        return userInfo.displayName
+    }
+    return '<' + userId + '>'
+}
+
+export function getGroupMemberDisplayName(groupId: string, userId: string): string {
+    const userInfo = getUserInfo(userId, false, groupId)
+    if (userInfo.groupAlias != '') {
+        return userInfo.groupAlias
+    }
+    if (userInfo.friendAlias != '') {
+        return userInfo.friendAlias
+    }
+    if (userInfo.displayName != '') {
+        return userInfo.displayName
+    }
+    return '<' + userId + '>'
+}

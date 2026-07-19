@@ -1,0 +1,38 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessageContentMediaType from "./messageContentMediaType.uts";
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+export default class PcLoginRequestMessageContent extends MessageContent {
+    platform = 0;
+    sessionId = '';
+
+    constructor() {
+        super(MessageContentType.PC_Login_Request);
+    }
+
+    override digest(message: any | null): string {
+        return '[PC请求登录]';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.mediaType = MessageContentMediaType.File;
+        const obj = {
+            p: this.platform,
+            t: this.sessionId,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.platform = obj.getNumber('p') ?? 0;
+            this.sessionId = obj.getString('t') ?? '';
+        }
+    }
+}

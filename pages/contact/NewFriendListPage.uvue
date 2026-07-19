@@ -1,0 +1,42 @@
+<template>
+    <view class="page-container">
+        <NavBar title="新朋友" :showBack="true" :rightIcon1="searchIcon" @right1Tap="onSearchTap" />
+        <scroll-view class="friend-request-list" direction="vertical">
+            <FriendRequestListView />
+        </scroll-view>
+    </view>
+</template>
+<script lang="uts">
+import FriendRequestListView from "./FriendRequestListView.uvue";
+import NavBar from "../common/NavBar.uvue";
+
+export default {
+    name: "NewFriendListPage",
+    components: { FriendRequestListView, NavBar },
+    data() {
+        return {
+            searchIcon: '\ue636',
+        }
+    },
+    methods: {
+        onSearchTap() {
+            uni.navigateTo({
+                url: '/pages/search/SearchPortalPage?user=true&contact=false&group=false&conversation=false'
+            } as NavigateToOptions);
+        }
+    }
+}
+</script>
+
+<style scoped>
+.page-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.friend-request-list {
+    flex: 1;
+}
+</style>

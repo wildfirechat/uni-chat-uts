@@ -1,0 +1,29 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+
+export default class StreamingTextGeneratedMessageContent extends MessageContent {
+    text = '';
+    streamId = '';
+
+    constructor() {
+        super(MessageContentType.Streaming_Text_Generated);
+    }
+
+    override digest(message: any | null): string {
+        return this.text;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.text;
+        payload.content = this.streamId;
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.text = payload.searchableContent;
+        this.streamId = payload.content;
+    }
+}

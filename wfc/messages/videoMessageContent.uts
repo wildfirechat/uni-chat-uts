@@ -1,0 +1,51 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MediaMessageContent from './mediaMessageContent.uts'
+import MessageContentMediaType from './messageContentMediaType.uts';
+import MessageContentType from './messageContentType.uts';
+import MessagePayload from './messagePayload.uts';
+
+export default class VideoMessageContent extends MediaMessageContent {
+    // base64 encoded
+    thumbnail = '';
+    duration = 0;
+
+    constructor(fileOrLocalPath: string = '', remotePath: string = '', thumbnail: string = '', duration: number = 0) {
+        super(MessageContentType.Video, MessageContentMediaType.Video, fileOrLocalPath, remotePath);
+        this.thumbnail = thumbnail;
+        this.duration = duration;
+    }
+
+    override digest(message: any | null): string {
+        return '[视频]';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.binaryContent = this.thumbnail;
+        const obj = {
+            d: this.duration,
+            duration: this.duration
+        } as UTSJSONObject
+        payload.content = JSON.stringify(obj)!;
+        payload.mediaType = MessageContentMediaType.Video;
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.thumbnail = payload.binaryContent;
+        if (payload.content != '') {
+            const obj = JSON.parseObject(payload.content)
+            if (obj != null) {
+                let d = obj.getNumber('d')
+                if (d == null) {
+                    d = obj.getNumber('duration')
+                }
+                this.duration = d ?? 0;
+            }
+        }
+    }
+}

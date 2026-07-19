@@ -1,0 +1,110 @@
+<template>
+    <view class="conversation-info">
+        <view class="conversation-action-container">
+            <view @tap="showCreateConversationModal" class="action-item">
+                <view class="icon">
+                    <text class="icon-text">+</text>
+                </view>
+                <text class="action-text">添加成员</text>
+            </view>
+        </view>
+        <UserListView :users="users" :show-category-label="false" padding-left="20px" />
+    </view>
+</template>
+
+<script lang="uts">
+import UserListView from "@/pages/user/UserListView.uvue";
+import store, { contactState } from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { takePageOptions } from "@/common/nav.uts";
+import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+
+export default {
+    name: "SingleConversationInfoPage",
+    data() {
+        return {
+            conversationInfo: null as ConversationInfo | null,
+            users: [] as UserInfo[],
+        }
+    },
+    onLoad(_options: OnLoadOptions) {
+        console.log('SingleConversationInfoPage onLoad')
+        const pageOptions = takePageOptions()
+        if (pageOptions != null && pageOptions instanceof ConversationInfo) {
+            const conversationInfo = pageOptions as ConversationInfo
+            this.conversationInfo = conversationInfo;
+            this.users = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+
+            const target = conversationInfo.conversation._target
+            uni.setNavigationBarTitle({
+                title: target != null ? target._displayName : '',
+            } as SetNavigationBarTitleOptions);
+        }
+    },
+    components: { UserListView },
+    methods: {
+        showCreateConversationModal() {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            const targetUserInfo = wfc.getUserInfo(conversationInfo.conversation.target, false)
+            const options = new PickUsersOptions()
+            options.users = contactState.favContactList.concat(contactState.friendList)
+            options.initialCheckedUsers = [targetUserInfo]
+            options.uncheckableUsers = [targetUserInfo]
+            options.confirmTitle = '添加'
+            options.successCB = (users: UserInfo[]) => {
+                const newPickedUsers = users.slice(0);
+                newPickedUsers.push(targetUserInfo)
+                store.createConversation(newPickedUsers, null, null);
+            }
+            pickUsers(options)
+        },
+    },
+};
+</script>
+
+<style scoped>
+.conversation-info {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    justify-content: flex-start;
+    flex: 1;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+.action-item {
+    height: 50px;
+    display: flex;
+    flex-direction: row;
+    padding-left: 20px;
+    align-items: center;
+}
+
+.icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px dashed #d6d6d6;
+}
+
+.icon-text {
+    font-size: 20px;
+    color: #888888;
+}
+
+.action-text {
+    margin-left: 10px;
+    font-size: 13px;
+}
+</style>

@@ -1,0 +1,8 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+
+export default class EnterChannelChatMessageContent extends MessageContent {
+    constructor() {
+        super(MessageContentType.Enter_Channel_Chat);
+    }
+}

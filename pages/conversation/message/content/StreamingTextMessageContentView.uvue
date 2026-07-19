@@ -1,0 +1,52 @@
+<template>
+    <view class="text-message-container" :class="{ out: message.direction == 0 }">
+        <text class="text">{{ textContent }}</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+
+export default {
+    name: "StreamingTextMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        textContent(): string {
+            let text = this.message.messageContent.digest(this.message);
+            if (this.message.messageContent.type == MessageContentType.Streaming_Text_Generating) {
+                text += ' ...';
+            }
+            return text;
+        }
+    }
+}
+</script>
+
+<style scoped>
+.text-message-container {
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.text-message-container.out {
+    background-color: #98ea70;
+}
+
+.text {
+    color: #050505;
+    font-size: 16px;
+    line-height: 25px;
+}
+</style>

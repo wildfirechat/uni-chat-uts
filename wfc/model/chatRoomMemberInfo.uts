@@ -1,0 +1,18 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class ChatRoomMemberInfo {
+    memberCount = 0;
+    members: string[] = [];
+
+    static fromJsonObject(obj: UTSJSONObject): ChatRoomMemberInfo {
+        const c = new ChatRoomMemberInfo()
+        c.memberCount = obj.getNumber('memberCount') ?? 0
+        const arr = obj.getArray<string>('members')
+        if (arr != null) {
+            c.members = arr
+        }
+        return c
+    }
+}

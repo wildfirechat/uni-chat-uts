@@ -1,0 +1,119 @@
+<template>
+    <view class="nav-bar-container">
+        <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+        <view class="nav-bar">
+            <view class="nav-bar-left" @tap="onBack">
+                <text v-if="showBack" class="back-icon">‹</text>
+            </view>
+            <text class="nav-bar-title">{{ title }}</text>
+            <view class="nav-bar-right">
+                <text v-if="rightIcon1 != ''" class="wxfont nav-bar-icon" @tap="onRight1Tap">{{ rightIcon1 }}</text>
+                <text v-if="rightIcon2 != ''" class="wxfont nav-bar-icon" @tap="onRight2Tap">{{ rightIcon2 }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+/**
+ * 自定义导航栏。
+ * uni-app x 不支持原生 titleNView 按钮，原来配置在 pages.json 的标题栏按钮改用本组件实现。
+ * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
+ */
+export default {
+    name: "NavBar",
+    props: {
+        title: {
+            type: String,
+            default: ''
+        },
+        showBack: {
+            type: Boolean,
+            default: false
+        },
+        rightIcon1: {
+            type: String,
+            default: ''
+        },
+        rightIcon2: {
+            type: String,
+            default: ''
+        },
+    },
+    emits: ['right1Tap', 'right2Tap'],
+    data() {
+        return {
+            statusBarHeight: 0
+        }
+    },
+    created() {
+        const sysInfo = uni.getSystemInfoSync()
+        this.statusBarHeight = sysInfo.statusBarHeight
+    },
+    methods: {
+        onBack() {
+            if (this.showBack) {
+                uni.navigateBack({
+                    fail: (err) => {
+                        console.log('nav back err', err)
+                    }
+                } as NavigateBackOptions)
+            }
+        },
+        onRight1Tap() {
+            this.$emit('right1Tap')
+        },
+        onRight2Tap() {
+            this.$emit('right2Tap')
+        }
+    }
+}
+</script>
+
+<style scoped>
+.nav-bar-container {
+    background-color: #ffffff;
+}
+
+.nav-bar {
+    height: 44px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+}
+
+.nav-bar-left {
+    width: 70px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.back-icon {
+    font-size: 28px;
+    color: #333333;
+}
+
+.nav-bar-title {
+    flex: 1;
+    text-align: center;
+    font-size: 17px;
+    color: #000000;
+}
+
+.nav-bar-right {
+    width: 70px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.nav-bar-icon {
+    font-size: 26px;
+    color: #333333;
+    margin-left: 16px;
+}
+</style>

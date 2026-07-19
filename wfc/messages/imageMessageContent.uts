@@ -1,0 +1,50 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MediaMessageContent from './mediaMessageContent.uts';
+import MessageContentMediaType from './messageContentMediaType.uts';
+import MessageContentType from './messageContentType.uts';
+import MessagePayload from './messagePayload.uts';
+
+export default class ImageMessageContent extends MediaMessageContent {
+    // base64 encoded, 不包含头部:data:image/png;base64,
+    thumbnail = '';
+    imageWidth = 0;
+    imageHeight = 0;
+
+    constructor(fileOrLocalPath: string = '', remotePath: string = '', thumbnail: string = '') {
+        super(MessageContentType.Image, MessageContentMediaType.Image, fileOrLocalPath, remotePath);
+        this.thumbnail = thumbnail;
+    }
+
+    override digest(message: any | null): string {
+        return '[图片]';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.mediaType = MessageContentMediaType.Image;
+        payload.binaryContent = this.thumbnail;
+        if (this.imageWidth > 0) {
+            const obj = {
+                w: this.imageWidth,
+                h: this.imageHeight
+            } as UTSJSONObject
+            payload.content = JSON.stringify(obj)!
+        }
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.thumbnail = payload.binaryContent;
+        if (payload.content != '') {
+            const obj = JSON.parseObject(payload.content)
+            if (obj != null) {
+                this.imageWidth = obj.getNumber('w') ?? 0;
+                this.imageHeight = obj.getNumber('h') ?? 0;
+            }
+        }
+    }
+}

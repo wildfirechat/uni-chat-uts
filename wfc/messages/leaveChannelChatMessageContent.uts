@@ -1,0 +1,8 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+
+export default class LeaveChannelChatMessageContent extends MessageContent {
+    constructor() {
+        super(MessageContentType.Leave_Channel_Chat);
+    }
+}

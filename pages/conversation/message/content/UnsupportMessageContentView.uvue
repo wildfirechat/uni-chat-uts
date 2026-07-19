@@ -1,0 +1,39 @@
+<template>
+    <view class="text-message-container" :class="{ out: message.direction == 0 }">
+        <text class="text">{{ message.messageContent.digest(message) }}</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+
+// 不支持的消息，比如红包等
+export default {
+    name: "UnsupportMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+}
+</script>
+
+<style scoped>
+.text-message-container {
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+}
+
+.text-message-container.out {
+    background-color: #98ea70;
+}
+
+.text {
+    color: #050505;
+    font-size: 16px;
+}
+</style>

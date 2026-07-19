@@ -1,0 +1,140 @@
+import { numberValue } from '../../wfc/util/longUtil.uts'
+
+export function humanSize(size: number): string {
+    const kb = size / 1024;
+    if (size > (1024 * 1024)) {
+        return (kb / 1024).toFixed(1) + ' M';
+    } else {
+        return kb.toFixed(1) + ' KB';
+    }
+}
+
+export function getFiletypeIcon(extension: string): string {
+    let filename = 'unknow';
+    const ext = extension.toLowerCase().replace(/^\./, '');
+
+    if (['mp3', 'flac', 'aac', 'm4a', 'wma'].indexOf(ext) >= 0) {
+        filename = 'audio';
+    } else if (['mp4', 'mkv', 'avi', 'flv'].indexOf(ext) >= 0) {
+        filename = 'audio';
+    } else if (['zip', 'rar', 'tar', 'tar.gz'].indexOf(ext) >= 0) {
+        filename = 'archive';
+    } else if (['doc', 'docx'].indexOf(ext) >= 0) {
+        filename = 'word';
+    } else if (['xls', 'xlsx'].indexOf(ext) >= 0) {
+        filename = 'excel';
+    } else if (['ai', 'apk', 'exe', 'ipa', 'pdf', 'ppt', 'psd'].indexOf(ext) >= 0) {
+        filename = ext;
+    }
+
+    return `${filename}.png`;
+}
+
+export function decodeHTML(text: string): string {
+    return text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+export function isImage(ext: string): boolean {
+    return ['bmp', 'gif', 'jpeg', 'jpg', 'png'].indexOf(ext) >= 0;
+}
+
+// 3 types supported: pic, video, doc
+export function getMediaType(extension: string): string {
+    const ext = extension.toLowerCase();
+    if (isImage(ext)) {
+        return 'pic';
+    }
+    if (['mp4'].indexOf(ext) >= 0) {
+        return 'video';
+    }
+    return 'doc';
+}
+
+export function weekFormat(num: number): string {
+    switch (num) {
+        case 1:
+            return '星期一'
+        case 2:
+            return '星期二'
+        case 3:
+            return '星期三'
+        case 4:
+            return '星期四'
+        case 5:
+            return '星期五'
+        case 6:
+            return '星期六'
+        default:
+            return '星期天'
+    }
+}
+
+/**
+ * 会话时间显示
+ */
+export function dateFormat(dateValue: any | null): string {
+    const ts = numberValue(dateValue)
+    if (ts == 0) {
+        return ''
+    }
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const that = new Date(ts)
+    that.setHours(0, 0, 0, 0)
+    if (today.getTime() == that.getTime()) {
+        return timeFormat(dateValue);
+    } else {
+        const thatDate = new Date(ts);
+        return thatDate.getFullYear() + '/' + (thatDate.getMonth() + 1) + '/' + thatDate.getDate();
+    }
+}
+
+function pad2(n: number): string {
+    return n < 10 ? '0' + n : '' + n
+}
+
+/**
+ * 消息会话时间显示
+ */
+export function timeFormat(dateValue: any | null): string {
+    const ts = numberValue(dateValue)
+    if (ts == 0) {
+        return ''
+    }
+    let newtime: string;
+    const nowtime = new Date()
+    const date = new Date(ts)
+    // 获取消息发送时间
+    const Y = date.getFullYear()
+    const M = pad2(date.getMonth() + 1)
+    const D = pad2(date.getDate())
+    const W = date.getDay()
+    const H = pad2(date.getHours())
+    const Min = pad2(date.getMinutes())
+    // 获取当前时间
+    const nowY = nowtime.getFullYear()
+    const nowM = pad2(nowtime.getMonth() + 1)
+    const nowD = nowtime.getDate()
+    const dayOfMonth = date.getDate()
+    if (Y < nowY) {
+        // 去年
+        newtime = Y + '-' + M + '-' + D + ' ' + H + ':' + Min
+    } else {
+        if (Y == nowY && M == nowM && (nowD - dayOfMonth <= 7)) {
+            if ((nowD - dayOfMonth) == 1) {
+                // 昨天
+                newtime = '昨天' + ' ' + H + ':' + Min
+            } else if (nowD == dayOfMonth) {
+                // 当天
+                newtime = H + ':' + Min
+            } else {
+                // 一周内
+                newtime = weekFormat(W) + ' ' + H + ':' + Min
+            }
+        } else {
+            // 一年内
+            newtime = M + '-' + D + ' ' + H + ':' + Min
+        }
+    }
+    return newtime
+}

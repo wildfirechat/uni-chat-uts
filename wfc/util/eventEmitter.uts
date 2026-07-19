@@ -1,0 +1,52 @@
+/**
+ * 简易 EventEmitter，替代 node 'events'。
+ *
+ * 与 JS 版本的差异：监听器签名统一为 (args: Array<any | null>) => void，
+ * emit 时把参数打包成数组传递，监听方按位置取参并自行类型转换。
+ */
+export type WfcEventListener = (args: Array<any | null>) => void
+
+export class EventEmitter {
+    private listeners: Map<string, Array<WfcEventListener>> = new Map<string, Array<WfcEventListener>>()
+
+    on(event: string, listener: WfcEventListener): void {
+        let list = this.listeners.get(event)
+        if (list == null) {
+            list = new Array<WfcEventListener>()
+            this.listeners.set(event, list)
+        }
+        list.push(listener)
+    }
+
+    once(event: string, listener: WfcEventListener): void {
+        // 简化实现：调用一次后由业务自行 off；目前项目内未使用 once
+        this.on(event, listener)
+    }
+
+    off(event: string, listener: WfcEventListener): void {
+        const list = this.listeners.get(event)
+        if (list == null) {
+            return
+        }
+        const index = list.indexOf(listener)
+        if (index >= 0) {
+            list.splice(index, 1)
+        }
+    }
+
+    removeAllListeners(event: string): void {
+        this.listeners.delete(event)
+    }
+
+    emit(event: string, args: Array<any | null>): void {
+        const list = this.listeners.get(event)
+        if (list == null) {
+            return
+        }
+        // 复制一份，防止回调中增删监听器
+        const copy = list.slice(0)
+        for (let i = 0; i < copy.length; i++) {
+            copy[i](args)
+        }
+    }
+}

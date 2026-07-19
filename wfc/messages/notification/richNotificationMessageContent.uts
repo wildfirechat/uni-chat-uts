@@ -1,0 +1,67 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessageContentType from '../messageContentType.uts';
+import MessagePayload from '../messagePayload.uts';
+import NotificationMessageContent from "./notificationMessageContent.uts";
+
+export default class RichNotificationMessageContent extends NotificationMessageContent {
+    // 富通知消息
+    title = '';
+    desc = '';
+    remark = '';
+
+    // [{"key":"登陆账户", "value":"野火IM", "color":"#173155"}, ...]
+    datas: UTSJSONObject[] = [];
+
+    // 附加信息
+    exName = '';
+    exPortrait = '';
+    exUrl = '';
+
+    // 应用信息
+    appId = '';
+
+    constructor() {
+        super(MessageContentType.Rich_Notification);
+    }
+
+    override formatNotification(message: any | null): string {
+        return this.title;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.pushContent = this.title;
+        payload.content = this.desc;
+
+        const obj = {
+            remark: this.remark,
+            exName: this.exName,
+            exPortrait: this.exPortrait,
+            exUrl: this.exUrl,
+            appId: this.appId,
+            datas: this.datas,
+        } as UTSJSONObject
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!)
+
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.title = payload.pushContent;
+        this.desc = payload.content;
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.remark = obj.getString('remark') ?? '';
+            this.exName = obj.getString('exName') ?? '';
+            this.exPortrait = obj.getString('exPortrait') ?? '';
+            this.exUrl = obj.getString('exUrl') ?? '';
+            this.appId = obj.getString('appId') ?? '';
+            this.datas = obj.getArray<UTSJSONObject>('datas') ?? ([] as UTSJSONObject[]);
+        }
+    }
+}

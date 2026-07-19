@@ -1,0 +1,133 @@
+<template>
+    <view class="forward-message-container">
+        <view class="forward-message">
+            <image v-if="forwardType == 0 && mediaThumbnail != ''" class="thumb" mode="aspectFit" :src="mediaThumbnail" />
+            <text v-else class="forward-message-text">{{ forwardMessageStr }}</text>
+        </view>
+        <input class="extra-input" type="text" placeholder="给朋友留言" v-model="extraMessageText" />
+    </view>
+</template>
+
+<script lang="uts">
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import Message from "@/wfc/messages/message.uts";
+import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
+
+export default {
+    name: "ForwardMessageView",
+    props: {
+        forwardType: {
+            type: Number,
+            default: 0,
+        },
+        messages: {
+            type: Array as PropType<Message[]>,
+            required: true,
+        },
+    },
+    data() {
+        return {
+            extraMessageText: '',
+        }
+    },
+    methods: {
+        getExtraText(): string {
+            return this.extraMessageText
+        }
+    },
+    computed: {
+        mediaThumbnail(): string {
+            if (this.messages.length == 0) {
+                return ''
+            }
+            const firstMsg = this.messages[0];
+            const content = firstMsg.messageContent
+            if (content instanceof ImageMessageContent) {
+                return 'data:image/jpeg;base64,' + (content as ImageMessageContent).thumbnail
+            }
+            if (content instanceof VideoMessageContent) {
+                return 'data:image/jpeg;base64,' + (content as VideoMessageContent).thumbnail
+            }
+            return ''
+        },
+        forwardMessageStr(): string {
+            if (this.messages.length == 0) {
+                return ''
+            }
+            let str = '';
+            const firstMsg = this.messages[0];
+            const from = firstMsg._from
+            switch (this.forwardType) {
+                case ForwardType.NORMAL:
+                    str = from == null ? '' : from._displayName + ':';
+                    if (firstMsg.messageContent.type != MessageContentType.Image && firstMsg.messageContent.type != MessageContentType.Video) {
+                        str += firstMsg.messageContent.digest(firstMsg);
+                    }
+                    break;
+                case ForwardType.ONE_BY_ONE:
+                    str = '[逐条转发]'
+                    if (firstMsg.conversation.type == ConversationType.Single && from != null) {
+                        str += `${from._displayName}的聊天记录`;
+                    } else {
+                        str += '群聊的聊天记录';
+                    }
+                    break;
+                case ForwardType.COMPOSITE:
+                    str = '[合并转发]'
+                    if (firstMsg.conversation.type == ConversationType.Single && from != null) {
+                        str += `${from._displayName}的聊天记录`;
+                    } else {
+                        str += '群聊的聊天记录';
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return str;
+        }
+    },
+}
+</script>
+
+<style scoped>
+.forward-message-container {
+    width: 100%;
+    padding: 0 30px;
+}
+
+.forward-message {
+    display: flex;
+    flex-direction: row;
+    max-width: 100%;
+    border-radius: 5px;
+    justify-content: center;
+    max-height: 100px;
+    overflow: hidden;
+}
+
+.forward-message-text {
+    padding: 0 10px;
+    border-radius: 5px;
+    color: #aaaaaa;
+    font-size: 13px;
+    overflow: hidden;
+    background-color: #e7e7e7;
+    text-overflow: ellipsis;
+    lines: 2;
+}
+
+.thumb {
+    width: 200px;
+    height: 100px;
+    border-radius: 3px;
+}
+
+.extra-input {
+    width: 100%;
+    margin: 20px 0;
+    border-bottom: 1px solid #e6e6e6;
+}
+</style>

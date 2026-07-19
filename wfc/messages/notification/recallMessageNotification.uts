@@ -1,0 +1,80 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import NotificationMessageContent from './notificationMessageContent.uts'
+import { getUserDisplayName, getGroupMemberDisplayName, getUserId } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessageContentType from '../messageContentType.uts';
+import MessagePayload from '../messagePayload.uts';
+import ConversationType from "../../model/conversationType.uts";
+import Conversation from "../../model/conversation.uts";
+
+export default class RecallMessageNotification extends NotificationMessageContent {
+    operatorId = '';
+    // 64 位 id，string 表示
+    messageUid = '0';
+
+    originalSender = '';
+    originalContentType = 0;
+    originalSearchableContent = '';
+    originalContent = '';
+    originalExtra = '';
+    originalMessageTimestamp = 0;
+
+    // 撤回通知的 formatNotification 需要用到会话信息，
+    // message.fromProtoMessage 时会填充（避免直接依赖 Message 类型）
+    _conversation: Conversation | null = null;
+
+    constructor(operatorId: string, messageUid: string) {
+        super(MessageContentType.RecallMessage_Notification);
+        this.operatorId = operatorId;
+        this.messageUid = messageUid;
+    }
+
+    override formatNotification(message: any | null): string {
+        if (this.operatorId == getUserId()) {
+            return "你撤回了一条消息";
+        }
+        const conv = this._conversation
+        if (conv != null && conv.type == ConversationType.Group) {
+            return getGroupMemberDisplayName(conv.target, this.operatorId) + "撤回了一条消息";
+        } else {
+            return getUserDisplayName(this.operatorId) + "撤回了一条消息";
+        }
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.operatorId;
+        payload.binaryContent = utf8_to_b64(this.messageUid);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.operatorId = payload.content;
+        this.messageUid = b64_to_utf8(payload.binaryContent);
+
+        try {
+            this.setExtra(payload.extra);
+        } catch (e) {
+            console.error('decode recallMessage extra error', e)
+        }
+    }
+
+    setExtra(extra: string): void {
+        if (extra != '') {
+            const fixed = extra.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+            const obj = JSON.parseObject(fixed);
+            if (obj != null) {
+                this.originalSender = obj.getString('s') ?? '';
+                this.originalContentType = obj.getNumber('t') ?? 0;
+                this.originalSearchableContent = obj.getString('sc') ?? '';
+                this.originalContent = obj.getString('c') ?? '';
+                this.originalExtra = obj.getString('e') ?? '';
+                this.originalMessageTimestamp = obj.getNumber('ts') ?? 0;
+            }
+        }
+    }
+}

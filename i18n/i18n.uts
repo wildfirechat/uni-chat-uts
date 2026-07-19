@@ -1,0 +1,64 @@
+/**
+ * 轻量级 i18n，替代 vue-i18n。
+ *
+ * 页面用法：
+ *   import { t } from '@/i18n/i18n.uts'
+ *   t('login.desc')
+ *   t1('friend_request.send_request_tip', '张三')  // {0} 占位
+ */
+import zhCN from './lang-zh-CN.uts'
+import zhTW from './lang-zh-TW.uts'
+import en from './lang-en.uts'
+import { getItem, setItem } from '@/pages/util/storageHelper.uts'
+
+let currentLocale = ''
+
+function messages(): UTSJSONObject {
+    if (currentLocale == '') {
+        const saved = getItem('lang')
+        currentLocale = saved == '' ? 'zh-CN' : saved
+    }
+    if (currentLocale == 'zh-TW') {
+        return zhTW
+    } else if (currentLocale == 'en') {
+        return en
+    }
+    return zhCN
+}
+
+export function getLocale(): string {
+    if (currentLocale == '') {
+        messages()
+    }
+    return currentLocale
+}
+
+export function setLocale(locale: string): void {
+    currentLocale = locale
+    setItem('lang', locale)
+}
+
+/**
+ * 翻译，key 支持 'a.b' 形式的嵌套 key
+ */
+export function t(key: string): string {
+    const value = messages().getString(key)
+    if (value == null) {
+        return key
+    }
+    return value
+}
+
+/**
+ * 带 1 个 {0} 占位参数的翻译
+ */
+export function t1(key: string, arg0: string): string {
+    return t(key).replace('{0}', arg0)
+}
+
+/**
+ * 带 2 个占位参数的翻译
+ */
+export function t2(key: string, arg0: string, arg1: string): string {
+    return t(key).replace('{0}', arg0).replace('{1}', arg1)
+}

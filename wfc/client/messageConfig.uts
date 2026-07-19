@@ -1,0 +1,188 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import TextMessageContent from '../messages/textMessageContent.uts'
+import PTextMessageContent from '../messages/ptextMessageContent.uts'
+import ImageMessageContent from '../messages/imageMessageContent.uts';
+import MessageContent from '../messages/messageContent.uts';
+import MessageContentType from '../messages/messageContentType.uts';
+import PersistFlag from '../messages/persistFlag.uts';
+import TipNotificationMessageContent from '../messages/notification/tipNotification.uts';
+import UnknownMessageContent from '../messages/unknownMessageContent.uts';
+import ChangeGroupNameNotification from '../messages/notification/changeGroupNameNotification.uts';
+import KickoffGroupMemberNotification from '../messages/notification/kickoffGroupMemberNotification.uts';
+import KickoffGroupMemberVisiableNotification from '../messages/notification/kickoffGroupMemberVisiableNotification.uts';
+import AddGroupMemberNotification from '../messages/notification/addGroupMemberNotification.uts';
+import ChangeGroupPortraitNotification from '../messages/notification/changeGroupPortraitNotification.uts';
+import CreateGroupNotification from '../messages/notification/createGroupNotification.uts';
+import DismissGroupNotification from '../messages/notification/dismissGroupNotification.uts';
+import ModifyGroupAliasNotification from '../messages/notification/modifyGroupAliasNotification.uts';
+import ModifyGroupExtraNotification from '../messages/notification/modifyGroupExtraNotification.uts';
+import ModifyGroupMemberExtraNotification from '../messages/notification/modifyGroupMemberExtraNotification.uts';
+import QuitGroupNotification from '../messages/notification/quitGroupNotification.uts';
+import QuitVisiableGroupNotification from '../messages/notification/quitGroupVisiableNotification.uts';
+import QuitGroupVisiableNotification from '../messages/notification/quitGroupVisiableNotification.uts';
+import TransferGroupOwnerNotification from '../messages/notification/transferGroupOwnerNotification.uts';
+import FileMessageContent from '../messages/fileMessageContent.uts';
+import VideoMessageContent from '../messages/videoMessageContent.uts';
+import StickerMessageContent from '../messages/stickerMessageContent.uts';
+import SoundMessageContent from '../messages/soundMessageContent.uts';
+import TypingMessageContent from '../messages/typingMessageContent.uts';
+import RecallMessageNotification from '../messages/notification/recallMessageNotification.uts';
+import DeleteMessageContent from '../messages/deleteMessageContent.uts';
+import GroupJoinTypeNotificationContent from "../messages/notification/groupJoinTypeNotificationContent.uts";
+import GroupMuteNotificationContent from "../messages/notification/groupMuteNotificationContent.uts";
+import GroupSetManagerNotificationContent from "../messages/notification/groupSetManagerNotificationContent.uts";
+import GroupPrivateChatNotificationContent from "../messages/notification/groupPrivateChatNotificationContent.uts";
+import LocationMessageContent from "../messages/locationMessageContent.uts";
+import MuteGroupMemberNotification from '../messages/notification/muteGroupMemberNotification.uts'
+import AllowGroupMemberNotification from '../messages/notification/allowGroupMemberNotification.uts'
+import CardMessageContent from '../messages/cardMessageContent.uts'
+import CompositeMessageContent from "../messages/compositeMessageContent.uts";
+import MarkUnreadMessageContent from "../messages/markUnreadMessageContent.uts";
+import LinkMessageContent from "../messages/linkMessageContent.uts";
+import FriendAddedNotification from "../messages/notification/friendAddedNotification.uts";
+import FriendGreetingNotification from "../messages/notification/friendGreetingNotification.uts";
+import PcLoginRequestMessageContent from "../messages/pcLoginRequestMessageContent.uts";
+import StartSecretChatNotification from "../messages/notification/startSecretChatNotification.uts";
+import RichNotificationMessageContent from "../messages/notification/richNotificationMessageContent.uts";
+import ArticlesMessageContent from "../messages/articlesMessageContent.uts";
+import ChannelMenuEventMessageContent from "../messages/channelMenuEventMessageContent.uts";
+import EnterChannelChatMessageContent from "../messages/enterChannelChatMessageContent.uts";
+import LeaveChannelChatMessageContent from "../messages/leaveChannelChatMessageContent.uts";
+import StreamingTextGeneratingMessageContent from "../messages/streamingTextGeneratingMessageContent.uts";
+import StreamingTextGeneratedMessageContent from "../messages/streamingTextGeneratedMessageContent.uts";
+import CallStartMessageContent from '../av/messages/callStartMessageContent.uts';
+import ConferenceInviteMessageContent from '../av/messages/conferenceInviteMessageContent.uts';
+import VoipStubMessageContent from '../av/messages/voipStubMessageContent.uts';
+
+export type MessageContentCreator = () => MessageContent
+
+export class MessageContentRegistry {
+    name: string
+    flag: number
+    type: number
+    creator: MessageContentCreator
+
+    constructor(name: string, flag: number, type: number, creator: MessageContentCreator) {
+        this.name = name
+        this.flag = flag
+        this.type = type
+        this.creator = creator
+    }
+}
+
+export default class MessageConfig {
+    /**
+     * 根据消息类型创建对应的 messageContent 实例；未注册时返回 UnknownMessageContent
+     */
+    static createMessageContent(type: number): MessageContent {
+        for (let i = 0; i < MessageConfig.MessageContents.length; i++) {
+            const content = MessageConfig.MessageContents[i]
+            if (content.type == type) {
+                return content.creator();
+            }
+        }
+        console.error(`message type ${type} is unknown`);
+        return new UnknownMessageContent();
+    }
+
+    static isMessageContentTypeRegistered(type: number): boolean {
+        for (let i = 0; i < MessageConfig.MessageContents.length; i++) {
+            if (MessageConfig.MessageContents[i].type == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static getMessageContentFlag(type: number): number {
+        let flag = PersistFlag.No_Persist;
+        for (let i = 0; i < MessageConfig.MessageContents.length; i++) {
+            const content = MessageConfig.MessageContents[i]
+            if (content.type == type) {
+                flag = content.flag;
+            }
+        }
+        return flag;
+    }
+
+    static getMessageContentPersitFlag(type: number): number {
+        for (let i = 0; i < MessageConfig.MessageContents.length; i++) {
+            const content = MessageConfig.MessageContents[i]
+            if (content.type == type) {
+                return content.flag;
+            }
+        }
+        return -1;
+    }
+
+    static registerMessageContent(name: string, flag: number, type: number, creator: MessageContentCreator): void {
+        MessageConfig.MessageContents.push(new MessageContentRegistry(name, flag, type, creator));
+    }
+
+    static MessageContents: MessageContentRegistry[] = [
+        new MessageContentRegistry('unknown', PersistFlag.Persist, MessageContentType.Unknown, (): MessageContent => new UnknownMessageContent()),
+        new MessageContentRegistry('text', PersistFlag.Persist_And_Count, MessageContentType.Text, (): MessageContent => new TextMessageContent('')),
+        new MessageContentRegistry('ptext', PersistFlag.Persist, MessageContentType.P_Text, (): MessageContent => new PTextMessageContent('')),
+        new MessageContentRegistry('voice', PersistFlag.Persist_And_Count, MessageContentType.Voice, (): MessageContent => new SoundMessageContent()),
+        new MessageContentRegistry('image', PersistFlag.Persist_And_Count, MessageContentType.Image, (): MessageContent => new ImageMessageContent()),
+        new MessageContentRegistry('location', PersistFlag.Persist_And_Count, MessageContentType.Location, (): MessageContent => new LocationMessageContent()),
+        new MessageContentRegistry('file', PersistFlag.Persist_And_Count, MessageContentType.File, (): MessageContent => new FileMessageContent()),
+        new MessageContentRegistry('video', PersistFlag.Persist_And_Count, MessageContentType.Video, (): MessageContent => new VideoMessageContent()),
+        new MessageContentRegistry('sticker', PersistFlag.Persist_And_Count, MessageContentType.Sticker, (): MessageContent => new StickerMessageContent()),
+        new MessageContentRegistry('link', PersistFlag.Persist_And_Count, MessageContentType.Link, (): MessageContent => new LinkMessageContent()),
+        new MessageContentRegistry('userCard', PersistFlag.Persist_And_Count, MessageContentType.UserCard, (): MessageContent => new CardMessageContent()),
+        new MessageContentRegistry('compositeMessage', PersistFlag.Persist_And_Count, MessageContentType.Composite_Message, (): MessageContent => new CompositeMessageContent()),
+        new MessageContentRegistry('tip', PersistFlag.Persist, MessageContentType.Tip_Notification, (): MessageContent => new TipNotificationMessageContent('')),
+        new MessageContentRegistry('typing', PersistFlag.Transparent, MessageContentType.Typing, (): MessageContent => new TypingMessageContent()),
+        new MessageContentRegistry('friendGreeting', PersistFlag.Persist, MessageContentType.Friend_Added, (): MessageContent => new FriendGreetingNotification()),
+        new MessageContentRegistry('friendAdded', PersistFlag.Persist, MessageContentType.Friend_Greeting, (): MessageContent => new FriendAddedNotification()),
+        new MessageContentRegistry('addGroupMemberNotification', PersistFlag.Persist, MessageContentType.AddGroupMember_Notification, (): MessageContent => new AddGroupMemberNotification('', [])),
+        new MessageContentRegistry('changeGroupNameNotification', PersistFlag.Persist, MessageContentType.ChangeGroupName_Notification, (): MessageContent => new ChangeGroupNameNotification('', '')),
+        new MessageContentRegistry('changeGroupPortraitNotification', PersistFlag.Persist, MessageContentType.ChangeGroupPortrait_Notification, (): MessageContent => new ChangeGroupPortraitNotification('')),
+        new MessageContentRegistry('createGroupNotification', PersistFlag.Persist, MessageContentType.CreateGroup_Notification, (): MessageContent => new CreateGroupNotification('', '')),
+        new MessageContentRegistry('dismissGroupNotification', PersistFlag.Persist, MessageContentType.DismissGroup_Notification, (): MessageContent => new DismissGroupNotification('')),
+        new MessageContentRegistry('kickoffGroupMemberNotification', PersistFlag.Persist, MessageContentType.KickOffGroupMember_Notification, (): MessageContent => new KickoffGroupMemberNotification('', [])),
+        new MessageContentRegistry('kickoffGroupMemberVisiableNotification', PersistFlag.Persist, MessageContentType.KickOffGroupMember_Visible_Notification, (): MessageContent => new KickoffGroupMemberVisiableNotification('', [])),
+        new MessageContentRegistry('modifyGroupAliasNotification', PersistFlag.Persist, MessageContentType.ModifyGroupAlias_Notification, (): MessageContent => new ModifyGroupAliasNotification('', '')),
+        new MessageContentRegistry('modifyGroupExtraNotification', PersistFlag.Persist, MessageContentType.ModifyGroupExtra_Notification, (): MessageContent => new ModifyGroupExtraNotification('', '')),
+        new MessageContentRegistry('modifyGroupMemberExtraNotification', PersistFlag.Persist, MessageContentType.ModifyGroupMemberExtra_Notification, (): MessageContent => new ModifyGroupMemberExtraNotification('', '')),
+        new MessageContentRegistry('quitGroupNotification', PersistFlag.Persist, MessageContentType.QuitGroup_Notification, (): MessageContent => new QuitGroupNotification('')),
+        new MessageContentRegistry('quitGroupVisiableNotification', PersistFlag.Persist, MessageContentType.QuitGroup_Visible_Notification, (): MessageContent => new QuitVisiableGroupNotification('')),
+        new MessageContentRegistry('transferGroupOwnerNotification', PersistFlag.Persist, MessageContentType.TransferGroupOwner_Notification, (): MessageContent => new TransferGroupOwnerNotification('', '')),
+        new MessageContentRegistry('groupJoinTypeNotificationContent', PersistFlag.Persist, MessageContentType.ChangeJoinType_Notification, (): MessageContent => new GroupJoinTypeNotificationContent('', 0)),
+        new MessageContentRegistry('groupMuteNotificationContent', PersistFlag.Persist, MessageContentType.MuteGroup_Notification, (): MessageContent => new GroupMuteNotificationContent('', 0)),
+        new MessageContentRegistry('groupPrivateChatNotificationContent', PersistFlag.Persist, MessageContentType.ChangePrivateChat_Notification, (): MessageContent => new GroupPrivateChatNotificationContent('', 0)),
+        new MessageContentRegistry('groupSetManagerNotificationContent', PersistFlag.Persist, MessageContentType.SetGroupManager_Notification, (): MessageContent => new GroupSetManagerNotificationContent('', 0, [])),
+        new MessageContentRegistry('muteGroupMemberNotificationContent', PersistFlag.Persist, MessageContentType.MuteGroupMember_Notification, (): MessageContent => new MuteGroupMemberNotification('', 0, [])),
+        new MessageContentRegistry('allowGroupMemberNotificationContent', PersistFlag.Persist, MessageContentType.AllowGroupMember_Notification, (): MessageContent => new AllowGroupMemberNotification('', 0, [])),
+        new MessageContentRegistry('recall', PersistFlag.Persist, MessageContentType.RecallMessage_Notification, (): MessageContent => new RecallMessageNotification('', '0')),
+        new MessageContentRegistry('delete', PersistFlag.No_Persist, MessageContentType.DeleteMessage_Notification, (): MessageContent => new DeleteMessageContent()),
+        new MessageContentRegistry('streamingTextGenerating', PersistFlag.Transparent, MessageContentType.Streaming_Text_Generating, (): MessageContent => new StreamingTextGeneratingMessageContent()),
+        new MessageContentRegistry('streamingTextGenerated', PersistFlag.Persist_And_Count, MessageContentType.Streaming_Text_Generated, (): MessageContent => new StreamingTextGeneratedMessageContent()),
+        new MessageContentRegistry('callStartMessageContent', PersistFlag.Persist, MessageContentType.VOIP_CONTENT_TYPE_START, (): MessageContent => new CallStartMessageContent()),
+        new MessageContentRegistry('callAnswerMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_ACCEPT, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_ACCEPT)),
+        new MessageContentRegistry('callAnswerTMessageContent', PersistFlag.Transparent, MessageContentType.VOIP_CONTENT_TYPE_ACCEPT_T, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_ACCEPT_T)),
+        new MessageContentRegistry('callByeMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_END, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_END)),
+        new MessageContentRegistry('callSignalMessageContent', PersistFlag.Transparent, MessageContentType.VOIP_CONTENT_TYPE_SIGNAL, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_SIGNAL)),
+        new MessageContentRegistry('callModifyMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MODIFY, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_MODIFY)),
+        new MessageContentRegistry('callAddParticipant', PersistFlag.Persist, MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT)),
+        new MessageContentRegistry('callMuteVideo', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO)),
+        new MessageContentRegistry('conferenceInvite', PersistFlag.Persist_And_Count, MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE, (): MessageContent => new ConferenceInviteMessageContent()),
+        new MessageContentRegistry('conferenceChangeMode', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE)),
+        new MessageContentRegistry('conferenceKickoffMember', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER)),
+        new MessageContentRegistry('multiCallOngoing', PersistFlag.Transparent, MessageContentType.VOIP_Multi_Call_Ongoing, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_Multi_Call_Ongoing)),
+        new MessageContentRegistry('joinCallRequest', PersistFlag.Transparent, MessageContentType.VOIP_Join_Call_Request, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_Join_Call_Request)),
+        new MessageContentRegistry('markUnreadMessage', PersistFlag.No_Persist, MessageContentType.Mark_Unread_Sync, (): MessageContent => new MarkUnreadMessageContent()),
+        new MessageContentRegistry('pcLoginRequest', PersistFlag.No_Persist, MessageContentType.PC_Login_Request, (): MessageContent => new PcLoginRequestMessageContent()),
+        new MessageContentRegistry('startSecretChat', PersistFlag.Persist_And_Count, MessageContentType.StartSecretChat_Notification, (): MessageContent => new StartSecretChatNotification()),
+        new MessageContentRegistry('richNotification', PersistFlag.Persist_And_Count, MessageContentType.Rich_Notification, (): MessageContent => new RichNotificationMessageContent()),
+        new MessageContentRegistry('articlesMessageContent', PersistFlag.Persist_And_Count, MessageContentType.Articles, (): MessageContent => new ArticlesMessageContent()),
+        new MessageContentRegistry('channelMenuEventMessageContent', PersistFlag.Transparent, MessageContentType.Channel_Menu_Event, (): MessageContent => new ChannelMenuEventMessageContent()),
+        new MessageContentRegistry('enterChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Enter_Channel_Chat, (): MessageContent => new EnterChannelChatMessageContent()),
+        new MessageContentRegistry('leaveChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Leave_Channel_Chat, (): MessageContent => new LeaveChannelChatMessageContent()),
+        new MessageContentRegistry('conferenceCommandMessageContent', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND)),
+    ];
+}

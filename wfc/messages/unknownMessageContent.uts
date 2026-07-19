@@ -1,0 +1,30 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from "./messagePayload.uts";
+
+export default class UnknownMessageContent extends MessageContent {
+    originalPayload: MessagePayload = new MessagePayload();
+
+    constructor(originalPayload: MessagePayload | null = null) {
+        super(MessageContentType.Unknown);
+        if (originalPayload != null) {
+            this.originalPayload = originalPayload;
+        }
+    }
+
+    override encode(): MessagePayload {
+        return this.originalPayload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        this.originalPayload = payload;
+    }
+
+    override digest(message: any | null): string {
+        return '未知类型消息';
+    }
+}

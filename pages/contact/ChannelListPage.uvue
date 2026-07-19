@@ -1,0 +1,81 @@
+<template>
+    <view class="page-container">
+        <NavBar title="频道列表" :showBack="true" :rightIcon1="searchIcon" @right1Tap="onSearchTap" />
+        <scroll-view class="channel-list" direction="vertical">
+            <view v-for="(channel, index) in channelList" :key="index" @tap="showChannel(channel)">
+                <view class="channel-item">
+                    <image class="avatar" :src="channel.portrait" />
+                    <text class="channel-name single-line">{{ channel.name }}</text>
+                </view>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState } from "../../store.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import ChannelInfo from "../../wfc/model/channelInfo.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+import NavBar from "../common/NavBar.uvue";
+
+export default {
+    name: "ChannelListPage",
+    components: { NavBar },
+    data() {
+        return {
+            searchIcon: '\ue636',
+        }
+    },
+    computed: {
+        channelList(): ChannelInfo[] {
+            return contactState.channelList
+        }
+    },
+    methods: {
+        onSearchTap() {
+            uni.navigateTo({
+                url: '/pages/search/SearchPortalPage'
+            } as NavigateToOptions);
+        },
+        showChannel(channelInfo: ChannelInfo) {
+            const conversation = new Conversation(ConversationType.Channel, channelInfo.channelId, 0);
+            store.setCurrentConversation(conversation);
+            go2ConversationPage();
+        }
+    },
+}
+</script>
+
+<style scoped>
+.page-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.channel-list {
+    flex: 1;
+}
+
+.channel-item {
+    height: 50px;
+    padding: 5px 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.channel-name {
+    margin-left: 10px;
+    font-size: 13px;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+</style>

@@ -1,0 +1,2000 @@
+/**
+ * 全局状态管理，替代原 store.js + pstore.js（去 pinia）。
+ *
+ * - 每个子 store 是 UTS class，实例经 reactive() 导出，字段全部显式声明；
+ * - action 方法在默认导出的 store 对象上，方法名与原 store.js 保持一致；
+ * - 页面通过 computed 引用状态字段。
+ */
+import { reactive } from 'vue'
+
+import ConnectionStatus from "./wfc/client/connectionStatus.uts";
+import wfc from "./wfc/client/wfc.uts";
+import EventType from "./wfc/client/wfcEvent.uts";
+import ConversationType from "./wfc/model/conversationType.uts";
+import Conversation, { ConversationTarget } from "./wfc/model/conversation.uts";
+import ConversationInfo from "./wfc/model/conversationInfo.uts";
+import ConversationSearchResult from "./wfc/model/conversationSearchResult.uts";
+import GroupInfo from "./wfc/model/groupInfo.uts";
+import NullGroupInfo from "./wfc/model/nullGroupInfo.uts";
+import NullUserInfo from "./wfc/model/nullUserInfo.uts";
+import NullChannelInfo from "./wfc/model/NullChannelInfo.uts";
+import ChannelInfo from "./wfc/model/channelInfo.uts";
+import UserInfo from "./wfc/model/userInfo.uts";
+import GroupMember from "./wfc/model/groupMember.uts";
+import GroupType from "./wfc/model/groupType.uts";
+import UnreadCount from "./wfc/model/unreadCount.uts";
+import FriendRequest from "./wfc/model/friendRequest.uts";
+import FileRecord from "./wfc/model/fileRecord.uts";
+import UserOnlineState from "./wfc/model/userOnlineState.uts";
+import SearchType from "./wfc/model/searchType.uts";
+import Message from "./wfc/messages/message.uts";
+import MessageStatus from "./wfc/messages/messageStatus.uts";
+import MessageConfig from "./wfc/client/messageConfig.uts";
+import MessageContent from "./wfc/messages/messageContent.uts";
+import MessageContentType from "./wfc/messages/messageContentType.uts";
+import MessageContentMediaType from "./wfc/messages/messageContentMediaType.uts";
+import PersistFlag from "./wfc/messages/persistFlag.uts";
+import TextMessageContent from "./wfc/messages/textMessageContent.uts";
+import ImageMessageContent from "./wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "./wfc/messages/videoMessageContent.uts";
+import FileMessageContent from "./wfc/messages/fileMessageContent.uts";
+import SoundMessageContent from "./wfc/messages/soundMessageContent.uts";
+import CompositeMessageContent from "./wfc/messages/compositeMessageContent.uts";
+import ArticlesMessageContent from "./wfc/messages/articlesMessageContent.uts";
+import LeaveChannelChatMessageContent from "./wfc/messages/leaveChannelChatMessageContent.uts";
+import EnterChannelChatMessageContent from "./wfc/messages/enterChannelChatMessageContent.uts";
+import DismissGroupNotification from "./wfc/messages/notification/dismissGroupNotification.uts";
+import KickoffGroupMemberNotification from "./wfc/messages/notification/kickoffGroupMemberNotification.uts";
+import QuitGroupNotification from "./wfc/messages/notification/quitGroupNotification.uts";
+import CallStartMessageContent from "./wfc/av/messages/callStartMessageContent.uts";
+import { eq, gt, numberValue, stringValue } from "./wfc/util/longUtil.uts";
+import { timeFormat, dateFormat, humanSize, getFiletypeIcon, getMediaType } from "./pages/util/helper.uts";
+import { pinyinOf, pinyinFirstLetters } from "./common/pinyin.uts";
+import { clear, getItem, setItem } from "./pages/util/storageHelper.uts";
+import Config from "./config.uts";
+import ForwardType from "./pages/conversation/message/forward/ForwardType.uts";
+
+/**
+ * 媒体预览项
+ */
+export class PreviewMediaItem {
+    src = '';
+    thumb = '';
+    autoplay = true;
+
+    constructor(src: string, thumb: string, autoplay: boolean = true) {
+        this.src = src;
+        this.thumb = thumb;
+        this.autoplay = autoplay;
+    }
+}
+
+/**
+ * 消息发送/下载进度
+ */
+export class MediaProgress {
+    messageId = 0;
+    progress = 0;
+    total = 0;
+
+    constructor(messageId: number, progress: number, total: number) {
+        this.messageId = messageId;
+        this.progress = progress;
+        this.total = total;
+    }
+}
+
+export class ConversationState {
+    currentConversationInfo: ConversationInfo | null = null;
+    conversationInfoList: ConversationInfo[] = [];
+    currentConversationMessageList: Message[] = [];
+    currentConversationOldestMessageId = 0;
+    currentConversationOldestMessageUid = '0';
+
+    currentConversationRead: Map<string, number> | null = null;
+
+    isMessageReceiptEnable = false;
+
+    inputtingUser: UserInfo | null = null;
+    inputClearTimer = 0;
+
+    shouldAutoScrollToBottom = true;
+
+    previewMediaItems: PreviewMediaItem[] = [];
+    previewMediaIndex = 0;
+
+    enableMessageMultiSelection = false;
+    showChannelMenu = false;
+    quotedMessage: Message | null = null;
+
+    downloadingMessages: MediaProgress[] = [];
+    sendingMessages: MediaProgress[] = [];
+    floatingConversations: Conversation[] = [];
+
+    currentVoiceMessage: Message | null = null;
+    contextMenuConversationInfo: ConversationInfo | null = null;
+
+    _reset(): void {
+        this.currentConversationInfo = null;
+        this.conversationInfoList = [];
+        this.currentConversationMessageList = [];
+        this.currentConversationOldestMessageId = 0;
+        this.currentConversationOldestMessageUid = '0';
+        this.currentConversationRead = null;
+        this.isMessageReceiptEnable = false;
+        this.inputtingUser = null;
+        this.inputClearTimer = 0;
+        this.shouldAutoScrollToBottom = true;
+        this.previewMediaItems = [];
+        this.previewMediaIndex = 0;
+        this.enableMessageMultiSelection = false;
+        this.showChannelMenu = false;
+        this.quotedMessage = null;
+        this.downloadingMessages = [];
+        this.sendingMessages = [];
+        this.floatingConversations = [];
+        this.currentVoiceMessage = null;
+        this.contextMenuConversationInfo = null;
+    }
+}
+
+export class ContactState {
+    currentFriendRequest: FriendRequest | null = null;
+    currentGroup: GroupInfo | null = null;
+    currentChannel: ChannelInfo | null = null;
+    currentFriend: UserInfo | null = null;
+    currentOrganization: UTSJSONObject | null = null;
+    currentChatroom: UTSJSONObject | null = null;
+    currentUser: UserInfo | null = null;
+
+    expandFriendRequestList = false;
+    expandFriendList = true;
+    expandGroup = false;
+    expandChanel = false;
+    expandOrganization = false;
+    expandChatroom = false;
+
+    unreadFriendRequestCount = 0;
+    friendList: UserInfo[] = [];
+    friendRequestList: FriendRequest[] = [];
+    favGroupList: GroupInfo[] = [];
+    channelList: ChannelInfo[] = [];
+    favContactList: UserInfo[] = [];
+
+    selfUserInfo: UserInfo | null = null;
+    contextMenuUserInfo: UserInfo | null = null;
+
+    _reset(): void {
+        this.currentFriendRequest = null;
+        this.currentGroup = null;
+        this.currentChannel = null;
+        this.currentFriend = null;
+        this.currentOrganization = null;
+        this.currentChatroom = null;
+        this.currentUser = null;
+
+        this.expandFriendRequestList = false;
+        this.expandFriendList = true;
+        this.expandGroup = false;
+        this.expandChanel = false;
+
+        this.unreadFriendRequestCount = 0;
+        this.friendList = [];
+        this.friendRequestList = [];
+        this.favGroupList = [];
+        this.channelList = [];
+        this.favContactList = [];
+
+        this.selfUserInfo = null;
+        this.contextMenuUserInfo = null;
+    }
+}
+
+export class SearchState {
+    query = '';
+    // 进入会话消息搜索页时使用
+    conversation: Conversation | null = null;
+    userSearchResult: UserInfo[] = [];
+    channelSearchResult: ChannelInfo[] = [];
+    contactSearchResult: UserInfo[] = [];
+    groupSearchResult: GroupInfo[] = [];
+    conversationSearchResult: ConversationSearchResult[] = [];
+    messageSearchResult: Message[] = [];
+
+    _reset(): void {
+        this.query = '';
+        this.conversation = null;
+        this.userSearchResult = [];
+        this.channelSearchResult = [];
+        this.contactSearchResult = [];
+        this.groupSearchResult = [];
+        this.conversationSearchResult = [];
+        this.messageSearchResult = [];
+    }
+}
+
+export class PickState {
+    users: UserInfo[] = [];
+    organizations: UTSJSONObject[] = [];
+    conversations: Conversation[] = [];
+    messages: Message[] = [];
+
+    _reset(): void {
+        this.users = [];
+        this.organizations = [];
+        this.conversations = [];
+        this.messages = [];
+    }
+}
+
+export class MiscState {
+    connectionStatus: number = ConnectionStatus.ConnectionStatusUnconnected;
+    enableNotification = true;
+    enableNotificationMessageDetail = true;
+    enableAutoLogin = false;
+    isMainWindow = false;
+    isCommercialServer = false;
+    isDisableSyncDraft = false;
+    isVoipOngoing = false;
+    isAppHidden = false;
+    userOnlineStateMap: Map<string, UserOnlineState> = new Map<string, UserOnlineState>();
+
+    _reset(): void {
+        this.connectionStatus = ConnectionStatus.ConnectionStatusUnconnected;
+        this.enableNotification = true;
+        this.enableAutoLogin = false;
+        this.isCommercialServer = false;
+        this.isDisableSyncDraft = false;
+        this.isVoipOngoing = false;
+        this.userOnlineStateMap = new Map<string, UserOnlineState>();
+    }
+}
+
+export const conversationState = reactive(new ConversationState()) as ConversationState
+export const contactState = reactive(new ContactState()) as ContactState
+export const searchState = reactive(new SearchState()) as SearchState
+export const pickState = reactive(new PickState()) as PickState
+export const miscState = reactive(new MiscState()) as MiscState
+
+export class StoreState {
+    conversation: ConversationState = conversationState
+    contact: ContactState = contactState
+    search: SearchState = searchState
+    pick: PickState = pickState
+    misc: MiscState = miscState
+}
+
+class Store {
+    debug = true;
+    state: StoreState = new StoreState();
+
+    init(): void {
+        console.log('init store')
+
+        wfc.eventEmitter.on(EventType.ConnectionStatusChanged, (args: Array<any | null>) => {
+            const status = numberValue(args[0]);
+            miscState.connectionStatus = status;
+            console.log('connection status changed', status);
+            if (status == ConnectionStatus.ConnectionStatusConnected) {
+                this._loadDefaultData();
+            } else if (status == ConnectionStatus.ConnectionStatusLogout
+                || status == ConnectionStatus.ConnectionStatusRejected
+                || status == ConnectionStatus.ConnectionStatusSecretKeyMismatch
+                || status == ConnectionStatus.ConnectionStatusKickedOff
+                || status == ConnectionStatus.ConnectionStatusTokenIncorrect) {
+
+                // 清除 token 等
+                clear();
+                if (status == ConnectionStatus.ConnectionStatusKickedOff) {
+                    wfc.disconnect();
+                }
+                _reset();
+            }
+        });
+
+        wfc.eventEmitter.on(EventType.UserInfosUpdate, (args: Array<any | null>) => {
+            const userInfos = args[0] as UserInfo[];
+            this._reloadSingleConversationIfExist(userInfos);
+            // TODO optimize
+            this._loadCurrentConversationMessages();
+            this._loadFriendList();
+            this._loadFriendRequest();
+            this._loadSelfUserInfo();
+        });
+
+        wfc.eventEmitter.on(EventType.SettingUpdate, (args: Array<any | null>) => {
+            console.log('store SettingUpdate')
+            this._loadDefaultConversationList();
+            this._loadFavContactList();
+            this._loadFavGroupList();
+            this._loadChannelList();
+            this._loadCurrentConversationMessages();
+        });
+
+        wfc.eventEmitter.on(EventType.FriendRequestUpdate, (args: Array<any | null>) => {
+            this._loadFriendRequest();
+        });
+
+        wfc.eventEmitter.on(EventType.FriendListUpdate, (args: Array<any | null>) => {
+            this._loadFriendList();
+            this._loadFriendRequest();
+            this._loadFavContactList();
+            this._loadDefaultConversationList();
+            this._loadCurrentConversationMessages();
+        });
+
+        wfc.eventEmitter.on(EventType.GroupInfosUpdate, (args: Array<any | null>) => {
+            const groupInfos = args[0] as GroupInfo[];
+            this._reloadGroupConversationIfExist(groupInfos);
+            this._loadFavGroupList();
+        });
+
+        wfc.eventEmitter.on(EventType.GroupMembersUpdate, (args: Array<any | null>) => {
+            const groupId = '' + args[0];
+            const groupInfos: GroupInfo[] = [new NullGroupInfo(groupId) as GroupInfo];
+            this._reloadGroupConversationIfExist(groupInfos);
+        });
+
+        wfc.eventEmitter.on(EventType.ChannelInfosUpdate, (args: Array<any | null>) => {
+            this._loadDefaultConversationList();
+            this._loadChannelList();
+        });
+
+        wfc.eventEmitter.on(EventType.ConversationInfoUpdate, (args: Array<any | null>) => {
+            const conversationInfo = args[0] as ConversationInfo;
+            this._reloadConversation(conversationInfo.conversation, true)
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversationInfo.conversation)) {
+                this._loadCurrentConversationMessages();
+            }
+        });
+
+        wfc.eventEmitter.on(EventType.ReceiveMessages, (args: Array<any | null>) => {
+            const msgs = args[0] as Message[];
+            const hasMore = args[1] == true;
+            if (miscState.connectionStatus == ConnectionStatus.ConnectionStatusReceiveing) {
+                return;
+            }
+
+            for (let i = 0; i < msgs.length; i++) {
+                const msg = msgs[i]
+                const content = msg.messageContent
+                if (content instanceof DismissGroupNotification
+                    || (content instanceof KickoffGroupMemberNotification && (content as KickoffGroupMemberNotification).kickedMembers.indexOf(wfc.getUserId()) >= 0)
+                    || (content instanceof QuitGroupNotification && (content as QuitGroupNotification).operator == wfc.getUserId())
+                ) {
+                    this.setCurrentConversationInfo(null);
+                    return;
+                }
+
+                if (!hasMore) {
+                    this._reloadConversation(msg.conversation, true)
+                }
+                const currentConversationInfo = conversationState.currentConversationInfo
+                if (currentConversationInfo != null && msg.conversation.equal(currentConversationInfo.conversation)) {
+                    // 移动端，目前只有单聊会发送typing消息
+                    if (msg.messageContent.type == MessageContentType.Typing) {
+                        const groupId = msg.conversation.type == ConversationType.Group ? msg.conversation.target : '';
+                        const userInfo = wfc.getUserInfo(msg.from, false, groupId).clone()
+                        userInfo._displayName = wfc.getGroupMemberDisplayNameEx(userInfo);
+                        conversationState.inputtingUser = userInfo;
+
+                        if (conversationState.inputClearTimer != 0) {
+                            clearTimeout(conversationState.inputClearTimer);
+                        }
+                        conversationState.inputClearTimer = setTimeout(() => {
+                            conversationState.inputtingUser = null;
+                        }, 3000)
+                    } else {
+                        if (conversationState.inputClearTimer != 0) {
+                            clearTimeout(conversationState.inputClearTimer);
+                            conversationState.inputClearTimer = 0;
+                        }
+                        conversationState.inputtingUser = null;
+                    }
+
+                    if (!this._isDisplayMessage(msg) || msg.messageContent.type == MessageContentType.RecallMessage_Notification) {
+                        return;
+                    }
+
+                    let lastTimestamp = 0;
+                    const msgListLength = conversationState.currentConversationMessageList.length;
+                    if (msgListLength > 0) {
+                        lastTimestamp = conversationState.currentConversationMessageList[msgListLength - 1].timestamp;
+                    }
+                    this._patchMessage(msg, lastTimestamp);
+                    const msgIndex = conversationState.currentConversationMessageList.findIndex((m: Message): boolean => {
+                        if (m.messageId == msg.messageId) {
+                            return true
+                        }
+                        if (gt(m.messageUid, 0) && eq(m.messageUid, msg.messageUid)) {
+                            return true
+                        }
+                        if (m.messageContent.type == MessageContentType.Streaming_Text_Generating
+                            && (msg.messageContent.type == MessageContentType.Streaming_Text_Generating || msg.messageContent.type == MessageContentType.Streaming_Text_Generated)) {
+                            const mStreamId = this._streamIdOf(m.messageContent)
+                            const msgStreamId = this._streamIdOf(msg.messageContent)
+                            if (mStreamId != '' && mStreamId == msgStreamId) {
+                                return true
+                            }
+                        }
+                        return false
+                    })
+                    if (msgIndex > -1) {
+                        conversationState.currentConversationMessageList.splice(msgIndex, 1, msg);
+                        console.log('msg duplicate', msg.messageId, msg.messageUid)
+                        return;
+                    }
+                    conversationState.currentConversationMessageList.push(msg);
+                }
+
+                // 通知
+                if (msg.conversation.type != ConversationType.ChatRoom && miscState.isAppHidden
+                    && (miscState.enableNotification || msg.status == MessageStatus.AllMentioned || msg.status == MessageStatus.Mentioned)) {
+                    this.notify(msg);
+                }
+            }
+        });
+
+        wfc.eventEmitter.on(EventType.RecallMessage, (args: Array<any | null>) => {
+            const messageUid = stringValue(args[1]);
+            this._reloadConversationByMessageUidIfExist(messageUid);
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo != null) {
+                const msg = wfc.getMessageByUid(messageUid);
+                if (msg != null && msg.conversation.equal(currentConversationInfo.conversation)) {
+                    let lastTimestamp = 0;
+                    const newList: Message[] = [];
+                    const oldList = conversationState.currentConversationMessageList;
+                    for (let i = 0; i < oldList.length; i++) {
+                        const m = oldList[i]
+                        if (eq(m.messageUid, messageUid)) {
+                            const newMsg = wfc.getMessageByUid(messageUid);
+                            if (newMsg != null) {
+                                this._patchMessage(newMsg, lastTimestamp);
+                                newList.push(newMsg);
+                            }
+                        } else {
+                            lastTimestamp = m.timestamp;
+                            newList.push(m);
+                        }
+                    }
+                    conversationState.currentConversationMessageList = newList;
+                }
+            }
+        });
+
+        wfc.eventEmitter.on(EventType.UserOnlineEvent, (args: Array<any | null>) => {
+            const userOnlineStatus = args[0] as UserOnlineState[];
+            for (let i = 0; i < userOnlineStatus.length; i++) {
+                miscState.userOnlineStateMap.set(userOnlineStatus[i].userId, userOnlineStatus[i]);
+            }
+            // 更新在线状态
+            contactState.friendList = this._patchAndSortUserInfos(contactState.friendList, '', null);
+        })
+
+        // 服务端删除
+        wfc.eventEmitter.on(EventType.MessageDeleted, (args: Array<any | null>) => {
+            const messageUid = stringValue(args[0]);
+            this._reloadConversationByMessageUidIfExist(messageUid);
+            if (conversationState.currentConversationInfo != null) {
+                conversationState.currentConversationMessageList = conversationState.currentConversationMessageList.filter((msg: Message): boolean => !eq(msg.messageUid, messageUid))
+            }
+        });
+
+        // 本地删除
+        wfc.eventEmitter.on(EventType.DeleteMessage, (args: Array<any | null>) => {
+            const messageId = numberValue(args[0]);
+            this._reloadConversationByMessageIdIfExist(messageId);
+            if (conversationState.currentConversationInfo != null) {
+                conversationState.currentConversationMessageList = conversationState.currentConversationMessageList.filter((msg: Message): boolean => msg.messageId != messageId)
+            }
+        });
+
+        wfc.eventEmitter.on(EventType.SendMessage, (args: Array<any | null>) => {
+            const message = args[0] as Message;
+            // 删除频道，或者从频道会话切到其他会话时，会发送一条离开频道的消息
+            if (message.messageContent instanceof LeaveChannelChatMessageContent) {
+                return;
+            }
+            this._reloadConversation(message.conversation, true);
+            if (!this._isDisplayMessage(message)) {
+                return;
+            }
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo == null || !message.conversation.equal(currentConversationInfo.conversation)) {
+                console.log('not current conv')
+                return;
+            }
+            const index = conversationState.currentConversationMessageList.findIndex((m: Message): boolean => m.messageId == message.messageId);
+            if (index != -1) {
+                return;
+            }
+            const length = conversationState.currentConversationMessageList.length;
+            let lastTimestamp = 0;
+            if (length > 0) {
+                lastTimestamp = conversationState.currentConversationMessageList[length - 1].timestamp;
+            }
+            this._patchMessage(message, lastTimestamp)
+
+            conversationState.currentConversationMessageList.push(message);
+        });
+
+        wfc.eventEmitter.on(EventType.MessageStatusUpdate, (args: Array<any | null>) => {
+            const message = args[0] as Message;
+            if (!this._isDisplayMessage(message)) {
+                return;
+            }
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo == null || !message.conversation.equal(currentConversationInfo.conversation)) {
+                return;
+            }
+
+            const index = conversationState.currentConversationMessageList.findIndex((m: Message): boolean => m.messageId == message.messageId);
+            if (index < 0) {
+                return;
+            }
+            this._patchMessage(message, 0);
+            conversationState.currentConversationMessageList.splice(index, 1, message);
+
+            const lastMessage = currentConversationInfo.lastMessage
+            if (lastMessage != null && lastMessage.messageId == message.messageId) {
+                currentConversationInfo.lastMessage = message;
+            }
+        });
+
+        wfc.eventEmitter.on(EventType.MessageRead, (args: Array<any | null>) => {
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo != null) {
+                conversationState.currentConversationRead = wfc.getConversationRead(currentConversationInfo.conversation);
+            }
+        });
+
+        if (wfc.getConnectionStatus() == ConnectionStatus.ConnectionStatusConnected) {
+            this._loadDefaultData();
+        }
+        miscState.connectionStatus = wfc.getConnectionStatus();
+    }
+
+    private _streamIdOf(content: MessageContent): string {
+        // StreamingTextGenerating/Generated 都有 streamId 字段
+        const payload = content.encode()
+        return payload.content
+    }
+
+    _loadDefaultData(): void {
+        console.log('store.uts', '_loadDefaultData');
+        this._loadFavGroupList();
+        this._loadChannelList();
+        this._loadFriendList();
+        this._loadFavContactList();
+        this._loadFriendRequest();
+        this._loadSelfUserInfo();
+        this._loadDefaultConversationList();
+        this._loadUserLocalSettings();
+        conversationState.isMessageReceiptEnable = wfc.isReceiptEnabled() && wfc.isUserReceiptEnabled();
+        if (conversationState.currentConversationInfo != null) {
+            this._loadCurrentConversationMessages();
+        }
+    }
+
+    // conversation actions
+
+    _isDisplayMessage(message: Message): boolean {
+        return message.messageId != 0 || message.messageContent.type == MessageContentType.Streaming_Text_Generating;
+    }
+
+    _loadDefaultConversationList(): void {
+        this._loadConversationList([0, 1, 3], [0])
+    }
+
+    _loadConversationList(conversationTypes: number[] = [0, 1, 3], lines: number[] = [0]): void {
+        const conversationList = wfc.getConversationList(conversationTypes, lines);
+        const toLoadUserIdSet = new Set<string>();
+        const toLoadGroupIds: string[] = [];
+        console.log('_loadConversationList size', conversationList.length);
+        for (let i = 0; i < conversationList.length; i++) {
+            const info = conversationList[i]
+            if (info.conversation.type == ConversationType.Single) {
+                toLoadUserIdSet.add(info.conversation.target)
+                const lastMessage = info.lastMessage
+                if (lastMessage != null) {
+                    toLoadUserIdSet.add(lastMessage.from);
+                }
+            } else if (info.conversation.type == ConversationType.Group) {
+                toLoadGroupIds.push(info.conversation.target)
+                const lastMessage = info.lastMessage
+                if (lastMessage != null) {
+                    toLoadUserIdSet.add(lastMessage.from);
+                }
+            }
+        }
+        const userInfoMap = new Map<string, UserInfo>();
+        const groupInfoMap = new Map<string, GroupInfo>();
+        const toLoadUserIds: string[] = [];
+        toLoadUserIdSet.forEach((uid: string) => {
+            toLoadUserIds.push(uid);
+            userInfoMap.set(uid, new NullUserInfo(uid) as UserInfo);
+        })
+        for (let i = 0; i < toLoadGroupIds.length; i++) {
+            groupInfoMap.set(toLoadGroupIds[i], new NullGroupInfo(toLoadGroupIds[i]) as GroupInfo)
+        }
+
+        const userInfos = wfc.getUserInfos(toLoadUserIds, '')
+        for (let i = 0; i < userInfos.length; i++) {
+            userInfoMap.set(userInfos[i].uid, userInfos[i]);
+        }
+        const groupInfos = wfc.getGroupInfos(toLoadGroupIds, false)
+        for (let i = 0; i < groupInfos.length; i++) {
+            groupInfoMap.set(groupInfos[i].target, groupInfos[i]);
+        }
+
+        for (let i = 0; i < conversationList.length; i++) {
+            const info = conversationList[i]
+            this._patchConversationInfo(info, true, userInfoMap, groupInfoMap);
+            // side effect
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo != null && currentConversationInfo.conversation.equal(info.conversation)) {
+                conversationState.currentConversationInfo = info;
+                this._patchCurrentConversationOnlineStatus();
+            }
+        }
+        conversationState.conversationInfoList = conversationList;
+    }
+
+    _reloadConversation(conversation: Conversation, insertIfNoExist: boolean = true): ConversationInfo {
+        const conversationInfo = wfc.getConversationInfo(conversation);
+        this._patchConversationInfo(conversationInfo, true, null, null);
+
+        const index = conversationState.conversationInfoList.findIndex((info: ConversationInfo): boolean => info.conversation.equal(conversation));
+        if (index >= 0) {
+            conversationState.conversationInfoList.splice(index, 1, conversationInfo);
+        } else {
+            if (insertIfNoExist && gt(conversationInfo.timestamp, 0) && conversation.type != ConversationType.ChatRoom) {
+                conversationState.conversationInfoList.push(conversationInfo);
+            } else {
+                return conversationInfo;
+            }
+        }
+
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversation)) {
+            conversationState.currentConversationInfo = conversationInfo;
+        }
+
+        // sort
+        conversationState.conversationInfoList.sort((a: ConversationInfo, b: ConversationInfo): number => {
+            if ((a.top > 0 && b.top > 0) || (a.top == 0 && b.top == 0)) {
+                return gt(a.timestamp, b.timestamp) ? -1 : 1;
+            } else {
+                if (a.top > 0) {
+                    return -1;
+                } else {
+                    return 1;
+                }
+            }
+        })
+        return conversationInfo;
+    }
+
+    _reloadSingleConversationIfExist(userInfos: UserInfo[]): void {
+        if (userInfos.length > 10) {
+            this._loadDefaultConversationList();
+        } else {
+            for (let i = 0; i < userInfos.length; i++) {
+                const conv = new Conversation(ConversationType.Single, userInfos[i].uid, 0);
+                this._reloadConversation(conv, false);
+            }
+        }
+    }
+
+    _reloadGroupConversationIfExist(groupInfos: GroupInfo[]): void {
+        if (groupInfos.length > 10) {
+            this._loadDefaultConversationList();
+        } else {
+            for (let i = 0; i < groupInfos.length; i++) {
+                const conv = new Conversation(ConversationType.Group, groupInfos[i].target, 0);
+                this._reloadConversation(conv, false);
+            }
+        }
+    }
+
+    _reloadConversationByMessageIdIfExist(messageId: number): void {
+        if (messageId == 0) {
+            return;
+        }
+        let toLoadConversationInfo: ConversationInfo | null = null;
+        for (let i = 0; i < conversationState.conversationInfoList.length; i++) {
+            const info = conversationState.conversationInfoList[i];
+            const lastMessage = info.lastMessage
+            if (lastMessage != null && lastMessage.messageId == messageId) {
+                toLoadConversationInfo = info;
+                break;
+            }
+        }
+
+        if (toLoadConversationInfo != null) {
+            this._reloadConversation(toLoadConversationInfo.conversation, true)
+        }
+    }
+
+    _reloadConversationByMessageUidIfExist(messageUid: string): void {
+        let toLoadConversationInfo: ConversationInfo | null = null;
+        for (let i = 0; i < conversationState.conversationInfoList.length; i++) {
+            const info = conversationState.conversationInfoList[i];
+            const lastMessage = info.lastMessage
+            if (lastMessage != null && eq(lastMessage.messageUid, messageUid)) {
+                toLoadConversationInfo = info;
+                break;
+            }
+        }
+
+        if (toLoadConversationInfo != null) {
+            this._reloadConversation(toLoadConversationInfo.conversation, true)
+        }
+    }
+
+    setCurrentConversation(conversation: Conversation | null): void {
+        if (conversation == null) {
+            this.setCurrentConversationInfo(null)
+            return;
+        }
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo != null && conversation.equal(currentConversationInfo.conversation)) {
+            return;
+        }
+        const convs = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => info.conversation.equal(conversation));
+        let info: ConversationInfo;
+        if (convs.length > 0) {
+            info = convs[0];
+        } else {
+            wfc.setConversationTimestamp(conversation, new Date().getTime());
+            info = this._reloadConversation(conversation, true);
+        }
+        this.setCurrentConversationInfo(info);
+    }
+
+    setCurrentConversationInfo(conversationInfo: ConversationInfo | null): void {
+        if (conversationInfo == null) {
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo != null) {
+                const conversation = currentConversationInfo.conversation;
+                if (conversation.type == ConversationType.Single || conversation.type == ConversationType.Group) {
+                    wfc.unwatchOnlineState(conversation.type, [conversation.target]);
+                } else if (conversation.type == ConversationType.Channel) {
+                    const content = new LeaveChannelChatMessageContent();
+                    wfc.sendConversationMessage(conversation, content);
+                } else if (conversation.type == ConversationType.ChatRoom) {
+                    wfc.quitChatroom(conversation.target)
+                }
+            }
+            conversationState.currentConversationInfo = null;
+            conversationState.shouldAutoScrollToBottom = false;
+            conversationState.currentConversationMessageList = [];
+            conversationState.currentConversationOldestMessageId = 0;
+            conversationState.currentConversationOldestMessageUid = '0';
+            conversationState.currentConversationRead = null;
+            conversationState.enableMessageMultiSelection = false;
+
+            return;
+        }
+
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversationInfo.conversation)) {
+            return;
+        }
+
+        const conversation = conversationInfo.conversation;
+        if (conversation.type == ConversationType.Group || (conversation.type == ConversationType.Single && !wfc.isMyFriend(conversation.target))) {
+            wfc.watchOnlineState(conversation.type, [conversation.target], 1000, (states: UserOnlineState[]) => {
+                for (let i = 0; i < states.length; i++) {
+                    miscState.userOnlineStateMap.set(states[i].userId, states[i]);
+                }
+                this._patchCurrentConversationOnlineStatus();
+            }, (err: number) => {
+                console.log('watchOnlineState error', err);
+            })
+        }
+        if (conversation.type == ConversationType.Channel) {
+            const content = new EnterChannelChatMessageContent();
+            wfc.sendConversationMessage(conversation, content);
+        } else if (conversation.type == ConversationType.ChatRoom) {
+            wfc.joinChatroom(conversation.target);
+        }
+        conversationState.currentConversationInfo = conversationInfo;
+        conversationState.shouldAutoScrollToBottom = true;
+        conversationState.currentConversationMessageList = [];
+        conversationState.currentConversationOldestMessageId = 0;
+        conversationState.currentConversationOldestMessageUid = '0';
+        this._loadCurrentConversationMessages();
+
+        conversationState.currentConversationRead = wfc.getConversationRead(conversationInfo.conversation);
+
+        conversationState.enableMessageMultiSelection = false;
+        conversationState.showChannelMenu = false;
+        if (conversation.type == ConversationType.Channel) {
+            const channelInfo = wfc.getChannelInfo(conversation.target, true);
+            if (channelInfo.menus.length > 0) {
+                conversationState.showChannelMenu = true;
+            }
+        } else if (conversation.type == ConversationType.Group) {
+            wfc.getGroupInfo(conversation.target, true);
+        } else if (conversation.type == ConversationType.Single) {
+            wfc.getUserInfo(conversation.target, true);
+        }
+        conversationState.quotedMessage = null;
+        conversationState.currentVoiceMessage = null;
+
+        if (conversationState.inputClearTimer != 0) {
+            clearTimeout(conversationState.inputClearTimer);
+            conversationState.inputClearTimer = 0;
+        }
+        conversationState.inputtingUser = null;
+
+        pickState.messages = [];
+    }
+
+    quitGroup(groupId: string): void {
+        wfc.quitGroup(groupId, [0], null, () => {
+            this.setCurrentConversationInfo(null)
+            const conversation = new Conversation(ConversationType.Group, groupId, 0);
+            conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+        }, (err: number) => {
+            console.log('quit group error', err)
+        })
+    }
+
+    dismissGroup(groupId: string): void {
+        wfc.dismissGroup(groupId, [0], null, () => {
+            this.setCurrentConversationInfo(null)
+            const conversation = new Conversation(ConversationType.Group, groupId, 0);
+            conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+        }, (err: number) => {
+            console.log('dismiss group error', err)
+        })
+    }
+
+    subscribeChannel(channelId: string, subscribe: boolean): void {
+        wfc.listenChannel(channelId, subscribe, () => {
+        }, (err: number) => {
+            console.log('unsubscribe channel error', err)
+        })
+    }
+
+    toggleMessageMultiSelection(message: Message | null): void {
+        conversationState.enableMessageMultiSelection = !conversationState.enableMessageMultiSelection;
+        pickState.messages = [];
+        if (conversationState.enableMessageMultiSelection && message != null) {
+            pickState.messages.push(message);
+        }
+    }
+
+    toggleChannelMenu(toggle: boolean): void {
+        conversationState.showChannelMenu = toggle;
+    }
+
+    selectOrDeselectMessage(message: Message): void {
+        const index = pickState.messages.findIndex((m: Message): boolean => m.messageId == message.messageId);
+        if (index >= 0) {
+            pickState.messages.splice(index, 1);
+        } else {
+            pickState.messages.push(message);
+        }
+    }
+
+    deleteSelectedMessages(): void {
+        conversationState.enableMessageMultiSelection = false;
+        if (pickState.messages.length < 1) {
+            return;
+        }
+        pickState.messages.sort((m1: Message, m2: Message): number => m1.messageId - m2.messageId);
+        for (let i = 0; i < pickState.messages.length; i++) {
+            wfc.deleteMessage(pickState.messages[i].messageId);
+        }
+        pickState.messages = [];
+    }
+
+    forwardMessage(forwardType: number, targetConversations: Conversation[], messages: Message[], extraMessageText: string = ''): void {
+        for (let i = 0; i < targetConversations.length; i++) {
+            const conversation = targetConversations[i]
+            if (forwardType == ForwardType.NORMAL || forwardType == ForwardType.ONE_BY_ONE) {
+                for (let j = 0; j < messages.length; j++) {
+                    const message = messages[j]
+                    const content = message.messageContent
+                    if (content instanceof ArticlesMessageContent) {
+                        const linkContents = (content as ArticlesMessageContent).toLinkMessageContent();
+                        for (let k = 0; k < linkContents.length; k++) {
+                            wfc.sendConversationMessage(conversation, linkContents[k]);
+                        }
+                    } else {
+                        message.messageContent = this._filterForwardMessageContent(message)
+                        wfc.sendConversationMessage(conversation, message.messageContent);
+                    }
+                }
+            } else {
+                // 合并转发
+                const compositeMessageContent = new CompositeMessageContent();
+                let title = '';
+                const msgConversation = messages[0].conversation;
+                if (msgConversation.type == ConversationType.Single) {
+                    const users = this.getUserInfos([wfc.getUserId(), msgConversation.target], '');
+                    if (users.length >= 2) {
+                        title = users[0]._displayName + '和' + users[1]._displayName + '的聊天记录';
+                    }
+                } else {
+                    title = '群的聊天记录';
+                }
+                compositeMessageContent.title = title;
+                const msgs: Message[] = []
+                for (let j = 0; j < messages.length; j++) {
+                    const m = messages[j]
+                    m.messageContent = this._filterForwardMessageContent(m)
+                    msgs.push(m)
+                }
+                compositeMessageContent.setMessages(msgs);
+
+                wfc.sendConversationMessage(conversation, compositeMessageContent);
+            }
+
+            if (extraMessageText != '') {
+                const textMessage = new TextMessageContent(extraMessageText)
+                wfc.sendConversationMessage(conversation, textMessage);
+            }
+        }
+    }
+
+    forwardByCreateConversation(forwardType: number, users: UserInfo[], messages: Message[], extraMessageText: string = ''): void {
+        this.createConversation(users,
+            (conversation: Conversation) => {
+                this.forwardMessage(forwardType, [conversation], messages, extraMessageText)
+            },
+            (err: number) => {
+                console.error('createConversation error', err)
+            })
+    }
+
+    setShouldAutoScrollToBottom(scroll: boolean): void {
+        conversationState.shouldAutoScrollToBottom = scroll;
+    }
+
+    /**
+     * @param src 媒体url
+     * @param thumbUrl 缩略图url
+     * @param thumb base64格式的缩略图，但不包含'data:image/png;base64,'
+     */
+    previewMedia(src: string, thumbUrl: string, thumb: string, autoplay: boolean = true): void {
+        conversationState.previewMediaItems = [];
+        conversationState.previewMediaItems.push(new PreviewMediaItem(src, thumbUrl != '' ? thumbUrl : 'data:image/png;base64,' + thumb, autoplay));
+        conversationState.previewMediaIndex = 0;
+    }
+
+    previewMedias(mediaItems: PreviewMediaItem[], index: number): void {
+        conversationState.previewMediaItems = mediaItems.slice(0);
+        conversationState.previewMediaIndex = index;
+    }
+
+    playVoice(message: Message | null): void {
+        const currentVoiceMessage = conversationState.currentVoiceMessage
+        if (currentVoiceMessage != null) {
+            const content = currentVoiceMessage.messageContent
+            if (content instanceof SoundMessageContent) {
+                (content as SoundMessageContent)._isPlaying = false;
+            }
+        }
+        conversationState.currentVoiceMessage = message;
+    }
+
+    /**
+     * @param continuous true，预览周围的媒体消息；false，只预览传入的那条媒体消息
+     */
+    previewMessage(message: Message, continuous: boolean): void {
+        conversationState.previewMediaItems = [];
+        conversationState.previewMediaIndex = 0;
+        if (continuous && conversationState.currentConversationMessageList.length > 0) {
+            const mediaMsgs = conversationState.currentConversationMessageList.filter((m: Message): boolean => m.messageContent.type == MessageContentType.Image || m.messageContent.type == MessageContentType.Video)
+            for (let i = 0; i < mediaMsgs.length; i++) {
+                const msg = mediaMsgs[i];
+                if (msg.messageId == message.messageId) {
+                    conversationState.previewMediaIndex = i;
+                }
+                conversationState.previewMediaItems.push(this._mediaItemOfMessage(msg));
+            }
+        } else {
+            conversationState.previewMediaIndex = 0;
+            conversationState.previewMediaItems.push(this._mediaItemOfMessage(message));
+        }
+    }
+
+    private _mediaItemOfMessage(msg: Message): PreviewMediaItem {
+        let remotePath = ''
+        let thumbnail = ''
+        const content = msg.messageContent
+        if (content instanceof ImageMessageContent) {
+            remotePath = (content as ImageMessageContent).remotePath
+            thumbnail = (content as ImageMessageContent).thumbnail
+        } else if (content instanceof VideoMessageContent) {
+            remotePath = (content as VideoMessageContent).remotePath
+            thumbnail = (content as VideoMessageContent).thumbnail
+        }
+        return new PreviewMediaItem(remotePath, 'data:image/png;base64,' + thumbnail, true)
+    }
+
+    previewCompositeMessage(compositeMessage: Message, focusMessageUid: string): void {
+        conversationState.previewMediaItems = [];
+        conversationState.previewMediaIndex = 0;
+
+        const content = compositeMessage.messageContent
+        if (!(content instanceof CompositeMessageContent)) {
+            return
+        }
+        const messages = (content as CompositeMessageContent).messages
+        const mediaMsgs = messages.filter((m: Message): boolean => m.messageContent.type == MessageContentType.Image || m.messageContent.type == MessageContentType.Video)
+        for (let i = 0; i < mediaMsgs.length; i++) {
+            const msg = mediaMsgs[i];
+            if (eq(msg.messageUid, focusMessageUid)) {
+                conversationState.previewMediaIndex = i;
+            }
+            conversationState.previewMediaItems.push(this._mediaItemOfMessage(msg));
+        }
+    }
+
+    /**
+     * 发送文件消息
+     * @param conversation 会话
+     * @param filePath 本地文件路径或 http 开头的远程地址
+     * @param fileName 文件名，为空时从路径中截取
+     * @param fileSize 文件大小，可传 0
+     */
+    sendFile(conversation: Conversation, filePath: string, fileName: string = '', fileSize: number = 0): boolean {
+        if (fileSize > 100 * 1024 * 1024) {
+            if (!wfc.isSupportBigFilesUpload() || conversation.type == ConversationType.SecretChat) {
+                console.log('file too big, and not support upload big file')
+                return true;
+            }
+        }
+        let fileOrLocalPath = '';
+        let remotePath = '';
+        if (!filePath.startsWith('http')) {
+            fileOrLocalPath = filePath;
+        } else {
+            remotePath = filePath;
+        }
+        const name = fileName != '' ? fileName : filePath.substring(filePath.lastIndexOf('/') + 1)
+
+        const mediaType = getMediaType(name.split('.').pop() ?? '');
+        let messageContent: MessageContent
+        if (mediaType == 'pic') {
+            messageContent = new ImageMessageContent(fileOrLocalPath, remotePath, '');
+        } else if (mediaType == 'video') {
+            messageContent = new VideoMessageContent(fileOrLocalPath, remotePath, '', 0);
+        } else {
+            messageContent = new FileMessageContent(fileOrLocalPath, remotePath, name, fileSize);
+        }
+        const msg = new Message(conversation, messageContent);
+        wfc.sendMessage(msg,
+            (messageId: number, timestamp: number) => {
+                console.log('sf, pr', messageId)
+            },
+            (progress: number, total: number) => {
+                const sm = conversationState.sendingMessages.find((e: MediaProgress): boolean => e.messageId == msg.messageId);
+                if (sm != null) {
+                    sm.progress = progress;
+                    sm.total = total;
+                } else {
+                    conversationState.sendingMessages.push(new MediaProgress(msg.messageId, progress, total));
+                }
+            },
+            (messageUid: string, timestamp: number) => {
+                console.log('sf s', messageUid)
+                conversationState.sendingMessages = conversationState.sendingMessages.filter((e: MediaProgress): boolean => e.messageId != msg.messageId);
+            },
+            (error: number) => {
+                console.log('sf e', error)
+                conversationState.sendingMessages = conversationState.sendingMessages.filter((e: MediaProgress): boolean => e.messageId != msg.messageId);
+            }
+        );
+        return false;
+    }
+
+    quoteMessage(message: Message | null): void {
+        conversationState.quotedMessage = message;
+    }
+
+    getConversationInfo(conversation: Conversation): ConversationInfo {
+        const info = wfc.getConversationInfo(conversation);
+        this._patchConversationInfo(info, false, null, null);
+        return info;
+    }
+
+    /**
+     * 获取会话消息
+     */
+    getMessages(conversation: Conversation, fromIndex: number = 0, before: boolean = true, withUser: string = '', callback: ((msgs: Message[]) => void) | null = null): void {
+        wfc.getMessagesV2(conversation, fromIndex, before, 20, withUser, (msgs: Message[]) => {
+            for (let i = 0; i < msgs.length; i++) {
+                this._patchMessage(msgs[i], 0);
+            }
+            callback?.(msgs);
+        }, (err: number) => {
+            console.error('getMessageV2 error', err)
+            callback?.([]);
+        });
+    }
+
+    getMessageInTypes(conversation: Conversation, contentTypes: number[], timestamp: number, before: boolean = true, withUser: string = '', callback: ((msgs: Message[]) => void) | null = null): void {
+        // 原实现走 getMessagesByTimestampV2，当前 UTS 插件未提供该接口，用类型搜索接口替代
+        const msgs = wfc.searchMessageByTypes(conversation, '', contentTypes, true, 20, 0, withUser);
+        for (let i = 0; i < msgs.length; i++) {
+            this._patchMessage(msgs[i], 0);
+        }
+        callback?.(msgs);
+    }
+
+    _loadCurrentConversationMessages(): void {
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo == null) {
+            return;
+        }
+        const conversation = currentConversationInfo.conversation;
+        wfc.getMessagesV2(conversation, 0, true, 20, '', (msgs: Message[]) => {
+            conversationState.currentConversationMessageList = msgs;
+            this._patchCurrentConversationMessages();
+            if (msgs.length > 0) {
+                conversationState.currentConversationOldestMessageId = msgs[0].messageId;
+            }
+            for (let i = 0; i < msgs.length; i++) {
+                if (gt(msgs[i].messageUid, 0)) {
+                    conversationState.currentConversationOldestMessageUid = msgs[0].messageUid;
+                    break;
+                }
+            }
+        }, (err: number) => {
+            console.error('_loadCurrentConversationMessages error', err);
+        });
+    }
+
+    _patchCurrentConversationMessages(): void {
+        let lastTimestamp = 0;
+        const msgs = conversationState.currentConversationMessageList;
+        for (let i = 0; i < msgs.length; i++) {
+            this._patchMessage(msgs[i], lastTimestamp);
+            lastTimestamp = msgs[i].timestamp;
+        }
+    }
+
+    _onloadConversationMessages(conversation: Conversation, messages: Message[]): boolean {
+        if (messages.length == 0) {
+            return false;
+        }
+        let loadNewMsg = false;
+        let lastTimestamp = 0;
+        const newMsgs: Message[] = [];
+        for (let i = 0; i < messages.length; i++) {
+            const m = messages[i]
+            const index = conversationState.currentConversationMessageList.findIndex((cm: Message): boolean => cm.messageId == m.messageId)
+            if (index == -1) {
+                this._patchMessage(m, lastTimestamp);
+                lastTimestamp = m.timestamp;
+                newMsgs.push(m);
+                loadNewMsg = true;
+            }
+        }
+        conversationState.currentConversationMessageList = newMsgs.concat(conversationState.currentConversationMessageList);
+        return loadNewMsg;
+    }
+
+    loadConversationHistoryMessages(loadedCB: () => void, completeCB: () => void): void {
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo == null) {
+            return;
+        }
+        const conversation = currentConversationInfo.conversation;
+        const loadRemoteHistoryMessageFunc = () => {
+            wfc.loadRemoteConversationMessages(conversation, [], conversationState.currentConversationOldestMessageUid, 20, (msgs: Message[]) => {
+                console.log('loadRemoteConversationMessages response', msgs.length);
+                if (msgs.length == 0) {
+                    completeCB();
+                } else {
+                    // 可能拉回来的时候，本地已经切换会话了
+                    const nowConversationInfo = conversationState.currentConversationInfo
+                    if (nowConversationInfo != null && conversation.equal(nowConversationInfo.conversation)) {
+                        const filteredMsgs = msgs.filter((m: Message): boolean => {
+                            return m.messageId != 0 && conversationState.currentConversationMessageList.findIndex((cm: Message): boolean => eq(cm.messageUid, m.messageUid)) == -1
+                        })
+                        if (filteredMsgs.length == 0) {
+                            completeCB()
+                            return;
+                        }
+
+                        conversationState.currentConversationOldestMessageUid = filteredMsgs[0].messageUid;
+                        this._onloadConversationMessages(conversation, filteredMsgs);
+                        loadedCB();
+                    }
+                    if (nowConversationInfo != null && nowConversationInfo.lastMessage == null) {
+                        this._reloadConversation(conversation, true);
+                    }
+                }
+            },
+                (error: number) => {
+                    completeCB();
+                });
+        }
+
+        wfc.getMessagesV2(conversation, conversationState.currentConversationOldestMessageId, true, 20, '', (lmsgs: Message[]) => {
+            if (lmsgs.length > 0) {
+                const nowConversationInfo = conversationState.currentConversationInfo
+                if (nowConversationInfo == null || !conversation.equal(nowConversationInfo.conversation)) {
+                    return;
+                }
+                conversationState.currentConversationOldestMessageId = lmsgs[0].messageId;
+                if (gt(lmsgs[0].messageUid, 0)) {
+                    conversationState.currentConversationOldestMessageUid = lmsgs[0].messageUid;
+                }
+                const loadNewMsg = this._onloadConversationMessages(conversation, lmsgs)
+                if (!loadNewMsg) {
+                    loadRemoteHistoryMessageFunc();
+                } else {
+                    setTimeout(() => {
+                        loadedCB()
+                    }, 200)
+                }
+            } else {
+                loadRemoteHistoryMessageFunc();
+            }
+        }, (err: number) => {
+            completeCB();
+        });
+    }
+
+    setConversationTop(conversation: Conversation, top: number): void {
+        wfc.setConversationTop(conversation, top,
+            () => {
+                this._reloadConversation(conversation, true);
+            },
+            (err: number) => {
+                console.log('setConversationTop error', err)
+            });
+    }
+
+    setConversationSilent(conversation: Conversation, silent: boolean): void {
+        wfc.setConversationSlient(conversation, silent,
+            () => {
+                this._reloadConversation(conversation, true);
+            },
+            (err: number) => {
+                console.log('setConversationSilent error', err)
+            });
+    }
+
+    removeConversation(conversation: Conversation): void {
+        wfc.removeConversation(conversation, false);
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversation)) {
+            this.setCurrentConversationInfo(null);
+        }
+        conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+    }
+
+    getMessageById(messageId: number): Message | null {
+        const msg = wfc.getMessageById(messageId);
+        if (msg != null) {
+            this._patchMessage(msg, 0);
+        }
+        return msg;
+    }
+
+    getMessageByUid(messageUid: string): Message | null {
+        const msg = wfc.getMessageByUid(messageUid);
+        if (msg != null) {
+            this._patchMessage(msg, 0);
+        }
+        return msg;
+    }
+
+    _patchMessage(m: Message, lastTimestamp: number = 0, userInfoMap: Map<string, UserInfo> | null = null): Message {
+        if (m.conversation.type == ConversationType.Single) {
+            const cached = userInfoMap?.get(m.from)
+            m._from = cached ?? wfc.getUserInfo(m.from, false, '');
+        }
+        if (m._from == null) {
+            m._from = wfc.getUserInfo(m.from, false, m.conversation.type == ConversationType.Group ? m.conversation.target : '');
+        }
+        const from = m._from!
+        if (m.conversation.type == ConversationType.Group) {
+            from._displayName = wfc.getGroupMemberDisplayNameEx(from);
+        } else {
+            from._displayName = wfc.getUserDisplayNameEx(from);
+        }
+        if (lastTimestamp > 0 && m.timestamp - lastTimestamp > 5 * 60 * 1000) {
+            m._showTime = true;
+        }
+        m._timeStr = timeFormat(m.timestamp)
+
+        if (m.messageContent instanceof CompositeMessageContent) {
+            this._patchCompositeMessageContent(m.messageContent as CompositeMessageContent);
+        }
+
+        return m;
+    }
+
+    _patchCompositeMessageContent(compositeMessageContent: CompositeMessageContent): void {
+        const messages = compositeMessageContent.messages;
+        for (let i = 0; i < messages.length; i++) {
+            this._patchMessage(messages[i], 0)
+        }
+    }
+
+    _patchConversationInfo(info: ConversationInfo, patchLastMessage: boolean = true, userInfoMap: Map<string, UserInfo> | null = null, groupInfoMap: Map<string, GroupInfo> | null = null): ConversationInfo {
+        const conversation = info.conversation
+        if (conversation.type == ConversationType.Single) {
+            const userInfo = userInfoMap?.get(conversation.target) ?? wfc.getUserInfo(conversation.target, false);
+            const target = new ConversationTarget();
+            target.target = userInfo.uid;
+            target.name = userInfo.name;
+            target.portrait = userInfo.portrait;
+            target._displayName = wfc.getUserDisplayNameEx(userInfo);
+            conversation._target = target;
+        } else if (conversation.type == ConversationType.Group) {
+            const groupInfo = groupInfoMap?.get(conversation.target) ?? wfc.getGroupInfo(conversation.target, false);
+            const target = new ConversationTarget();
+            target.target = groupInfo.target;
+            target.name = groupInfo.name;
+            target.remark = groupInfo.remark;
+            target.portrait = groupInfo.portrait;
+            target.memberCount = groupInfo.memberCount;
+            target._isFav = wfc.isFavGroup(conversation.target);
+            target._displayName = groupInfo.remark != '' ? groupInfo.remark : groupInfo.name;
+            conversation._target = target;
+        } else if (conversation.type == ConversationType.Channel) {
+            const channelInfo = wfc.getChannelInfo(conversation.target, false);
+            const target = new ConversationTarget();
+            target.target = channelInfo.channelId;
+            target.name = channelInfo.name;
+            target.portrait = channelInfo.portrait;
+            target._displayName = channelInfo.name;
+            conversation._target = target;
+        } else if (conversation.type == ConversationType.ChatRoom) {
+            wfc.getChatroomInfo(conversation.target, 0, (chatRoomInfo) => {
+                const target = new ConversationTarget();
+                target.target = chatRoomInfo.chatRoomId;
+                target.name = chatRoomInfo.title;
+                target.portrait = chatRoomInfo.portrait;
+                target._displayName = chatRoomInfo.title;
+                conversation._target = target;
+            }, (err: number) => {
+                console.log('get chatRoomInfo error', err);
+                conversation._target = new ConversationTarget();
+            });
+        }
+        if (gt(info.timestamp, 0)) {
+            info._timeStr = dateFormat(info.timestamp);
+        } else {
+            info._timeStr = '';
+        }
+
+        info._unread = info.unreadCount.unread + info.unreadCount.unreadMention + info.unreadCount.unreadMentionAll;
+
+        return info;
+    }
+
+    addDownloadingMessage(messageId: number): void {
+        conversationState.downloadingMessages.push(new MediaProgress(messageId, 0, Number.MAX_SAFE_INTEGER));
+    }
+
+    removeDownloadingMessage(messageId: number): void {
+        conversationState.downloadingMessages = conversationState.downloadingMessages.filter((dm: MediaProgress): boolean => dm.messageId != messageId);
+    }
+
+    isDownloadingMessage(messageId: number): boolean {
+        return conversationState.downloadingMessages.findIndex((dm: MediaProgress): boolean => dm.messageId == messageId) >= 0;
+    }
+
+    getDownloadingMessageStatus(messageId: number): MediaProgress | null {
+        return conversationState.downloadingMessages.find((dm: MediaProgress): boolean => dm.messageId == messageId);
+    }
+
+    getSendingStatus(messageId: number): MediaProgress | null {
+        return conversationState.sendingMessages.find((e: MediaProgress): boolean => e.messageId == messageId);
+    }
+
+    addFloatingConversation(conversation: Conversation): void {
+        conversationState.floatingConversations.push(conversation);
+    }
+
+    removeFloatingConversation(conversation: Conversation): void {
+        conversationState.floatingConversations = conversationState.floatingConversations.filter((c: Conversation): boolean => !c.equal(conversation))
+    }
+
+    isConversationInCurrentWindow(conversation: Conversation): boolean {
+        if (miscState.isMainWindow) {
+            const index = conversationState.floatingConversations.findIndex((fc: Conversation): boolean => fc.equal(conversation));
+            return index == -1;
+        } else {
+            const currentConversationInfo = conversationState.currentConversationInfo
+            return currentConversationInfo != null && currentConversationInfo.conversation.equal(conversation);
+        }
+    }
+
+    // contact actions
+
+    _loadSelfUserInfo(): void {
+        contactState.selfUserInfo = wfc.getUserInfo(wfc.getUserId(), false);
+    }
+
+    _loadFriendList(): void {
+        const friends = wfc.getMyFriendList(false);
+        const fileHelperIndex = friends.indexOf(Config.FILE_HELPER_ID);
+        if (fileHelperIndex < 0) {
+            friends.push(Config.FILE_HELPER_ID);
+        }
+        if (friends.length > 0) {
+            const friendList = wfc.getUserInfos(friends, '');
+            contactState.friendList = this._patchAndSortUserInfos(friendList, '', null);
+        }
+    }
+
+    getUserOnlineState(userId: string): string {
+        const userOnlineState = miscState.userOnlineStateMap.get(userId);
+        if (userOnlineState != null) {
+            return userOnlineState.desc();
+        }
+        return '';
+    }
+
+    _patchCurrentConversationOnlineStatus(): void {
+        const convInfo = conversationState.currentConversationInfo;
+        if (convInfo != null && convInfo.conversation.type == ConversationType.Single) {
+            convInfo.conversation._targetOnlineStateDesc = this.getUserOnlineState(convInfo.conversation.target);
+        }
+    }
+
+    _loadFriendRequest(): void {
+        let requests = wfc.getIncommingFriendRequest()
+
+        requests.sort((a: FriendRequest, b: FriendRequest): number => numberValue(b.timestamp) - numberValue(a.timestamp))
+        requests = requests.length >= 20 ? requests.slice(0, 20) : requests;
+        const uids: string[] = [];
+        for (let i = 0; i < requests.length; i++) {
+            uids.push(requests[i].target);
+        }
+        const userInfos = wfc.getUserInfos(uids, '')
+        for (let i = 0; i < requests.length; i++) {
+            const fr = requests[i]
+            fr._target = userInfos.find((u: UserInfo): boolean => u.uid == fr.target);
+        }
+
+        contactState.friendRequestList = requests;
+        contactState.unreadFriendRequestCount = wfc.getUnreadFriendRequestCount();
+    }
+
+    _patchAndSortUserInfos(userInfos: UserInfo[], groupId: string = '', compareFn: ((u1: UserInfo, u2: UserInfo) => number) | null = null): UserInfo[] {
+        for (let i = 0; i < userInfos.length; i++) {
+            const u = userInfos[i]
+            if (groupId != '') {
+                u._displayName = wfc.getGroupMemberDisplayNameEx(u);
+            } else {
+                u._displayName = wfc.getUserDisplayNameEx(u);
+            }
+            u._pinyin = pinyinOf(u._displayName);
+            const firstLetter = u._pinyin.length > 0 ? u._pinyin.charAt(0) : '';
+            if (firstLetter >= 'a' && firstLetter <= 'z') {
+                u.__sortPinyin = 'a' + u._pinyin;
+            } else {
+                u.__sortPinyin = 'z' + u._pinyin;
+            }
+            u._firstLetters = pinyinFirstLetters(u._displayName);
+        }
+        let sorted = userInfos
+        if (compareFn != null) {
+            sorted = userInfos.sort(compareFn);
+        } else {
+            sorted = userInfos.sort((a: UserInfo, b: UserInfo): number => a.__sortPinyin == b.__sortPinyin ? 0 : (a.__sortPinyin > b.__sortPinyin ? 1 : -1));
+        }
+
+        for (let i = 0; i < sorted.length; i++) {
+            const u = sorted[i]
+            const uFirstLetter = u.__sortPinyin.length > 1 ? u.__sortPinyin.charAt(1) : '';
+            if (uFirstLetter >= 'a' && uFirstLetter <= 'z') {
+                u._category = uFirstLetter;
+            } else {
+                u._category = '#';
+            }
+            u._userOnlineStatusDesc = this.getUserOnlineState(u.uid);
+        }
+        return sorted;
+    }
+
+    _loadFavGroupList(): void {
+        contactState.favGroupList = wfc.getFavGroupList();
+    }
+
+    _loadChannelList(): void {
+        const channelIds = wfc.getListenedChannels();
+        const channelList: ChannelInfo[] = []
+        for (let i = 0; i < channelIds.length; i++) {
+            const ch = wfc.getChannelInfo(channelIds[i], false)
+            if (!(ch instanceof NullChannelInfo)) {
+                channelList.push(ch)
+            }
+        }
+        contactState.channelList = channelList;
+    }
+
+    _loadFavContactList(): void {
+        const favUserIds = wfc.getFavUsers();
+        if (favUserIds.length > 0) {
+            const favContactList = this.getUserInfos(favUserIds, '')
+            for (let i = 0; i < favContactList.length; i++) {
+                favContactList[i]._category = '☆ 星标朋友';
+            }
+            contactState.favContactList = favContactList;
+        } else {
+            contactState.favContactList = [];
+        }
+    }
+
+    reloadFavGroupList(): void {
+        this._loadFavGroupList();
+    }
+
+    setCurrentFriendRequest(friendRequest: FriendRequest | null): void {
+        contactState.currentFriendRequest = friendRequest;
+        contactState.currentFriend = null;
+        contactState.currentOrganization = null;
+        contactState.currentGroup = null;
+    }
+
+    setCurrentFriend(friend: UserInfo | null): void {
+        contactState.currentFriendRequest = null;
+        contactState.currentFriend = friend;
+        contactState.currentOrganization = null;
+        contactState.currentGroup = null;
+    }
+
+    setCurrentGroup(group: GroupInfo | null): void {
+        contactState.currentFriendRequest = null;
+        contactState.currentFriend = null;
+        contactState.currentOrganization = null;
+        contactState.currentGroup = group;
+    }
+
+    setCurrentOrganization(organization: UTSJSONObject | null): void {
+        contactState.currentFriendRequest = null;
+        contactState.currentFriend = null;
+        contactState.currentGroup = null;
+        contactState.currentOrganization = organization;
+    }
+
+    toggleGroupList(): void {
+        contactState.expandGroup = !contactState.expandGroup;
+    }
+
+    toggleFriendRequestList(): void {
+        contactState.expandFriendRequestList = !contactState.expandFriendRequestList;
+    }
+
+    toggleFriendList(): void {
+        contactState.expandFriendList = !contactState.expandFriendList;
+    }
+
+    setSearchQuery(query: string, searchContact: boolean = true, searchGroup: boolean = true, searchConversation: boolean = true, searchUser: boolean = false): void {
+        searchState.query = query;
+        if (query != '') {
+            console.log('search', query)
+            if (searchContact) {
+                searchState.contactSearchResult = this.filterContact(query);
+            }
+            if (searchGroup) {
+                searchState.groupSearchResult = this.filterGroupConversation(query);
+            }
+            if (searchConversation) {
+                searchState.conversationSearchResult = this.searchConversation(query);
+            }
+            // 默认不搜索新用户
+            if (searchUser) {
+                this.searchUser(query);
+            }
+        } else {
+            searchState.contactSearchResult = [];
+            searchState.conversationSearchResult = [];
+            searchState.groupSearchResult = [];
+            searchState.messageSearchResult = [];
+            searchState.userSearchResult = [];
+        }
+    }
+
+    searchUser(query: string): void {
+        console.log('search user', query)
+        wfc.searchUser(query, SearchType.General, 0, (keyword: string, userInfos: UserInfo[]) => {
+            console.log('search user result', query, userInfos.length)
+            if (searchState.query == keyword) {
+                searchState.userSearchResult = userInfos.filter((u: UserInfo): boolean => !wfc.isMyFriend(u.uid));
+            }
+        }, (err: number) => {
+            console.log('search user error', query, err)
+            if (searchState.query == query) {
+                searchState.userSearchResult = [];
+            }
+        });
+    }
+
+    filterContact(query: string): UserInfo[] {
+        const result = contactState.friendList.filter((u: UserInfo): boolean => {
+            return u._displayName.indexOf(query) > -1 || u._firstLetters.indexOf(query.toLowerCase()) > -1 || u._pinyin.indexOf(query.toLowerCase()) > -1
+        });
+        return result;
+    }
+
+    searchFiles(keyword: string, beforeMessageUid: string, successCB: ((files: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        if (keyword == '') {
+            return;
+        }
+        wfc.searchFiles(keyword, null, '', beforeMessageUid, 20,
+            (files: FileRecord[]) => {
+                this._patchFileRecords(files);
+                successCB?.(files);
+            },
+            (errorCode: number) => {
+                console.log('search file error', errorCode);
+                failCB?.(errorCode);
+            })
+    }
+
+    filterUsers(users: UserInfo[], filter: string): UserInfo[] {
+        if (users.length == 0 || filter.trim() == '') {
+            return users;
+        }
+        const queryPinyin = pinyinOf(filter);
+        const result = users.filter((u: UserInfo): boolean => {
+            return u._displayName.indexOf(filter) > -1 || u._displayName.indexOf(queryPinyin) > -1
+                || u._pinyin.indexOf(filter) > -1 || u._pinyin.indexOf(queryPinyin) > -1
+                || u._firstLetters.indexOf(filter) > -1 || u._firstLetters.indexOf(queryPinyin) > -1
+        });
+        return result;
+    }
+
+    filterFavGroup(query: string): GroupInfo[] {
+        const queryPinyin = pinyinOf(query);
+        const result = contactState.favGroupList.filter((g: GroupInfo): boolean => {
+            const groupNamePinyin = pinyinOf(g.name);
+            return g.name.indexOf(query) > -1 || g.name.indexOf(queryPinyin) > -1
+                || groupNamePinyin.indexOf(query) > -1 || groupNamePinyin.indexOf(queryPinyin) > -1
+        });
+        return result;
+    }
+
+    filterConversation(query: string): ConversationInfo[] {
+        return conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => {
+            const target = info.conversation._target
+            if (target == null) {
+                return false
+            }
+            const displayNamePinyin = pinyinOf(target._displayName);
+            const firstLetters = pinyinFirstLetters(target._displayName);
+            return target._displayName.indexOf(query) > -1 || displayNamePinyin.indexOf(query.toLowerCase()) > -1 || firstLetters.indexOf(query) > -1
+        })
+    }
+
+    filterGroupConversation(query: string): GroupInfo[] {
+        const gsr = wfc.searchGroups(query)
+        const groups: GroupInfo[] = []
+        for (let i = 0; i < gsr.length; i++) {
+            groups.push(gsr[i].groupInfo)
+        }
+        return groups;
+    }
+
+    searchMessage(conversation: Conversation, query: string): Message[] {
+        let msgs = wfc.searchMessage(conversation, query)
+        msgs = msgs.reverse();
+        for (let i = 0; i < msgs.length; i++) {
+            this._patchMessage(msgs[i], 0);
+        }
+        return msgs;
+    }
+
+    searchMessageInTypes(conversation: Conversation, contentTypes: number[], query: string, offset: number): Message[] {
+        const msgs = wfc.searchMessageByTypes(conversation, query, contentTypes, true, 20, offset)
+        for (let i = 0; i < msgs.length; i++) {
+            this._patchMessage(msgs[i], 0);
+        }
+        return msgs;
+    }
+
+    searchConversation(query: string, types: number[] = [0, 1, 2], lines: number[] = [0, 1, 2]): ConversationSearchResult[] {
+        const results = wfc.searchConversation(query, types, lines);
+        for (let i = 0; i < results.length; i++) {
+            const r = results[i]
+            const info = wfc.getConversationInfo(r.conversation);
+            this._patchConversationInfo(info, false, null, null);
+            r._conversationInfo = info;
+        }
+        return results
+    }
+
+    // pick actions
+    pickOrUnpickUser(user: UserInfo): void {
+        const index = pickState.users.findIndex((u: UserInfo): boolean => u.uid == user.uid);
+        if (index >= 0) {
+            pickState.users = pickState.users.filter((u: UserInfo): boolean => user.uid != u.uid)
+        } else {
+            pickState.users.push(user);
+        }
+    }
+
+    isUserPicked(user: UserInfo): boolean {
+        const index = pickState.users.findIndex((u: UserInfo): boolean => u.uid == user.uid);
+        return index >= 0;
+    }
+
+    pickOrUnpickOrganization(org: UTSJSONObject): void {
+        const orgId = org.getNumber('id') ?? 0
+        const index = pickState.organizations.findIndex((o: UTSJSONObject): boolean => (o.getNumber('id') ?? 0) == orgId);
+        if (index >= 0) {
+            pickState.organizations = pickState.organizations.filter((o: UTSJSONObject): boolean => (o.getNumber('id') ?? 0) != orgId)
+        } else {
+            pickState.organizations.push(org);
+        }
+    }
+
+    isOrganizationPicked(org: UTSJSONObject): boolean {
+        const orgId = org.getNumber('id') ?? 0
+        const index = pickState.organizations.findIndex((o: UTSJSONObject): boolean => (o.getNumber('id') ?? 0) == orgId);
+        return index >= 0;
+    }
+
+    pickOrUnpickConversation(conversation: Conversation): void {
+        const index = pickState.conversations.findIndex((c: Conversation): boolean => conversation.equal(c))
+        if (index >= 0) {
+            pickState.conversations = pickState.conversations.filter((c: Conversation): boolean => !conversation.equal(c))
+        } else {
+            pickState.conversations.push(conversation);
+        }
+    }
+
+    // misc actions
+    createConversation(users: UserInfo[], successCB: ((conversation: Conversation) => void) | null, failCB: ((err: number) => void) | null): void {
+        if (users.length == 1) {
+            const conversation = new Conversation(ConversationType.Single, users[0].uid, 0);
+            this.setCurrentConversation(conversation);
+            successCB?.(conversation);
+            return;
+        }
+
+        const selfUserInfo = contactState.selfUserInfo
+        let groupName = selfUserInfo != null ? selfUserInfo.displayName : '';
+        const groupMemberIds: string[] = [];
+        for (let i = 0; i < users.length; i++) {
+            groupMemberIds.push(users[i].uid)
+            if (i <= 3) {
+                groupName += '、' + users[i].displayName;
+            }
+        }
+        groupName = groupName.substring(0, groupName.length - 1);
+
+        wfc.createGroup(null, GroupType.Restricted, groupName, null, null, groupMemberIds, null, [0], null,
+            (groupId: string) => {
+                const conversation = new Conversation(ConversationType.Group, groupId, 0)
+                this.setCurrentConversation(conversation);
+                successCB?.(conversation);
+            }, (error: number) => {
+                console.log('create group error', error)
+                failCB?.(error);
+            });
+    }
+
+    _loadUserLocalSettings(): void {
+        const userId = wfc.getUserId();
+        // 默认允许通知
+        let setting = getItem(userId + '-' + 'notification');
+        miscState.enableNotification = setting == '' || setting == '1'
+        setting = getItem(userId + '-' + 'notificationDetail');
+        miscState.enableNotificationMessageDetail = setting == '' || setting == '1'
+    }
+
+    setEnableNotification(enable: boolean): void {
+        miscState.enableNotification = enable;
+        const selfUserInfo = contactState.selfUserInfo
+        if (selfUserInfo != null) {
+            setItem(selfUserInfo.uid + '-' + 'notification', enable ? '1' : '0')
+        }
+    }
+
+    setEnableNotificationDetail(enable: boolean): void {
+        miscState.enableNotificationMessageDetail = enable;
+        const selfUserInfo = contactState.selfUserInfo
+        if (selfUserInfo != null) {
+            setItem(selfUserInfo.uid + '-' + 'notificationDetail', enable ? '1' : '0')
+        }
+    }
+
+    // clone一下，别影响到好友列表
+    getUserInfos(userIds: string[], groupId: string = ''): UserInfo[] {
+        const userInfos = wfc.getUserInfos(userIds, groupId);
+        const userInfosCloneCopy: UserInfo[] = []
+        for (let i = 0; i < userInfos.length; i++) {
+            userInfosCloneCopy.push(userInfos[i].clone());
+        }
+        return this._patchAndSortUserInfos(userInfosCloneCopy, groupId, null);
+    }
+
+    // clone一下，别影响到好友列表
+    getGroupMemberUserInfos(groupId: string, includeSelf: boolean = true, sortByPinyin: boolean = false): UserInfo[] {
+        const groupMembers = wfc.getGroupMembers(groupId, false);
+        const memberIds: string[] = []
+        for (let i = 0; i < groupMembers.length; i++) {
+            memberIds.push(groupMembers[i].memberId);
+        }
+        let userInfos = wfc.getUserInfos(memberIds, groupId);
+        if (!includeSelf) {
+            userInfos = userInfos.filter((u: UserInfo): boolean => u.uid != wfc.getUserId())
+        }
+        const groupMemberMap = new Map<string, GroupMember>();
+        for (let i = 0; i < groupMembers.length; i++) {
+            groupMemberMap.set(groupMembers[i].memberId, groupMembers[i]);
+        }
+        const userInfosCloneCopy: UserInfo[] = []
+        for (let i = 0; i < userInfos.length; i++) {
+            const info = userInfos[i].clone()
+            info._groupMember = groupMemberMap.get(info.uid);
+            userInfosCloneCopy.push(info);
+        }
+        if (sortByPinyin) {
+            return this._patchAndSortUserInfos(userInfosCloneCopy, groupId, null);
+        } else {
+            const compareFn = (u1: UserInfo, u2: UserInfo): number => {
+                const index1 = memberIds.indexOf(u1.uid)
+                const index2 = memberIds.indexOf(u2.uid)
+                return index1 - index2;
+            }
+            return this._patchAndSortUserInfos(userInfosCloneCopy, groupId, compareFn);
+        }
+    }
+
+    // clone一下，别影响到好友列表
+    getConversationMemberUsrInfos(conversation: Conversation): UserInfo[] {
+        let userInfos: UserInfo[] = [];
+        if (conversation.type == ConversationType.Single) {
+            const selfUserInfo = contactState.selfUserInfo
+            if (selfUserInfo == null || conversation.target != selfUserInfo.uid) {
+                userInfos.push(wfc.getUserInfo(wfc.getUserId(), false));
+            }
+            userInfos.push(wfc.getUserInfo(conversation.target, false));
+            const userInfosCloneCopy: UserInfo[] = []
+            for (let i = 0; i < userInfos.length; i++) {
+                userInfosCloneCopy.push(userInfos[i].clone());
+            }
+            userInfos = this._patchAndSortUserInfos(userInfosCloneCopy, '', null);
+        } else if (conversation.type == ConversationType.Group) {
+            userInfos = this.getGroupMemberUserInfos(conversation.target, true);
+        }
+        return userInfos;
+    }
+
+    getMyFileRecords(beforeUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        if (successCB == null) {
+            return;
+        }
+        wfc.getMyFileRecords(beforeUid, count, (fileRecords: FileRecord[]) => {
+            this._patchFileRecords(fileRecords)
+            successCB(fileRecords);
+        }, failCB)
+    }
+
+    getConversationFileRecords(conversation: Conversation, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        wfc.getConversationFileRecords(conversation, fromUser, beforeMessageUid, count, (fileRecords: FileRecord[]) => {
+            this._patchFileRecords(fileRecords)
+            successCB?.(fileRecords);
+        }, failCB);
+    }
+
+    deleteFriend(target: string): void {
+        wfc.deleteFriend(target, () => {
+            const conv = new Conversation(ConversationType.Single, target, 0);
+            wfc.removeConversation(conv, true);
+            conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conv))
+        }, (err: number) => {
+            console.log('deleteFriend error', err);
+        });
+    }
+
+    _patchFileRecords(fileRecords: FileRecord[]): void {
+        for (let i = 0; i < fileRecords.length; i++) {
+            const fileRecord = fileRecords[i]
+            const conversation = fileRecord.conversation
+            if (conversation == null) {
+                continue
+            }
+            const groupId = conversation.type == ConversationType.Group ? conversation.target : '';
+            if (groupId != '') {
+                fileRecord._userDisplayName = wfc.getGroupMemberDisplayName(groupId, fileRecord.userId);
+            } else {
+                fileRecord._userDisplayName = wfc.getUserDisplayName(fileRecord.userId);
+            }
+            const conversationInfo = wfc.getConversationInfo(conversation);
+            this._patchConversationInfo(conversationInfo, false, null, null);
+
+            const target = conversationInfo.conversation._target
+            if (conversation.type == ConversationType.Single) {
+                fileRecord._conversationDisplayName = '与' + (target != null ? target._displayName : '') + '的聊天';
+            } else {
+                fileRecord._conversationDisplayName = target != null ? target._displayName : '';
+            }
+            if (fileRecord.name.indexOf(FileMessageContent.FILE_NAME_PREFIX) == 0) {
+                fileRecord.name = fileRecord.name.substring(fileRecord.name.indexOf(FileMessageContent.FILE_NAME_PREFIX) + FileMessageContent.FILE_NAME_PREFIX.length);
+            }
+            fileRecord._timeStr = dateFormat(fileRecord.timestamp);
+            fileRecord._sizeStr = humanSize(fileRecord.size)
+            fileRecord._fileIconName = getFiletypeIcon(fileRecord.name.substring(fileRecord.name.lastIndexOf('.')))
+        }
+    }
+
+    clearConversationUnreadStatus(conversation: Conversation): void {
+        const info = wfc.getConversationInfo(conversation);
+        if ((info.unreadCount.unread + info.unreadCount.unreadMention + info.unreadCount.unreadMentionAll) > 0) {
+            wfc.clearConversationUnreadStatus(conversation);
+        }
+    }
+
+    clearAllUnreadStatus(): void {
+        wfc.clearAllUnreadStatus();
+        for (let i = 0; i < conversationState.conversationInfoList.length; i++) {
+            conversationState.conversationInfoList[i].unreadCount = new UnreadCount();
+            conversationState.conversationInfoList[i]._unread = 0;
+        }
+    }
+
+    notify(msg: Message): void {
+        const content = msg.messageContent;
+        if (msg.direction == 0) {
+            return;
+        }
+        if (MessageConfig.getMessageContentPersitFlag(content.type) == PersistFlag.Persist_And_Count) {
+            let tip: string
+            if (msg.status != MessageStatus.AllMentioned && msg.status != MessageStatus.Mentioned) {
+                let silent = false;
+                for (let i = 0; i < conversationState.conversationInfoList.length; i++) {
+                    const info = conversationState.conversationInfoList[i]
+                    if (info.conversation.equal(msg.conversation)) {
+                        silent = info.isSilent;
+                        break;
+                    }
+                }
+                if (silent) {
+                    return;
+                }
+                tip = "新消息来了";
+            } else {
+                tip = "有人@你";
+            }
+
+            wfc.notify(tip, miscState.enableNotificationMessageDetail ? content.digest(msg) : '')
+        }
+    }
+
+    _filterForwardMessageContent(message: Message): MessageContent {
+        let content = message.messageContent
+        if (content instanceof CallStartMessageContent) {
+            content = new TextMessageContent(content.digest(message))
+        } else if (content instanceof SoundMessageContent) {
+            const soundContent = content as SoundMessageContent
+            content = new TextMessageContent(soundContent.digest(message) + ' ' + soundContent.duration + "''");
+        }
+        return content
+    }
+}
+
+function _reset(): void {
+    conversationState._reset();
+    contactState._reset();
+    searchState._reset();
+    pickState._reset();
+    miscState._reset();
+
+    uni.reLaunch({
+        url: '/pages/login/LoginPage'
+    } as ReLaunchOptions);
+}
+
+const store = new Store()
+export default store

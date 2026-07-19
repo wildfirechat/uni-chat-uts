@@ -1,0 +1,46 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from './messageContent.uts'
+import MessageContentType from './messageContentType.uts'
+import MessagePayload from './messagePayload.uts';
+
+export default class LocationMessageContent extends MessageContent {
+    title = '';
+    // base64 encoded, 不包含头部:data:image/png;base64,
+    thumbnail = '';
+    lat = 0;
+    long = 0;
+
+    constructor() {
+        super(MessageContentType.Location);
+    }
+
+    override digest(message: any | null): string {
+        return '位置'
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.title;
+        payload.binaryContent = this.thumbnail;
+        const location = {
+            lat: this.lat,
+            long: this.long
+        } as UTSJSONObject;
+        payload.content = JSON.stringify(location)!;
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.title = payload.searchableContent;
+        this.thumbnail = payload.binaryContent;
+        const location = JSON.parseObject(payload.content);
+        if (location != null) {
+            this.lat = location.getNumber('lat') ?? 0;
+            this.long = location.getNumber('long') ?? 0;
+        }
+    }
+}

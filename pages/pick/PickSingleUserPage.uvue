@@ -1,0 +1,90 @@
+<template>
+    <view class="pick-single-user-container">
+        <view class="input-container">
+            <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery" />
+        </view>
+        <scroll-view class="user-list-container" direction="vertical">
+            <UserListView :users="filteredUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
+                :emit-click-event="true" @userClick="onClickUser" padding-left="20px" />
+        </scroll-view>
+    </view>
+</template>
+
+<script lang="uts">
+import store from "@/store.uts";
+import UserListView from "../user/UserListView.uvue";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { currentPickUserOptions, notifyPickedUser } from "@/common/picker.uts";
+
+export default {
+    name: "PickSingleUserPage",
+    data() {
+        return {
+            filterQuery: '',
+            users: [] as UserInfo[],
+            showCategoryLabel: true,
+        }
+    },
+
+    onLoad(_options: OnLoadOptions) {
+        console.log('PickSingleUserPage onLoad')
+        const options = currentPickUserOptions()
+        if (options != null) {
+            this.users = options.users;
+            this.showCategoryLabel = options.showCategoryLabel;
+        }
+    },
+
+    methods: {
+        onClickUser(user: UserInfo) {
+            console.log('onClick user', user.uid)
+            uni.navigateBack({} as NavigateBackOptions);
+            notifyPickedUser(user);
+        },
+    },
+
+    computed: {
+        filteredUsers(): UserInfo[] {
+            if (this.filterQuery != '') {
+                return store.filterUsers(this.users, this.filterQuery);
+            } else {
+                return this.users;
+            }
+        }
+    },
+
+    components: { UserListView },
+}
+</script>
+
+<style scoped>
+.pick-single-user-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    background-color: #f7f7f7;
+}
+
+.input-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+}
+
+.search-input {
+    height: 25px;
+    margin: 15px 20px 0 15px;
+    flex: 1;
+    border-radius: 3px;
+    border: 1px solid #ededed;
+    background-color: #ffffff;
+    padding-left: 10px;
+}
+
+.user-list-container {
+    flex: 1;
+    margin-top: 10px;
+}
+</style>

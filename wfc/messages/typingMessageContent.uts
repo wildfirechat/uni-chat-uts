@@ -1,0 +1,37 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+
+export default class TypingMessageContent extends MessageContent {
+    static TYPING_TEXT = 0;
+    static TYPING_VOICE = 1;
+    static TYPING_CAMERA = 2;
+    static TYPING_LOCATION = 3;
+    static TYPING_FILE = 4;
+
+    typingType: number = TypingMessageContent.TYPING_TEXT;
+
+    constructor(type: number = 0) {
+        super(MessageContentType.Typing);
+        this.typingType = type;
+    }
+
+    override digest(message: any | null): string {
+        return '';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.typingType.toString();
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.typingType = parseInt(payload.content);
+    }
+}

@@ -1,0 +1,220 @@
+<template>
+    <view class="composite-page">
+        <view v-if="compositeMessage == null" class="loading-container">
+            <text>加载中...</text>
+        </view>
+        <scroll-view v-else class="message-list" direction="vertical">
+            <view v-for="(message, index) in compositeMessages" :key="index" class="message-item">
+                <view class="message-container">
+                    <view class="portrait-container">
+                        <image v-if="shouldShowPortrait(index)" class="portrait" :src="portraitOf(message)" />
+                    </view>
+                    <view class="name-time-content-container">
+                        <view class="name-time-container">
+                            <text class="name">{{ fromNameOf(message) }}</text>
+                            <text class="time">{{ message._timeStr }}</text>
+                        </view>
+                        <view class="content">
+                            <TextMessageContentView :message="message" v-if="message.messageContent.type == 1" />
+                            <ImageMessageContentView :message="message" :is-in-composite-view="true"
+                                @previewCompositeMessage="previewCompositeMessage" v-else-if="message.messageContent.type == 3" />
+                            <FileMessageContentView :message="message" v-else-if="message.messageContent.type == 5" />
+                            <VideoMessageContentView :message="message" :is-in-composite-view="true"
+                                @previewCompositeMessage="previewCompositeMessage" v-else-if="message.messageContent.type == 6" />
+                            <StickerMessageContentView :message="message" v-else-if="message.messageContent.type == 7" />
+                            <CompositeMessageContentView :message="message" v-else-if="message.messageContent.type == 11" />
+                            <UnsupportMessageContentView :message="message"
+                                v-else-if="[2, 10, 400, 408].indexOf(message.messageContent.type) >= 0" />
+                            <UnknownMessageContentView :message="message" v-else />
+                        </view>
+                    </view>
+                </view>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script lang="uts">
+import TextMessageContentView from "@/pages/conversation/message/content/TextMessageContentView.uvue";
+import UnsupportMessageContentView from "@/pages/conversation/message/content/UnsupportMessageContentView.uvue";
+import CompositeMessageContentView from "@/pages/conversation/message/content/CompositeMessageContentView.uvue";
+import ImageMessageContentView from "@/pages/conversation/message/content/ImageMessageContentView.uvue";
+import VideoMessageContentView from "@/pages/conversation/message/content/VideoMessageContentView.uvue";
+import FileMessageContentView from "@/pages/conversation/message/content/FileMessageContentView.uvue";
+import StickerMessageContentView from "@/pages/conversation/message/content/StickerMessageContentView.uvue";
+import UnknownMessageContentView from "@/pages/conversation/message/content/UnknownMessageContentView.uvue";
+import store from "../../../store.uts";
+import Message from "@/wfc/messages/message.uts";
+import CompositeMessageContent from "@/wfc/messages/compositeMessageContent.uts";
+import Config from "@/config.uts";
+import { takePageOptions } from "@/common/nav.uts";
+
+export default {
+    name: "CompositeMessagePage",
+    data() {
+        return {
+            message: null as Message | null,
+            compositeMessage: null as Message | null,
+        }
+    },
+
+    onLoad(_options: OnLoadOptions) {
+        console.log('CompositeMessagePage onLoad')
+        const pageOptions = takePageOptions()
+        if (pageOptions != null && pageOptions instanceof Message) {
+            const message = pageOptions as Message
+            this.message = message;
+            store._patchMessage(message, 0);
+            const content = message.messageContent
+            if (content instanceof CompositeMessageContent && (content as CompositeMessageContent).remotePath != '') {
+                this.loadMediaCompositeMessage(message);
+            } else {
+                this.compositeMessage = message;
+            }
+
+            if (content instanceof CompositeMessageContent) {
+                uni.setNavigationBarTitle({
+                    title: (content as CompositeMessageContent).title
+                } as SetNavigationBarTitleOptions);
+            }
+        }
+    },
+
+    computed: {
+        compositeMessages(): Message[] {
+            const compositeMessage = this.compositeMessage
+            if (compositeMessage == null) {
+                return []
+            }
+            const content = compositeMessage.messageContent
+            if (content instanceof CompositeMessageContent) {
+                return (content as CompositeMessageContent).messages
+            }
+            return []
+        }
+    },
+
+    methods: {
+        shouldShowPortrait(index: number): boolean {
+            const messages = this.compositeMessages
+            if (index == 0) {
+                return true
+            }
+            return messages[index].from != messages[index - 1].from
+        },
+        portraitOf(message: Message): string {
+            const from = message._from
+            const portrait = from != null ? from.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        fromNameOf(message: Message): string {
+            const from = message._from
+            return from != null ? from._displayName : ''
+        },
+        previewCompositeMessage(focusMessageUid: string) {
+            const compositeMessage = this.compositeMessage
+            if (compositeMessage != null) {
+                store.previewCompositeMessage(compositeMessage, focusMessageUid);
+            }
+        },
+        loadMediaCompositeMessage(msg: Message) {
+            const content = msg.messageContent as CompositeMessageContent;
+            uni.request<string>({
+                url: content.remotePath,
+                dataType: 'string',
+                success: (res) => {
+                    const data = res.data
+                    if (data != null) {
+                        content._decodeMessages(data);
+                        store._patchMessage(msg, 0);
+                        this.compositeMessage = msg;
+                        content.loaded = true;
+                    }
+                },
+                fail: (err) => {
+                    console.log('loadMediaCompositeMessage error', err)
+                }
+            } as RequestOptions<string>)
+        }
+    },
+
+    components: {
+        UnknownMessageContentView,
+        CompositeMessageContentView,
+        UnsupportMessageContentView,
+        TextMessageContentView,
+        ImageMessageContentView,
+        VideoMessageContentView,
+        FileMessageContentView,
+        StickerMessageContentView,
+    }
+}
+</script>
+
+<style scoped>
+.composite-page {
+    flex: 1;
+    background-color: #f7f7f7;
+}
+
+.loading-container {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.message-list {
+    width: 100%;
+    flex: 1;
+    padding: 20px 30px;
+}
+
+.message-item {
+    position: relative;
+    padding: 10px 0;
+    border-bottom: 1px solid #f1f1f1;
+}
+
+.message-container {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+}
+
+.name-time-content-container {
+    flex: 1;
+}
+
+.name-time-container {
+    width: 100%;
+    padding: 5px 0;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.name {
+    font-size: 12px;
+    color: #c2c2c2;
+}
+
+.time {
+    font-size: 12px;
+    color: #c2c2c2;
+}
+
+.portrait-container {
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+    margin: 10px;
+}
+
+.portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+</style>

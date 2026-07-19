@@ -1,0 +1,148 @@
+import Config from "../config.uts";
+import AppServerError from "./appServerError.uts";
+import wfc from "../wfc/client/wfc.uts";
+import { getItem, setItem } from "../pages/util/storageHelper.uts";
+
+/**
+ * 登录结果
+ */
+export class LoginResult {
+    userId = ''
+    token = ''
+    register = false
+}
+
+export class AppServerApi {
+
+    requestAuthCode(mobile: string): Promise<UTSJSONObject | null> {
+        return this._post('/send_code', { mobile: mobile } as UTSJSONObject)
+    }
+
+    loginWithPassword(mobile: string, password: string): Promise<LoginResult> {
+        return this._login('/login_pwd', {
+            mobile: mobile,
+            password: password,
+            platform: Config.getWFCPlatform(),
+            clientId: wfc.getClientId()
+        } as UTSJSONObject)
+    }
+
+    loginWithAuthCode(mobile: string, authCode: string): Promise<LoginResult> {
+        return this._login('/login', {
+            mobile: mobile,
+            code: authCode,
+            platform: Config.getWFCPlatform(),
+            clientId: wfc.getClientId()
+        } as UTSJSONObject)
+    }
+
+    changePassword(oldPassword: string, newPassword: string): Promise<UTSJSONObject | null> {
+        return this._post('/change_pwd', {
+            oldPassword: oldPassword,
+            newPassword: newPassword
+        } as UTSJSONObject)
+    }
+
+    getGroupAnnouncement(groupId: string): Promise<UTSJSONObject | null> {
+        return this._post('/get_group_announcement', { groupId: groupId } as UTSJSONObject)
+    }
+
+    updateGroupAnnouncement(author: string, groupId: string, announcement: string): Promise<UTSJSONObject | null> {
+        return this._post('/put_group_announcement', {
+            author: author,
+            groupId: groupId,
+            text: announcement
+        } as UTSJSONObject)
+    }
+
+    private _login(path: string, data: UTSJSONObject): Promise<LoginResult> {
+        return new Promise<LoginResult>((resolve, reject) => {
+            uni.request<UTSJSONObject>({
+                url: Config.APP_SERVER + path,
+                data: data,
+                header: {
+                    'content-type': 'application/json',
+                } as UTSJSONObject,
+                method: 'POST',
+                success: (res) => {
+                    if (res.statusCode == 200) {
+                        const body = res.data
+                        if (body == null) {
+                            reject(new AppServerError(-1, '响应为空'));
+                            return
+                        }
+                        const code = body.getNumber('code') ?? -1
+                        if (code == 0) {
+                            let appAuthToken = res.header.getString('authtoken')
+                            if (appAuthToken == null) {
+                                appAuthToken = res.header.getString('authToken')
+                            }
+                            if (appAuthToken != null) {
+                                setItem('authToken-app', appAuthToken);
+                            }
+                            const result = body.getJSON('result')
+                            const loginResult = new LoginResult()
+                            if (result != null) {
+                                loginResult.userId = result.getString('userId') ?? ''
+                                loginResult.token = result.getString('token') ?? ''
+                                loginResult.register = result.getBoolean('register') ?? false
+                            }
+                            resolve(loginResult);
+                        } else {
+                            reject(new AppServerError(code, body.getString('message') ?? ''));
+                        }
+                    } else {
+                        reject(new AppServerError(-1, 'request error, status code: ' + res.statusCode));
+                    }
+                },
+                fail: (err) => {
+                    console.log('login request fail', err);
+                    reject(new AppServerError(-1, 'request error: ' + err.errMsg));
+                }
+            } as RequestOptions<UTSJSONObject>);
+        })
+    }
+
+    /**
+     * 通用 post，resolve 的是 response.data.result
+     */
+    _post(path: string, data: UTSJSONObject): Promise<UTSJSONObject | null> {
+        return new Promise<UTSJSONObject | null>((resolve, reject) => {
+            const url = Config.APP_SERVER + path;
+            console.log('_post', url);
+            uni.request<UTSJSONObject>({
+                url: url,
+                data: data,
+                header: {
+                    'content-type': 'application/json',
+                    'authToken': getItem('authToken-app'),
+                } as UTSJSONObject,
+                method: 'POST',
+                success: (res) => {
+                    if (res.statusCode == 200) {
+                        const body = res.data
+                        if (body == null) {
+                            resolve(null);
+                            return
+                        }
+                        const code = body.getNumber('code') ?? -1
+                        if (code == 0) {
+                            resolve(body.getJSON('result'));
+                        } else {
+                            reject(new AppServerError(code, body.getString('message') ?? ''))
+                        }
+                    } else {
+                        reject(new AppServerError(-1, 'request error, status code: ' + res.statusCode))
+                    }
+                },
+                fail: (err) => {
+                    console.log('_post fail', err);
+                    reject(new AppServerError(-1, 'request error: ' + err.errMsg))
+                }
+            } as RequestOptions<UTSJSONObject>);
+        });
+    }
+}
+
+const appServerApi = new AppServerApi();
+export default appServerApi;

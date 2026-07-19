@@ -1,0 +1,84 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from '../../messages/messageContent.uts';
+import MessageContentType from '../../messages/messageContentType.uts';
+import MessagePayload from '../../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+
+export default class CallStartMessageContent extends MessageContent {
+    callId = '';
+    targetIds: string[] = [];
+    connectTime = 0;
+    endTime = 0;
+    /**
+     * 0, UnKnown, 1, Busy, 2, SignalError, 3, Hangup, 4, MediaError,
+     * 5, RemoteHangup, 6, OpenCameraFailure, 7, Timeout, 8, AcceptByOtherClient
+     */
+    status = 0;
+    audioOnly = false;
+    pin = '';
+    //  0，未知；1，多人版音视频；2，高级版音视频
+    sdkType = 0;
+
+    constructor(mentionedType: number = 0, mentionedTargets: string[] = []) {
+        super(MessageContentType.VOIP_CONTENT_TYPE_START, mentionedType, mentionedTargets);
+    }
+
+    override digest(message: any | null): string {
+        if (this.audioOnly) {
+            return '[语音通话]';
+        } else {
+            return '[视频通话]';
+        }
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.callId;
+        payload.pushContent = '音视频通话邀请';
+
+        const obj = {
+            c: this.connectTime,
+            e: this.endTime,
+            s: this.status,
+            a: this.audioOnly ? 1 : 0,
+            ts: this.targetIds,
+            t: this.targetIds.length > 0 ? this.targetIds[0] : '',
+            p: this.pin,
+            ty: this.sdkType
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+
+        const pushData = {
+            callId: this.callId,
+            audioOnly: this.audioOnly,
+            participants: this.targetIds,
+        } as UTSJSONObject;
+        payload.pushData = JSON.stringify(pushData)!;
+
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.callId = payload.content;
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.connectTime = obj.getNumber('c') ?? 0;
+            this.endTime = obj.getNumber('e') ?? 0;
+            this.status = obj.getNumber('s') ?? 0;
+            this.audioOnly = (obj.getNumber('a') ?? 0) == 1;
+            const ts = obj.getArray<string>('ts')
+            if (ts != null) {
+                this.targetIds = ts;
+            } else {
+                const t = obj.getString('t')
+                this.targetIds = t != null ? [t] : ([] as string[]);
+            }
+            this.pin = obj.getString('p') ?? '';
+            this.sdkType = obj.getNumber('ty') ?? 0;
+        }
+    }
+}

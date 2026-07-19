@@ -1,0 +1,69 @@
+<template>
+    <view class="notification-container">
+        <text class="notification">{{ message.messageContent.digest(message) }}</text>
+        <text v-if="reeditable" class="reedit" @tap="reedit">重新编辑</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import RecallMessageNotification from "@/wfc/messages/notification/recallMessageNotification.uts";
+import Config from "@/config.uts";
+import eventBus from "@/common/eventBus.uts";
+
+export default {
+    name: "RecallNotificationMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true
+        }
+    },
+    computed: {
+        reeditable(): boolean {
+            const delta = wfc.getServerDeltaTime();
+            const now = new Date().getTime();
+            const content = this.message.messageContent
+            if (!(content instanceof RecallMessageNotification)) {
+                return false
+            }
+            const recallMessageContent = content as RecallMessageNotification;
+            return recallMessageContent.originalContentType == MessageContentType.Text
+                && recallMessageContent.fromSelf
+                && now - (this.message.timestamp - delta) < Config.RECALL_REEDIT_TIME_LIMIT * 1000;
+        },
+    },
+    methods: {
+        reedit() {
+            const content = this.message.messageContent
+            if (content instanceof RecallMessageNotification) {
+                // 通过 eventBus 通知会话页把原文本填回输入框
+                eventBus.$emit('reeditMessage', (content as RecallMessageNotification).originalSearchableContent)
+            }
+        }
+    },
+}
+</script>
+
+<style scoped>
+.notification-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.notification {
+    color: #b8b8b8;
+    margin: 20px 0;
+    font-size: 14px;
+}
+
+.reedit {
+    margin-left: 10px;
+    font-size: 14px;
+    color: #3B62E0;
+}
+</style>

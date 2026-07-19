@@ -1,28 +1,7 @@
 {
   "name": "uni-chat",
   "version": "1.0.0",
-  "main": "main.js",
   "author": "wfc",
   "license": "MIT",
-  "dependencies": {
-    "anchorme": "^2.1.2",
-    "base64-arraybuffer": "^1.0.2",
-    "emojilib": "^3.0.6",
-    "events": "^3.3.0",
-    "long": "^5.2.0",
-    "mitt": "^3.0.1",
-    "pinia": "^2.0.33",
-    "pinyin": "^4.0.0-alpha.0",
-    "resize-image": "^0.1.0",
-    "segmentit": "^2.0.3",
-    "twemoji": "^14.0.2",
-    "universal-emoji-parser": "1.0.125",
-    "vue": "^3.2.8",
-    "vue-i18n": "^9.9.1"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^1.6.0",
-    "@vue/compiler-sfc": "^3.2.6",
-    "vite": "^2.5.2"
-  }
+  "description": "野火IM uni-app x demo"
 }

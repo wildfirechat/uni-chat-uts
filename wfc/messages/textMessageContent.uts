@@ -1,0 +1,64 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from './messageContent.uts'
+import MessageContentType from './messageContentType.uts';
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+import QuoteInfo from "../model/quoteInfo.uts";
+
+export default class TextMessageContent extends MessageContent {
+    content = '';
+    quoteInfo: QuoteInfo | null = null;
+
+    constructor(content: string, mentionedType: number = 0, mentionedTargets: string[] = []) {
+        super(MessageContentType.Text, mentionedType, mentionedTargets);
+        this.content = content;
+    }
+
+    override digest(message: any | null): string {
+        return this.content;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.content;
+        const quoteInfo = this.quoteInfo
+        if (quoteInfo != null) {
+            const obj = {
+                "quote": quoteInfo.encode()
+            } as UTSJSONObject
+            // JSON.parse 和 JSON.stringify 不能处理 java long，需要把 uid 转为数字形式
+            const orgStr = JSON.stringify(obj)!;
+            const str = orgStr.replace(/"u":"([0-9]+)"/, "\"u\":$1");
+
+            payload.binaryContent = utf8_to_b64(str);
+        }
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.content = payload.searchableContent;
+        if (payload.binaryContent.length > 0) {
+            // JSON.parse 不能处理 java long，先把数字转为字符串
+            let quoteInfoStr = b64_to_utf8(payload.binaryContent)
+            quoteInfoStr = quoteInfoStr.substring(0, quoteInfoStr.lastIndexOf('}') + 1)
+            quoteInfoStr = quoteInfoStr.replace(/"u":([0-9]+),/, '"u":"$1",')
+            const obj = JSON.parseObject(quoteInfoStr)
+            if (obj != null) {
+                const quoteObj = obj.getJSON('quote')
+                if (quoteObj != null) {
+                    const quoteInfo = new QuoteInfo();
+                    quoteInfo.decode(quoteObj);
+                    this.quoteInfo = quoteInfo
+                }
+            }
+        }
+    }
+
+    setQuoteInfo(quoteInfo: QuoteInfo | null): void {
+        this.quoteInfo = quoteInfo;
+    }
+}

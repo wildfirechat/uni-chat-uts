@@ -1,0 +1,77 @@
+<template>
+    <view class="search-user-container">
+        <input class="input" type="text" v-model="keyword" placeholder="搜索" @input="searchUser" />
+        <scroll-view v-if="users.length > 0" class="result" direction="vertical">
+            <text class="category">搜索结果</text>
+            <UserListView :users="users" :show-category-label="false" padding-left="10px" />
+        </scroll-view>
+        <text v-if="keyword != '' && users.length == 0" class="tip">没有搜索到用户</text>
+    </view>
+</template>
+
+<script lang="uts">
+import UserListView from "../user/UserListView.uvue";
+import wfc from "../../wfc/client/wfc.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+import SearchType from "../../wfc/model/searchType.uts";
+
+export default {
+    name: "SearchUserPage",
+    components: { UserListView },
+    data() {
+        return {
+            keyword: '',
+            users: [] as UserInfo[],
+        }
+    },
+    methods: {
+        searchUser() {
+            if (this.keyword.trim() == '') {
+                this.users = [];
+                return;
+            }
+            console.log('search user', this.keyword);
+            wfc.searchUser(this.keyword, SearchType.General, 0, (keyword: string, users: UserInfo[]) => {
+                console.log('searchUser success', keyword, users.length)
+                if (keyword == this.keyword) {
+                    this.users = users;
+                }
+            }, (err: number) => {
+                console.log('searchUser err', err)
+            });
+        }
+    }
+}
+</script>
+
+<style scoped>
+.search-user-container {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.input {
+    height: 40px;
+    padding: 0 10px;
+    width: 100%;
+    border-bottom: 1px solid #d3d3d3;
+}
+
+.category {
+    padding: 5px 10px;
+    font-size: 13px;
+    color: #888888;
+}
+
+.result {
+    flex: 1;
+}
+
+.tip {
+    padding-top: 40px;
+    text-align: center;
+}
+</style>

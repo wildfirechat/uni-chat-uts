@@ -1,0 +1,166 @@
+<template>
+    <view class="me-container">
+        <view class="user-info" @tap="showUserInfo">
+            <image class="portrait" :src="portrait" @tap.stop="updatePortrait"></image>
+            <text class="name">{{ displayName }}</text>
+        </view>
+        <view class="about" @tap="showAbout">
+            <text>关于</text>
+        </view>
+        <view class="about" @tap="showApiTest">
+            <text>API测试</text>
+        </view>
+        <button class="logout-button" @tap="logout">退出登录</button>
+    </view>
+</template>
+
+<script lang="uts">
+import wfc from "../../wfc/client/wfc.uts";
+import { clear } from "../util/storageHelper.uts";
+import store, { contactState } from "../../store.uts";
+import Config from "../../config.uts";
+import MessageContentMediaType from "../../wfc/messages/messageContentMediaType.uts";
+import ModifyMyInfoType from "../../wfc/model/modifyMyInfoType.uts";
+import ModifyMyInfoEntry from "../../wfc/model/modifyMyInfoEntry.uts";
+
+export default {
+    name: "MePage",
+    computed: {
+        portrait(): string {
+            const user = contactState.selfUserInfo
+            const portrait = user != null ? user.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        displayName(): string {
+            const user = contactState.selfUserInfo
+            return user != null ? user.displayName : ''
+        },
+    },
+    methods: {
+        showUserInfo() {
+            const user = contactState.selfUserInfo
+            if (user == null) {
+                return
+            }
+            store.setCurrentFriend(user)
+            uni.navigateTo({
+                url: '/pages/contact/UserDetailPage',
+                fail: (err) => {
+                    console.log('nav to UserDetailPage err', err);
+                }
+            } as NavigateToOptions)
+        },
+        logout() {
+            wfc.disconnect(true, false);
+            clear();
+            uni.reLaunch({
+                url: '/pages/login/LoginPage'
+            } as ReLaunchOptions);
+        },
+        showAbout() {
+            uni.navigateTo({
+                url: '/pages/misc/WebViewPage?url=https://wildfirechat.cn/',
+                fail: (e) => {
+                    console.log(e)
+                }
+            } as NavigateToOptions);
+        },
+        showApiTest() {
+            uni.navigateTo({
+                url: '/pages/misc/ApiTestPage',
+                fail: (e) => {
+                    console.log(e)
+                }
+            } as NavigateToOptions);
+        },
+
+        updatePortrait() {
+            uni.chooseImage({
+                count: 1,
+                sourceType: ['album', 'camera'],
+                sizeType: ['original', 'compressed'],
+                success: (e) => {
+                    console.log('choose image', e.tempFilePaths.length);
+                    for (let i = 0; i < e.tempFilePaths.length; i++) {
+                        let filePath = e.tempFilePaths[i];
+                        if (filePath.startsWith('file://')) {
+                            filePath = filePath.substring('file://'.length);
+                        }
+                        wfc.uploadMediaFile(filePath, MessageContentMediaType.Portrait, (remoteUrl: string) => {
+                            console.log('upload success', remoteUrl);
+                            wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_Portrait, remoteUrl)], () => {
+                                console.log('modifyMyInfo success', remoteUrl);
+                                const user = contactState.selfUserInfo
+                                if (user != null) {
+                                    user.portrait = remoteUrl;
+                                }
+                                uni.showToast({
+                                    title: '头像更新成功',
+                                    icon: 'none'
+                                } as ShowToastOptions);
+                            }, (error: number) => {
+                                console.error('modifyMyInfo error', error);
+                                uni.showToast({
+                                    title: '头像更新失败: ' + error,
+                                    icon: 'none'
+                                } as ShowToastOptions);
+                            });
+                        }, (error: number) => {
+                            console.error('upload error', error);
+                        }, (current: number, total: number) => {
+                            console.log('upload progress', current, total);
+                        });
+                    }
+                },
+                fail: (err) => {
+                    console.log('choose image fail', err)
+                }
+            } as ChooseImageOptions);
+        }
+    }
+}
+</script>
+
+<style scoped>
+.me-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1;
+    background-color: #fafafa;
+}
+
+.user-info {
+    width: 100%;
+    padding: 10px;
+    height: 80px;
+    display: flex;
+    background-color: #ffffff;
+    align-items: center;
+    flex-direction: row;
+    margin-bottom: 10px;
+}
+
+.portrait {
+    width: 60px;
+    height: 60px;
+    border-radius: 5px;
+}
+
+.name {
+    margin-left: 10px;
+    font-size: 16px;
+}
+
+.about {
+    width: 100%;
+    padding: 15px 10px;
+    background-color: #ffffff;
+}
+
+.logout-button {
+    margin-top: 20px;
+    width: 90%;
+}
+</style>

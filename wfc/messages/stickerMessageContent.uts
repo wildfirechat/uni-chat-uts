@@ -1,0 +1,44 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContentMediaType from "./messageContentMediaType.uts";
+import MediaMessageContent from "./mediaMessageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+export default class StickerMessageContent extends MediaMessageContent {
+    width = 200;
+    height = 200;
+
+    constructor(fileOrLocalPath: string = '', remotePath: string = '', width: number = 200, height: number = 200) {
+        super(MessageContentType.Sticker, MessageContentMediaType.Sticker, fileOrLocalPath, remotePath);
+        this.width = width;
+        this.height = height;
+    }
+
+    override digest(message: any | null): string {
+        return '[表情]';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.mediaType = MessageContentMediaType.File;
+        const obj = {
+            x: this.width,
+            y: this.height,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.width = obj.getNumber('x') ?? 200;
+            this.height = obj.getNumber('y') ?? 200;
+        }
+    }
+}

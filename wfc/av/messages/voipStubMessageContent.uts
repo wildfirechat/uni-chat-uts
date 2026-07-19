@@ -1,0 +1,30 @@
+/*
+ * 音视频通话相关的信令类消息占位实现。
+ *
+ * uni-app x 版本暂不支持音视频通话（插件未迁移），这些消息类型多为 Transparent/No_Persist，
+ * 正常情况下不会展示；这里保留原始 payload，保证收发链路不出错。
+ */
+import MessageContent from '../../messages/messageContent.uts';
+import MessagePayload from '../../messages/messagePayload.uts';
+
+export default class VoipStubMessageContent extends MessageContent {
+    originalPayload: MessagePayload = new MessagePayload();
+
+    constructor(type: number) {
+        super(type);
+    }
+
+    override digest(message: any | null): string {
+        return '[音视频通话]';
+    }
+
+    override encode(): MessagePayload {
+        return this.originalPayload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        this.originalPayload = payload;
+        this.type = payload.type;
+        this.extra = payload.extra;
+    }
+}

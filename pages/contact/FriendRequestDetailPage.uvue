@@ -1,0 +1,167 @@
+<template>
+    <view class="user-detail-container" v-if="friendRequest != null">
+        <view class="detail-header">
+            <view class="name-container">
+                <text class="user-name">{{ name }}</text>
+                <text class="greeting">你好</text>
+            </view>
+            <image class="avatar" :src="portrait" />
+        </view>
+        <view class="content">
+            <view class="info-item">
+                <text class="info-label">备注名</text>
+                <text class="info-value">{{ alias }}</text>
+            </view>
+            <view class="info-item">
+                <text class="info-label">地区</text>
+                <text class="info-value">未知</text>
+            </view>
+            <view class="info-item">
+                <text class="info-label">标签</text>
+                <text class="info-value">测试用户</text>
+            </view>
+        </view>
+        <view class="detail-footer">
+            <view class="chat-button" @tap="chat">
+                <text class="chat-button-text">发消息</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState } from "../../store.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import FriendRequest from "../../wfc/model/friendRequest.uts";
+import Config from "../../config.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+
+export default {
+    name: "FriendRequestDetailPage",
+    computed: {
+        friendRequest(): FriendRequest | null {
+            return contactState.currentFriendRequest
+        },
+        portrait(): string {
+            const friendRequest = this.friendRequest
+            if (friendRequest == null) {
+                return Config.DEFAULT_PORTRAIT_URL
+            }
+            const target = friendRequest._target
+            const portrait = target != null ? target.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        alias(): string {
+            const friendRequest = this.friendRequest
+            if (friendRequest == null) {
+                return ''
+            }
+            const target = friendRequest._target
+            return target != null ? target.friendAlias : ''
+        },
+        name(): string {
+            const friendRequest = this.friendRequest
+            if (friendRequest == null) {
+                return ''
+            }
+            const friend = friendRequest._target;
+            if (friend == null) {
+                return ''
+            }
+            if (friend.friendAlias != '') {
+                return friend.friendAlias;
+            } else if (friend.displayName != '') {
+                return friend.displayName;
+            }
+            return friend.name;
+        }
+    },
+    methods: {
+        chat() {
+            const friendRequest = this.friendRequest
+            if (friendRequest == null) {
+                return
+            }
+            const conversation = new Conversation(ConversationType.Single, friendRequest.target, 0);
+            store.setCurrentConversation(conversation);
+            go2ConversationPage();
+        }
+    },
+}
+</script>
+
+<style scoped>
+.user-detail-container {
+    margin-left: 90px;
+    margin-right: 90px;
+    flex: 1;
+}
+
+.detail-header {
+    margin-top: 60px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e6e6e6;
+}
+
+.avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 2px;
+}
+
+.user-name {
+    font-size: 20px;
+    margin-bottom: 5px;
+}
+
+.greeting {
+    font-size: 14px;
+    color: #888888;
+}
+
+.content {
+    width: 100%;
+    margin: 20px 0;
+}
+
+.info-item {
+    height: 40px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.info-label {
+    margin-right: 20px;
+    font-size: 14px;
+    color: #333333;
+}
+
+.info-value {
+    flex: 1;
+    font-size: 14px;
+}
+
+.detail-footer {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.chat-button {
+    margin-top: 30px;
+    padding: 10px 40px;
+    background-color: #3497f1;
+    border-radius: 5px;
+}
+
+.chat-button-text {
+    color: #ffffff;
+    font-size: 15px;
+}
+</style>

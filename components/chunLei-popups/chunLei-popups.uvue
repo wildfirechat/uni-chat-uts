@@ -1,0 +1,147 @@
+<template>
+    <view v-if="modelValue" class="mask" :style="{ backgroundColor: maskBg }" @tap="tapMask">
+        <view class="popups" :class="[theme == 'dark' ? 'popups-dark' : 'popups-light']"
+            :style="{ top: popupsTop + 'px', left: popupsLeft + 'px', flexDirection: direction }">
+            <view v-for="(item, index) in popData" :key="index" @tap.stop="tapItem(item)" class="item-child"
+                :class="[direction == 'row' ? 'solid-right' : 'solid-bottom']">
+                <text class="item-text" :class="[theme == 'dark' ? 'text-dark' : 'text-light', item.disabled ? 'disabled-color' : '']">{{ item.title }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import { PopupMenuItem } from './popupMenu.uts'
+
+/**
+ * 长按弹出菜单，uni-app x 简化版（功能与原 chunLei-popups 一致：
+ * 在 (x, y) 附近弹出菜单，点击 item 触发 tapPopup，点击遮罩关闭）
+ */
+export default {
+    name: 'chunLei-popups',
+    props: {
+        maskBg: {
+            type: String,
+            default: 'rgba(0,0,0,0)'
+        },
+        direction: {
+            type: String,
+            default: 'column' // column row
+        },
+        x: {
+            type: Number,
+            default: 0
+        },
+        y: {
+            type: Number,
+            default: 0
+        },
+        modelValue: {
+            type: Boolean,
+            default: false
+        },
+        popData: {
+            type: Array as PropType<PopupMenuItem[]>,
+            default: (): PopupMenuItem[] => [] as PopupMenuItem[]
+        },
+        theme: {
+            type: String,
+            default: 'light' // light dark
+        },
+        dynamic: {
+            type: Boolean,
+            default: false
+        },
+        gap: {
+            type: Number,
+            default: 20
+        },
+        triangle: {
+            type: Boolean,
+            default: true
+        }
+    },
+    emits: ['update:modelValue', 'tapPopup'],
+    computed: {
+        popupsTop(): number {
+            const winHeight = uni.getSystemInfoSync().windowHeight
+            // 预估菜单高度
+            const menuHeight = this.direction == 'column' ? this.popData.length * 44 : 44
+            let top = this.y
+            if (top + menuHeight > winHeight - 20) {
+                top = winHeight - menuHeight - 20
+            }
+            return top < 20 ? 20 : top
+        },
+        popupsLeft(): number {
+            const winWidth = uni.getSystemInfoSync().windowWidth
+            const menuWidth = this.direction == 'column' ? 120 : this.popData.length * 80
+            let left = this.x
+            if (left + menuWidth > winWidth - 10) {
+                left = winWidth - menuWidth - 10
+            }
+            return left < 10 ? 10 : left
+        }
+    },
+    methods: {
+        tapMask() {
+            this.$emit('update:modelValue', false)
+        },
+        tapItem(item: PopupMenuItem) {
+            if (item.disabled) {
+                return
+            }
+            this.$emit('tapPopup', item)
+            this.$emit('update:modelValue', false)
+        }
+    }
+}
+</script>
+
+<style scoped>
+.mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+}
+
+.popups {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.popups-dark {
+    background-color: #4C4C4C;
+}
+
+.popups-light {
+    background-color: #ffffff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.item-child {
+    padding: 12px 20px;
+}
+
+.item-text {
+    font-size: 14px;
+}
+
+.text-dark {
+    color: #ffffff;
+}
+
+.text-light {
+    color: #333333;
+}
+
+.disabled-color {
+    color: #888888;
+}
+</style>

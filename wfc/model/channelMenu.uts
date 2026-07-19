@@ -1,0 +1,34 @@
+export default class ChannelMenu {
+    menuId = '';
+    type = '';
+    name = '';
+    key = '';
+    url = '';
+    mediaId = '';
+    articleId = '';
+    appId = '';
+    appPage = '';
+    extra = '';
+    subMenus: ChannelMenu[] = [];
+
+    static fromJsonObject(obj: UTSJSONObject): ChannelMenu {
+        const m = new ChannelMenu()
+        m.menuId = obj.getString('menuId') ?? ''
+        m.type = obj.getString('type') ?? ''
+        m.name = obj.getString('name') ?? ''
+        m.key = obj.getString('key') ?? ''
+        m.url = obj.getString('url') ?? ''
+        m.mediaId = obj.getString('mediaId') ?? ''
+        m.articleId = obj.getString('articleId') ?? ''
+        m.appId = obj.getString('appId') ?? ''
+        m.appPage = obj.getString('appPage') ?? ''
+        m.extra = obj.getString('extra') ?? ''
+        const subArr = obj.getArray<UTSJSONObject>('subMenus')
+        if (subArr != null) {
+            for (let i = 0; i < subArr.length; i++) {
+                m.subMenus.push(ChannelMenu.fromJsonObject(subArr[i]))
+            }
+        }
+        return m
+    }
+}

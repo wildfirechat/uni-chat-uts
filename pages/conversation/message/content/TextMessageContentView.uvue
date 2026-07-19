@@ -1,0 +1,48 @@
+<template>
+    <view class="text-message-container" :class="{ out: message.direction == 0 }">
+        <text class="text">{{ textContent }}</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+
+export default {
+    name: "TextMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        textContent(): string {
+            // 原 web 版将 emoji 转为 <img> 走 v-html；native 直接渲染 unicode emoji
+            return this.message.messageContent.digest(this.message);
+        }
+    }
+}
+</script>
+
+<style scoped>
+.text-message-container {
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.text-message-container.out {
+    background-color: #98ea70;
+}
+
+.text {
+    color: #050505;
+    font-size: 16px;
+    line-height: 25px;
+}
+</style>

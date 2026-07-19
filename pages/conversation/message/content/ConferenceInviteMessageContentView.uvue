@@ -1,0 +1,85 @@
+<template>
+    <view class="conference-invite-message-container" @tap="showConferenceInfo" :class="{ out: message.direction == 0 }">
+        <view class="flex-row flex-align-center">
+            <image class="avatar" :src="portrait" />
+            <view class="flex-1">
+                <text class="single-line title">{{ content.title }} </text>
+                <text class="single-line desc">{{ content.desc }}</text>
+            </view>
+        </view>
+        <text class="type">会议邀请</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import ConferenceInviteMessageContent from "@/wfc/av/messages/conferenceInviteMessageContent.uts";
+import store from "@/store.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+
+export default {
+    name: "ConferenceInviteMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        content(): ConferenceInviteMessageContent {
+            return this.message.messageContent as ConferenceInviteMessageContent
+        },
+        portrait(): string {
+            const groupId = this.message.conversation.type == ConversationType.Group ? this.message.conversation.target : '';
+            const userInfos = store.getUserInfos([this.content.host], groupId)
+            return userInfos.length > 0 ? userInfos[0].portrait : '';
+        }
+    },
+    methods: {
+        showConferenceInfo() {
+            // uni-app x 版本暂不支持音视频会议
+            uni.showToast({
+                title: '当前版本不支持会议功能',
+                icon: 'none',
+            } as ShowToastOptions);
+        }
+    },
+}
+</script>
+
+<style scoped>
+.conference-invite-message-container {
+    margin: 0 10px;
+    padding: 5px;
+    background-color: #ffffff;
+    width: 250px;
+    position: relative;
+    border-radius: 5px;
+}
+
+.avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 3px;
+    background-color: #d3d3d3;
+    margin: 5px 10px;
+}
+
+.type {
+    padding-top: 5px;
+    margin: 5px 10px 0 10px;
+    border-top: 1px solid rgba(211, 211, 211, 0.4);
+    font-size: 14px;
+    color: #808080;
+}
+
+.title {
+    font-size: 16px;
+    color: #000000;
+}
+
+.desc {
+    font-size: 14px;
+    color: #808080;
+}
+</style>

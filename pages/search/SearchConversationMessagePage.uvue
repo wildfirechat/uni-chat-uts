@@ -1,0 +1,143 @@
+<template>
+    <view class="search-conversation-message-container">
+        <input class="input" type="text" v-model="query" placeholder="搜索" @input="search" />
+        <text class="category">聊天记录</text>
+        <scroll-view class="message-list" direction="vertical">
+            <view v-for="(msg, index) in messages" :key="index">
+                <view class="search-result-item" @tap="onClickMessage(msg)">
+                    <image class="item-portrait" :src="portrait" />
+                    <view class="title-desc">
+                        <text class="item-name">{{ fromNameOf(msg) }}</text>
+                        <text class="desc">{{ msg.messageContent.digest(msg) }}</text>
+                    </view>
+                </view>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { searchState } from "@/store.uts";
+import Message from "@/wfc/messages/message.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import Config from "@/config.uts";
+import { go2ConversationPage } from "@/common/nav.uts";
+
+export default {
+    name: "SearchConversationMessagePage",
+    data() {
+        return {
+            query: searchState.query,
+            conversationInfo: null as ConversationInfo | null,
+            messages: [] as Message[],
+        }
+    },
+
+    mounted() {
+        const conversation = searchState.conversation
+        if (conversation != null) {
+            this.conversationInfo = store.getConversationInfo(conversation)
+        }
+        this.search();
+    },
+
+    beforeUnmount() {
+        searchState.conversation = null;
+    },
+
+    computed: {
+        portrait(): string {
+            const info = this.conversationInfo
+            if (info == null) {
+                return Config.DEFAULT_PORTRAIT_URL
+            }
+            const target = info.conversation._target
+            const portrait = target != null ? target.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+    },
+
+    methods: {
+        fromNameOf(msg: Message): string {
+            const from = msg._from
+            return from != null ? from._displayName : ''
+        },
+        search() {
+            const info = this.conversationInfo
+            if (info != null && this.query.trim() != '') {
+                this.messages = store.searchMessage(info.conversation, this.query);
+            } else {
+                this.messages = [];
+            }
+        },
+
+        onClickMessage(msg: Message) {
+            // TODO 跳转到具体的消息处
+            store.setCurrentConversation(msg.conversation);
+            go2ConversationPage();
+        },
+    },
+}
+</script>
+
+<style scoped>
+.search-conversation-message-container {
+    background-color: #ffffff;
+    position: relative;
+    flex: 1;
+}
+
+.input {
+    height: 35px;
+    width: 100%;
+    padding: 5px 10px;
+    margin-bottom: 5px;
+    background-color: #ffffff;
+    border-bottom: 1px solid #d3d3d3;
+}
+
+.category {
+    margin-left: 10px;
+    color: #b2b2b2;
+    font-size: 13px;
+}
+
+.message-list {
+    flex: 1;
+    background-color: #ffffff;
+}
+
+.search-result-item {
+    background-color: #ffffff;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.item-portrait {
+    width: 34px;
+    height: 34px;
+    border-radius: 2px;
+}
+
+.item-name {
+    font-size: 14px;
+    padding-left: 10px;
+}
+
+.title-desc {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.desc {
+    font-size: 12px;
+    color: #808080;
+    padding-left: 10px;
+    lines: 3;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+</style>

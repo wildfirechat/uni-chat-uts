@@ -1,0 +1,79 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class UserInfo {
+    uid = '';
+    name = '';
+    displayName = '';
+    groupAlias = '';
+    friendAlias = '';
+    gender = 0;
+    portrait = '';
+    mobile = '';
+    email = '';
+    address = '';
+    social = '';
+    extra = '';
+    type = 0; //0 normal; 1 robot; 2 thing;
+    //0 normal; 1 deleted;
+    deleted = 0;
+    updateDt = 0;
+
+    // ---- 以下为 UI 层补丁字段（原 JS 版本动态添加，UTS 需显式声明）----
+    _displayName = '';
+    _pinyin = '';
+    __sortPinyin = '';
+    _firstLetters = '';
+    _category = '';
+    _userOnlineStatusDesc = '';
+    // GroupMember | null，选人/群成员页面使用；为避免循环依赖用 any
+    _groupMember: any | null = null;
+
+    clone(): UserInfo {
+        const u = new UserInfo()
+        u.uid = this.uid
+        u.name = this.name
+        u.displayName = this.displayName
+        u.groupAlias = this.groupAlias
+        u.friendAlias = this.friendAlias
+        u.gender = this.gender
+        u.portrait = this.portrait
+        u.mobile = this.mobile
+        u.email = this.email
+        u.address = this.address
+        u.social = this.social
+        u.extra = this.extra
+        u.type = this.type
+        u.deleted = this.deleted
+        u.updateDt = this.updateDt
+        u._displayName = this._displayName
+        u._pinyin = this._pinyin
+        u.__sortPinyin = this.__sortPinyin
+        u._firstLetters = this._firstLetters
+        u._category = this._category
+        u._userOnlineStatusDesc = this._userOnlineStatusDesc
+        u._groupMember = this._groupMember
+        return u
+    }
+
+    static fromJsonObject(obj: UTSJSONObject): UserInfo {
+        const u = new UserInfo()
+        u.uid = obj.getString('uid') ?? ''
+        u.name = obj.getString('name') ?? ''
+        u.displayName = obj.getString('displayName') ?? ''
+        u.groupAlias = obj.getString('groupAlias') ?? ''
+        u.friendAlias = obj.getString('friendAlias') ?? ''
+        u.gender = obj.getNumber('gender') ?? 0
+        u.portrait = obj.getString('portrait') ?? ''
+        u.mobile = obj.getString('mobile') ?? ''
+        u.email = obj.getString('email') ?? ''
+        u.address = obj.getString('address') ?? ''
+        u.social = obj.getString('social') ?? ''
+        u.extra = obj.getString('extra') ?? ''
+        u.type = obj.getNumber('type') ?? 0
+        u.deleted = obj.getNumber('deleted') ?? 0
+        u.updateDt = obj.getNumber('updateDt') ?? 0
+        return u
+    }
+}

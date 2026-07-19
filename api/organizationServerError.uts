@@ -1,0 +1,12 @@
+export default class OrganizationServerError extends Error {
+    errorCode: number
+
+    constructor(errorCode: number, message: string) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+
+    override toString(): string {
+        return this.errorCode + '-' + this.message;
+    }
+}

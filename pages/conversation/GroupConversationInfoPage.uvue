@@ -1,0 +1,450 @@
+<template>
+    <view class="conversation-info" v-if="conversationInfo != null">
+        <view class="page-header">
+            <view class="field">
+                <text class="field-label">群名称</text>
+                <input class="field-input" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
+                    v-model="newGroupName" @confirm="updateGroupName" :placeholder="groupDisplayName" />
+            </view>
+            <view class="field">
+                <text class="field-label">群公告</text>
+                <input class="field-input" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
+                    @confirm="updateGroupAnnouncement" v-model="newGroupAnnouncement" :placeholder="groupAnnouncement" />
+            </view>
+            <view class="fav-switch">
+                <text class="field-label">保存到通讯录</text>
+                <switch class="fav-switch-control" :checked="isFavGroup" @change="onFavSwitchChange" />
+            </view>
+        </view>
+        <view class="search-item">
+            <input class="search-input" type="text" v-model="filterQuery" placeholder="搜索" />
+        </view>
+        <scroll-view class="member-container" direction="vertical">
+            <view v-if="enableAddGroupMember && filterQuery == ''" @tap="showCreateConversationModal" class="action-item">
+                <view class="icon">
+                    <text class="icon-text">+</text>
+                </view>
+                <text class="action-text">添加成员</text>
+            </view>
+            <view v-if="enableRemoveGroupMember && filterQuery == ''" @tap="showRemoveGroupMemberModal" class="action-item">
+                <view class="icon">
+                    <text class="icon-text">-</text>
+                </view>
+                <text class="action-text">移除成员</text>
+            </view>
+            <UserListView :users="users" :show-category-label="false" padding-left="20px" />
+        </scroll-view>
+        <view @tap="quitGroup(false)" class="quit-group-item">
+            <text class="quit-group-text">退出群组</text>
+        </view>
+        <view v-if="isOwner" @tap="quitGroup(true)" class="quit-group-item">
+            <text class="quit-group-text">解散群组</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import UserListView from "@/pages/user/UserListView.uvue";
+import store, { contactState } from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import GroupMemberType from "@/wfc/model/groupMemberType.uts";
+import GroupType from "@/wfc/model/groupType.uts";
+import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import EventType from "../../wfc/client/wfcEvent.uts";
+import appServerApi from "../../api/appServerApi.uts";
+import { takePageOptions } from "@/common/nav.uts";
+import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+
+export default {
+    name: "GroupConversationInfoPage",
+    data() {
+        return {
+            conversationInfo: null as ConversationInfo | null,
+            groupMemberUserInfos: [] as UserInfo[],
+            filterQuery: '',
+            groupAnnouncement: '',
+            newGroupName: '',
+            newGroupAnnouncement: '',
+        }
+    },
+    onLoad(_options: OnLoadOptions) {
+        console.log('GroupConversationInfoPage onLoad')
+        const pageOptions = takePageOptions()
+        if (pageOptions != null && pageOptions instanceof ConversationInfo) {
+            const conversationInfo = pageOptions as ConversationInfo
+            this.conversationInfo = conversationInfo;
+            this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+
+            const target = conversationInfo.conversation._target
+            uni.setNavigationBarTitle({
+                title: target != null ? target._displayName : '',
+            } as SetNavigationBarTitleOptions);
+
+            this.getGroupAnnouncement();
+        }
+    },
+
+    mounted() {
+        wfc.eventEmitter.on(EventType.UserInfosUpdate, this.onConversationMembersUpdate)
+        wfc.eventEmitter.on(EventType.GroupMembersUpdate, this.onConversationMembersUpdate)
+    },
+
+    beforeUnmount() {
+        wfc.eventEmitter.off(EventType.UserInfosUpdate, this.onConversationMembersUpdate)
+        wfc.eventEmitter.off(EventType.GroupMembersUpdate, this.onConversationMembersUpdate)
+    },
+
+    methods: {
+        onConversationMembersUpdate(_args: Array<any | null>) {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo != null) {
+                this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+            }
+        },
+
+        showCreateConversationModal() {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            const groupMemberUserInfos = store.getGroupMemberUserInfos(conversationInfo.conversation.target, false);
+            const options = new PickUsersOptions()
+            options.users = contactState.favContactList.concat(contactState.friendList)
+            options.initialCheckedUsers = groupMemberUserInfos
+            options.uncheckableUsers = groupMemberUserInfos
+            options.confirmTitle = '添加'
+            options.successCB = (users: UserInfo[]) => {
+                const ids: string[] = []
+                for (let i = 0; i < users.length; i++) {
+                    ids.push(users[i].uid)
+                }
+                wfc.addGroupMembers(conversationInfo.conversation.target, ids, '', [0], null, () => {
+                    this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+                }, (err: number) => {
+                    uni.showToast({
+                        title: '邀请新成员失败 ' + err,
+                        icon: 'none',
+                    } as ShowToastOptions);
+                })
+            }
+            pickUsers(options)
+        },
+
+        showRemoveGroupMemberModal() {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            const groupMemberUserInfos = store.getGroupMemberUserInfos(conversationInfo.conversation.target, false, false);
+            const options = new PickUsersOptions()
+            options.users = groupMemberUserInfos
+            options.confirmTitle = '移除'
+            options.showCategoryLabel = false
+            options.successCB = (users: UserInfo[]) => {
+                const ids: string[] = []
+                for (let i = 0; i < users.length; i++) {
+                    ids.push(users[i].uid)
+                }
+                wfc.kickoffGroupMembers(conversationInfo.conversation.target, ids, [0], null, () => {
+                    this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+                }, (err: number) => {
+                    uni.showToast({
+                        title: '踢除群成员失败' + err,
+                        icon: 'none',
+                    } as ShowToastOptions);
+                })
+            }
+            pickUsers(options)
+        },
+
+        getGroupAnnouncement() {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            appServerApi.getGroupAnnouncement(conversationInfo.conversation.target)
+                .then((result): void => {
+                    const text = result?.getString('text')
+                    if (text != null && text != '') {
+                        this.groupAnnouncement = text;
+                    } else {
+                        if (this.enableEditGroupNameOrAnnouncement) {
+                            this.groupAnnouncement = '点击编辑群公告';
+                        }
+                    }
+                })
+                .catch((err): void => {
+                    console.log('getGroupAnnouncement error', err)
+                })
+        },
+
+        updateGroupName() {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            const groupId = conversationInfo.conversation.target;
+            const target = conversationInfo.conversation._target
+            if (this.newGroupName == '' || (target != null && this.newGroupName == target._displayName)) {
+                return;
+            }
+
+            wfc.modifyGroupInfo(groupId, ModifyGroupInfoType.Modify_Group_Name, this.newGroupName, [0], null, () => {
+                if (target != null) {
+                    target._displayName = this.newGroupName;
+                }
+                uni.setNavigationBarTitle({
+                    title: this.newGroupName,
+                } as SetNavigationBarTitleOptions);
+            }, (err: number) => {
+                console.log('err', err)
+            })
+        },
+
+        updateGroupAnnouncement() {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            if (this.newGroupAnnouncement == '' || this.newGroupAnnouncement == this.groupAnnouncement) {
+                return;
+            }
+            appServerApi.updateGroupAnnouncement(wfc.getUserId(), conversationInfo.conversation.target, this.newGroupAnnouncement)
+                .then((result): void => {
+                    this.groupAnnouncement = this.newGroupAnnouncement;
+                })
+                .catch((err): void => {
+                    console.log('updateGroupAnnouncement error', err)
+                })
+        },
+
+        quitGroup(dismiss: boolean) {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            if (dismiss) {
+                store.dismissGroup(conversationInfo.conversation.target)
+            } else {
+                store.quitGroup(conversationInfo.conversation.target)
+            }
+            uni.switchTab({
+                url: '/pages/conversationList/ConversationListPage',
+            } as SwitchTabOptions);
+        },
+
+        onFavSwitchChange(e: UniSwitchChangeEvent) {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            const groupId = conversationInfo.conversation.target
+            const fav = e.detail.value
+            wfc.setFavGroup(groupId, fav, () => {
+                const target = conversationInfo.conversation._target
+                if (target != null) {
+                    target._isFav = fav;
+                }
+                store.reloadFavGroupList();
+            }, (err: number) => {
+                console.log('setFavGroup error', err);
+            })
+        }
+    },
+
+    components: { UserListView },
+
+    computed: {
+        groupDisplayName(): string {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return ''
+            }
+            const target = conversationInfo.conversation._target
+            return target != null ? target._displayName : ''
+        },
+        isFavGroup(): boolean {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return false
+            }
+            const target = conversationInfo.conversation._target
+            return target != null ? target._isFav : false
+        },
+        enableAddGroupMember(): boolean {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return false
+            }
+            const selfUid = wfc.getUserId();
+            const groupInfo = wfc.getGroupInfo(conversationInfo.conversation.target, false);
+            //在group type为Restricted时，0 开放加入权限；1 只能群成员拉人入群；2 只能群管理拉人入群
+            if (groupInfo.type == GroupType.Restricted) {
+                if (groupInfo.joinType == 0 || groupInfo.joinType == 1) {
+                    return true;
+                } else if (groupInfo.joinType == 2) {
+                    const groupMember = wfc.getGroupMember(conversationInfo.conversation.target, selfUid);
+                    return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
+                }
+            }
+            return true;
+        },
+
+        enableRemoveGroupMember(): boolean {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return false
+            }
+            const selfUid = wfc.getUserId();
+            const groupMember = wfc.getGroupMember(conversationInfo.conversation.target, selfUid);
+            return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
+        },
+
+        enableEditGroupNameOrAnnouncement(): boolean {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return false
+            }
+            const selfUid = wfc.getUserId();
+            const groupMember = wfc.getGroupMember(conversationInfo.conversation.target, selfUid);
+            return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
+        },
+
+        users(): UserInfo[] {
+            if (this.filterQuery != '') {
+                return store.filterUsers(this.groupMemberUserInfos, this.filterQuery)
+            } else {
+                return this.groupMemberUserInfos;
+            }
+        },
+
+        isOwner(): boolean {
+            const conversationInfo = this.conversationInfo
+            if (conversationInfo == null) {
+                return false
+            }
+            const selfUid = wfc.getUserId();
+            const groupInfo = wfc.getGroupInfo(conversationInfo.conversation.target, false);
+            return groupInfo.owner == selfUid
+        }
+    },
+};
+</script>
+
+<style scoped>
+.conversation-info {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    justify-content: flex-start;
+    flex: 1;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+.page-header {
+    padding-left: 20px;
+    padding-right: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.field {
+    width: 100%;
+    display: flex;
+    margin-top: 15px;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.field-label {
+    font-size: 14px;
+    color: #999999;
+}
+
+.field-input {
+    margin-top: 5px;
+    width: 100%;
+    font-size: 13px;
+    background-color: transparent;
+}
+
+.fav-switch {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    margin-top: 15px;
+    padding-bottom: 15px;
+    align-items: center;
+    border-bottom: 1px solid #ececec;
+}
+
+.fav-switch-control {
+    margin-left: 20px;
+}
+
+.member-container {
+    flex: 1;
+}
+
+.search-item {
+    position: relative;
+    padding: 10px 20px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0 10px 0 20px;
+    height: 25px;
+    border-radius: 3px;
+    border: 1px solid #ededed;
+    background-color: #ffffff;
+}
+
+.action-item {
+    height: 50px;
+    display: flex;
+    flex-direction: row;
+    padding-left: 20px;
+    align-items: center;
+}
+
+.icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    border-radius: 3px;
+    border: 1px dashed #d6d6d6;
+}
+
+.icon-text {
+    font-size: 20px;
+    color: #888888;
+}
+
+.action-text {
+    margin-left: 10px;
+    font-size: 13px;
+}
+
+.quit-group-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 50px;
+    border-top: 1px solid #ececec;
+}
+
+.quit-group-text {
+    color: #ff0000;
+    font-size: 15px;
+}
+</style>

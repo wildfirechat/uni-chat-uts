@@ -1,0 +1,251 @@
+<template>
+    <view class="page-container">
+        <NavBar title="野火" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
+        <scroll-view class="conversation-list" direction="vertical">
+            <text v-if="connectionStatusDesc != ''" class="connection-status">{{ connectionStatusDesc }}</text>
+            <view class="conversation-item" :class="{ top: conversationInfo.top > 0 }"
+                v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
+                @tap="showConversation(conversationInfo)"
+                @longpress="showConversationContextMenu($event, conversationInfo)">
+                <ConversationItemView :conversation-info="conversationInfo" />
+            </view>
+        </scroll-view>
+
+        <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
+            :x="contextMenuX" :y="contextMenuY" direction="column" theme="dark" :triangle="false" :dynamic="true" />
+        <main-action-menu ref="mainActionMenu"></main-action-menu>
+    </view>
+</template>
+
+<script lang="uts">
+import ConversationItemView from "./ConversationItemView.uvue";
+import NavBar from "../common/NavBar.uvue";
+import store, { conversationState, miscState } from "../../store.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import ConnectionStatus from "../../wfc/client/connectionStatus.uts";
+import ConversationInfo from "../../wfc/model/conversationInfo.uts";
+import { getItem } from "../util/storageHelper.uts";
+import organizationServerApi from "../../api/organizationServerApi.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
+
+export default {
+    name: 'ConversationListPage',
+    components: {
+        ConversationItemView,
+        NavBar,
+    },
+    data() {
+        return {
+            // wx_iconfont.ttf 中的图标：搜索、加号（与原 titleNView buttons 一致）
+            searchIcon: '\ue636',
+            plusIcon: '\ue657',
+            showContextMenu: false,
+            contextMenuX: 0,
+            contextMenuY: 0,
+            contextMenuItems: [] as PopupMenuItem[],
+            contextMenuConversationInfo: null as ConversationInfo | null,
+            orgLoginTried: false,
+        };
+    },
+
+    onShow() {
+        console.log('conversationList onShow', conversationState.conversationInfoList.length)
+        const userId = getItem('userId');
+        if (userId == '') {
+            // 被踢等，需要退到登录页面
+            uni.reLaunch({
+                url: '/pages/login/LoginPage'
+            } as ReLaunchOptions);
+        } else {
+            this.updateTabBarBadge();
+        }
+    },
+
+    onHide() {
+        console.log('conversationList onHide');
+        (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
+    },
+
+    watch: {
+        connectionStatus: {
+            handler(newValue: number, _oldValue: number) {
+                if (newValue == ConnectionStatus.ConnectionStatusConnected && !this.orgLoginTried) {
+                    this.orgLoginTried = true
+                    organizationServerApi.login()
+                        .then((r): void => {
+                            console.log('org login success')
+                        })
+                        .catch((reason): void => {
+                            console.log('org login fail')
+                        });
+                }
+            },
+            immediate: true
+        },
+        unread: {
+            handler(newValue: number, _oldValue: number) {
+                this.updateTabBarBadge();
+            },
+        }
+    },
+
+    computed: {
+        conversationInfoList(): ConversationInfo[] {
+            return conversationState.conversationInfoList
+        },
+        connectionStatus(): number {
+            return miscState.connectionStatus
+        },
+        connectionStatusDesc(): string {
+            let desc = '';
+            switch (miscState.connectionStatus) {
+                case ConnectionStatus.ConnectionStatusConnecting:
+                    desc = '正在连接...';
+                    break;
+                case ConnectionStatus.ConnectionStatusReceiveing:
+                    desc = '正在同步...';
+                    break;
+                case ConnectionStatus.ConnectionStatusConnected:
+                    desc = '';
+                    break;
+                case ConnectionStatus.ConnectionStatusUnconnected:
+                    desc = '连接失败';
+                    break;
+                default:
+                    break;
+            }
+            return desc;
+        },
+        unread(): number {
+            let count = 0;
+            const list = conversationState.conversationInfoList
+            for (let i = 0; i < list.length; i++) {
+                const info = list[i]
+                if (info.isSilent) {
+                    continue;
+                }
+                count += info.unreadCount.unread;
+            }
+            return count;
+        }
+    },
+
+    methods: {
+        onPlusTap() {
+            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('toggle');
+        },
+        onSearchTap() {
+            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
+            uni.navigateTo({
+                url: '/pages/search/SearchPortalPage'
+            } as NavigateToOptions);
+        },
+        showConversation(conversationInfo: ConversationInfo) {
+            store.setCurrentConversationInfo(conversationInfo);
+            go2ConversationPage();
+        },
+
+        removeConversation(conversationInfo: ConversationInfo) {
+            store.removeConversation(conversationInfo.conversation);
+        },
+
+        conversationInfoKey(conversationInfo: ConversationInfo): string {
+            const conv = conversationInfo.conversation;
+            return conv.target + '-' + conv.type + '-' + conv.line;
+        },
+
+        showConversationContextMenu(e: UniTouchEvent, conversationInfo: ConversationInfo) {
+            if (e.touches.length > 0) {
+                this.contextMenuX = e.touches[0].clientX;
+                this.contextMenuY = e.touches[0].clientY;
+            }
+            this.contextMenuConversationInfo = conversationInfo;
+            const items: PopupMenuItem[] = [];
+
+            items.push(new PopupMenuItem(conversationInfo.top > 0 ? '取消置顶' : '置顶', 'top'))
+            items.push(new PopupMenuItem(conversationInfo.isSilent ? '取消静音' : '静音', 'silent'))
+            items.push(new PopupMenuItem('删除会话', 'delete'))
+            items.push(new PopupMenuItem(conversationInfo._unread == 0 ? '标记为未读' : '标记为已读', 'mark'))
+            this.contextMenuItems = items;
+            this.showContextMenu = true;
+        },
+
+        onContextMenuItemSelect(t: PopupMenuItem) {
+            const conversationInfo = this.contextMenuConversationInfo
+            if (conversationInfo == null) {
+                return
+            }
+            switch (t.tag) {
+                case 'delete':
+                    store.removeConversation(conversationInfo.conversation);
+                    break;
+                case 'top':
+                    store.setConversationTop(conversationInfo.conversation, conversationInfo.top > 0 ? 0 : 1);
+                    break;
+                case 'silent':
+                    store.setConversationSilent(conversationInfo.conversation, !conversationInfo.isSilent);
+                    break;
+                case 'mark':
+                    if (conversationInfo._unread == 0) {
+                        wfc.markConversationAsUnread(conversationInfo.conversation, true);
+                    } else {
+                        wfc.clearConversationUnreadStatus(conversationInfo.conversation);
+                    }
+                    break;
+                default:
+                    uni.showToast({
+                        title: 'TODO ' + t.title,
+                        icon: 'none'
+                    } as ShowToastOptions)
+                    break;
+            }
+        },
+
+        updateTabBarBadge() {
+            const newValue = this.unread;
+            if (newValue > 0) {
+                uni.setTabBarBadge({
+                    index: 0,
+                    text: '' + newValue
+                } as SetTabBarBadgeOptions)
+            } else {
+                uni.removeTabBarBadge({
+                    index: 0
+                } as RemoveTabBarBadgeOptions)
+            }
+        }
+    },
+};
+</script>
+
+<style scoped>
+.page-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #f3f3f3;
+}
+
+.connection-status {
+    text-align: center;
+    padding: 5px 0;
+    font-size: 13px;
+    color: #808080;
+}
+
+.conversation-list {
+    flex: 1;
+    background-color: #f3f3f3;
+}
+
+.conversation-item {
+    position: relative;
+    background-color: #ffffff;
+    border-bottom: 1px solid #f4f4f4;
+}
+
+.conversation-item.top {
+    background-color: #f1f1f1;
+}
+</style>

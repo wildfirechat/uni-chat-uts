@@ -1,0 +1,585 @@
+<template>
+    <view>
+        <view class="wf-message-input-container">
+            <view class="wf-message-input-toolbar">
+                <text class="wf-input-button-icon customicons" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
+                <view class="wf-input-voice-container" v-if="showVoice">
+                    <AudioInputView :conversation-info="conversationInfo"></AudioInputView>
+                </view>
+                <view v-else class="wf-input-middle">
+                    <view class="wf-input-text-container">
+                        <textarea class="wf-input-textarea" @focus="onInputFocus" @input="onInput" :value="text"
+                            placeholder="" :hold-keyboard="true" confirm-type="send" @confirm="send" :maxlength="-1"
+                            :auto-height="true" />
+                    </view>
+                    <view v-if="quotedMessage != null" class="quote-message-container">
+                        <text class="quoted-message single-line">{{ quotedMessageDigest }}</text>
+                        <text class="cancel icomoon" @tap="cancelQuote">&#xf12a;</text>
+                    </view>
+                </view>
+                <text @tap="toggleEmoji" class="wf-input-button-icon customicons">&#xe60b;</text>
+                <view v-if="!hideSendButton && text != ''" class="wf-input-text-send-button" @tap="send">
+                    <text class="send-button-text">发送</text>
+                </view>
+                <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon customicons">&#xe657;</text>
+            </view>
+            <view v-if="showExt" class="wf-ext-container" :style="{ height: keyboardHeight + 'px' }">
+                <view class="wf-ext-item" v-for="(v, i) in extList" @tap="onClickExt(v)" :key="i">
+                    <view class="wf-ext-item-icon">
+                        <text class="customicons ext-icon">{{ v.icon }}</text>
+                    </view>
+                    <text class="wf-ext-item-text">{{ v.title }}</text>
+                </view>
+            </view>
+            <view v-if="showEmoji" class="wf-stickers-container" :style="{ height: keyboardHeight + 'px' }">
+                <view class="category-container">
+                    <view class="category" v-for="(v, i) in emojiStickerList" :key="i" @tap="onCategoryClick(i)">
+                        <image class="category-poster" :class="{ active: i == currentEmojiStickerIndex }" :src="v.poster" mode="aspectFit" />
+                    </view>
+                </view>
+                <scroll-view v-if="currentEmojiStickerIndex == 0" direction="vertical" class="wf-emoji-container"
+                    :style="{ height: (keyboardHeight - 60) + 'px' }">
+                    <view class="wf-emoji-content">
+                        <text class="emoji-item" @tap="onClickEmoji(v)" v-for="(v, i) in emojiStickerList[0].emojis"
+                            :key="i">{{ v }}</text>
+                    </view>
+                </scroll-view>
+                <scroll-view v-else direction="vertical" class="wf-sticker-container"
+                    :style="{ height: (keyboardHeight - 60) + 'px' }">
+                    <view class="wf-sticker-content">
+                        <image :src="s" class="sticker-item" mode="aspectFit" @tap="onClickSticker(s)"
+                            v-for="(s, j) in emojiStickerList[currentEmojiStickerIndex].stickers" :key="j" />
+                    </view>
+                </scroll-view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import TextMessageContent from "../../wfc/messages/textMessageContent.uts";
+import ConversationInfo from "../../wfc/model/conversationInfo.uts";
+import Message from "../../wfc/messages/message.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import store, { conversationState } from "../../store.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import emojiStickerConfig, { EmojiStickerCategory } from "./emojiStickerConfig.uts";
+import StickerMessageContent from "../../wfc/messages/stickerMessageContent.uts";
+import Config from "../../config.uts";
+import QuoteInfo from "../../wfc/model/quoteInfo.uts";
+import AudioInputView from "./message/AudioInputView.uvue";
+import Draft from "../util/draft.uts";
+import { pickUser, PickUserOptions, pickUsers, PickUsersOptions } from "../../common/picker.uts";
+
+class ExtItem {
+    title = ''
+    tag = ''
+    icon = ''
+
+    constructor(title: string, tag: string, icon: string) {
+        this.title = title
+        this.tag = tag
+        this.icon = icon
+    }
+}
+
+export default {
+    name: "MessageInputView",
+    components: {
+        AudioInputView,
+    },
+    props: {
+        conversationInfo: {
+            type: Object as PropType<ConversationInfo>,
+            required: true,
+        },
+    },
+    data() {
+        return {
+            emojiStickerList: emojiStickerConfig as EmojiStickerCategory[],
+            currentEmojiStickerIndex: 0,
+            hideSendButton: Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8,
+            showVoice: false,
+            extList: [
+                new ExtItem('相册', 'image', ''),
+                new ExtItem('语音通话', 'voip_a', ''),
+                new ExtItem('视频通话', 'voip_v', ''),
+                new ExtItem('拍摄', 'shot', ''),
+                new ExtItem('文件', 'file', ''),
+                new ExtItem('位置', 'location', ''),
+                new ExtItem('名片', 'userCard', ''),
+            ] as ExtItem[],
+            showExt: false,
+            showEmoji: false,
+            text: '',
+            keyboardHeight: 300,
+            currentKeyboardHeight: 0,
+            mentions: [] as UserInfo[],
+            groupMemberUserInfos: [] as UserInfo[],
+        };
+    },
+
+    computed: {
+        quotedMessage(): Message | null {
+            return conversationState.quotedMessage
+        },
+        quotedMessageDigest(): string {
+            const quotedMessage = conversationState.quotedMessage
+            if (quotedMessage == null) {
+                return ''
+            }
+            return quotedMessage.messageContent.digest(quotedMessage)
+        },
+    },
+
+    mounted() {
+        if (this.conversationInfo.conversation.type == ConversationType.Group) {
+            this.groupMemberUserInfos = store.getGroupMemberUserInfos(this.conversationInfo.conversation.target, false, false);
+        }
+        this.restoreDraft();
+    },
+
+    beforeUnmount() {
+        this.storeDraft()
+    },
+
+    methods: {
+        onInput(event: UniInputEvent) {
+            let inserting = false;
+            if (event.detail.value.length > this.text.length) {
+                inserting = true;
+            }
+            this.text = event.detail.value;
+            const cursor = event.detail.cursor;
+            if (this.conversationInfo.conversation.type == ConversationType.Group) {
+                if (inserting && this.text.length > 0 && cursor > 0 && this.text.charAt(cursor - 1) == '@') {
+                    const atAll = new UserInfo()
+                    atAll.uid = '@all'
+                    atAll.displayName = '所有人'
+                    const target = this.conversationInfo.conversation._target
+                    atAll.portrait = target != null ? target.portrait : ''
+                    atAll._displayName = '所有人'
+
+                    const options = new PickUserOptions()
+                    const users: UserInfo[] = [atAll]
+                    options.users = users.concat(this.groupMemberUserInfos)
+                    options.showCategoryLabel = false
+                    options.successCB = (user: UserInfo) => {
+                        this.text = this.text.substring(0, cursor - 1) + `@${user.displayName} ` + this.text.substring(cursor);
+                        this.mentions.push(user);
+                    }
+                    pickUser(options)
+                }
+            }
+        },
+
+        // 供会话页调用：撤回后重新编辑、@ 某人
+        insertText(text: string) {
+            this.text = this.text + text;
+        },
+
+        mention(groupId: string, userId: string) {
+            const userInfo = wfc.getUserInfo(userId, false, groupId);
+            this.mentions.push(userInfo);
+            this.text = this.text + '@' + userInfo.displayName + ' ';
+        },
+
+        send() {
+            if (this.text != '') {
+                const textMessageContent = new TextMessageContent(this.text)
+                const quotedMessage = conversationState.quotedMessage;
+                if (quotedMessage != null) {
+                    const quoteInfo = QuoteInfo.init(quotedMessage.messageUid, quotedMessage.from, quotedMessage.messageContent.digest(quotedMessage));
+                    textMessageContent.setQuoteInfo(quoteInfo);
+                    store.quoteMessage(null);
+                }
+                if (this.conversationInfo.conversation.type == ConversationType.Group && this.mentions.length > 0) {
+                    // 匹配以@开始，后面跟着至少一个非空白字符，并且以空格或行尾结尾的字符串
+                    const regex = /@\S+(\s|$)/g;
+                    const matches = this.text.match(regex);
+                    if (matches != null) {
+                        for (let i = 0; i < matches.length; i++) {
+                            const match = matches[i].trim();
+                            if (match == '@所有人') {
+                                const index = this.mentions.findIndex((user: UserInfo): boolean => user.uid == '@all')
+                                if (index >= 0) {
+                                    textMessageContent.mentionedType = 2;
+                                    break
+                                }
+                            } else {
+                                const index = this.mentions.findIndex((user: UserInfo): boolean => user.displayName == match.substring(1));
+                                if (index >= 0) {
+                                    const uid = this.mentions[index].uid;
+                                    if (textMessageContent.mentionedTargets.indexOf(uid) == -1) {
+                                        textMessageContent.mentionedType = 1;
+                                        textMessageContent.mentionedTargets.push(uid);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                wfc.sendConversationMessage(this.conversationInfo.conversation, textMessageContent);
+                this.text = '';
+                this.mentions = [];
+                Draft.setConversationDraft(this.conversationInfo.conversation, '', null);
+            }
+        },
+
+        minimizeMessageInputView() {
+            this.showEmoji = false;
+            this.showExt = false;
+        },
+
+        onInputFocus() {
+            this.showEmoji = false;
+            this.showExt = false;
+        },
+
+        toggleVoice() {
+            this.showVoice = !this.showVoice;
+            this.showEmoji = false;
+            this.showExt = false;
+        },
+
+        toggleEmoji() {
+            this.showEmoji = !this.showEmoji;
+            this.showExt = false;
+            this.showVoice = false;
+        },
+
+        toggleExt() {
+            this.showExt = !this.showExt;
+            this.showEmoji = false;
+            this.showVoice = false;
+        },
+
+        onClickExt(ext: ExtItem) {
+            console.log('onClick ext', ext.tag);
+            switch (ext.tag) {
+                case 'image':
+                    this.chooseImage();
+                    break;
+                case 'shot':
+                    this.chooseVideo();
+                    break;
+                case 'file':
+                    this.chooseFile();
+                    break;
+                case 'voip_a':
+                case 'voip_v':
+                    uni.showToast({
+                        title: '当前版本暂不支持音视频通话',
+                        icon: 'none'
+                    } as ShowToastOptions)
+                    break;
+                default:
+                    uni.showToast({
+                        title: 'TODO ' + ext.title,
+                        icon: 'none'
+                    } as ShowToastOptions)
+                    break;
+            }
+        },
+
+        onCategoryClick(i: number) {
+            this.currentEmojiStickerIndex = i;
+        },
+
+        onClickEmoji(emoji: string) {
+            this.text = this.text + emoji;
+        },
+
+        onClickSticker(sticker: string) {
+            const stickerMsg = new StickerMessageContent('', sticker, 200, 200)
+            wfc.sendConversationMessage(this.conversationInfo.conversation, stickerMsg);
+        },
+
+        chooseImage() {
+            uni.chooseImage({
+                sourceType: ['album', 'camera'],
+                sizeType: ['original', 'compressed'],
+                success: (e) => {
+                    console.log('choose image', e.tempFilePaths.length);
+                    for (let i = 0; i < e.tempFilePaths.length; i++) {
+                        let path = e.tempFilePaths[i];
+                        if (path.startsWith('file://')) {
+                            path = path.substring('file://'.length);
+                        }
+                        store.sendFile(this.conversationInfo.conversation, path);
+                    }
+                },
+                fail: (err) => {
+                    console.log('choose image fail', err)
+                }
+            } as ChooseImageOptions)
+        },
+
+        chooseVideo() {
+            uni.chooseVideo({
+                sourceType: ['camera'],
+                success: (e) => {
+                    console.log('choose video', e.tempFilePath);
+                    let path = e.tempFilePath;
+                    if (path.startsWith('file://')) {
+                        path = path.substring('file://'.length);
+                    }
+                    store.sendFile(this.conversationInfo.conversation, path);
+                },
+                fail: (err) => {
+                    console.log('choose video fail', err)
+                }
+            } as ChooseVideoOptions)
+        },
+
+        chooseFile() {
+            wfc.chooseFile('all', (file: UTSJSONObject) => {
+                let path = file.getString('path') ?? '';
+                if (path == '') {
+                    return
+                }
+                if (path.startsWith('file://')) {
+                    path = path.substring('file://'.length);
+                }
+                const name = file.getString('name') ?? ''
+                const size = file.getNumber('size') ?? 0
+                store.sendFile(this.conversationInfo.conversation, path, name, size);
+            }, (err: number) => {
+                console.error('choose file error', err);
+            });
+        },
+
+        onKeyboardHeightChange(keyboardHeight: number, currentKeyboardHeight: number) {
+            this.keyboardHeight = keyboardHeight;
+            this.currentKeyboardHeight = currentKeyboardHeight;
+        },
+
+        cancelQuote() {
+            store.quoteMessage(null);
+        },
+
+        restoreDraft() {
+            const draft = Draft.getConversationDraftEx(this.conversationInfo);
+            store.quoteMessage(draft.quotedMessage);
+            if (this.text != '') {
+                console.log('inputting, ignore', draft.text)
+            } else {
+                this.text = draft.text;
+            }
+        },
+
+        storeDraft() {
+            const conversationInfo = this.conversationInfo
+            const quotedMessage = conversationState.quotedMessage;
+            const draftText = this.text.trim();
+            const quoteInfo = quotedMessage != null
+                ? QuoteInfo.init(quotedMessage.messageUid, quotedMessage.from, quotedMessage.messageContent.digest(quotedMessage))
+                : null;
+
+            if (draftText.length == 0) {
+                if (conversationInfo.draft != '') {
+                    Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
+                }
+            } else {
+                if (draftText != conversationInfo.draft) {
+                    Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
+                }
+            }
+        },
+    },
+}
+</script>
+
+<style scoped>
+.wf-message-input-container {
+    background-color: #f7f7f7;
+    width: 100%;
+}
+
+.wf-ext-container {
+    width: 100%;
+    background-color: #f7f7f7;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.wf-ext-item {
+    padding: 17px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.wf-ext-item-icon {
+    background-color: #ffffff;
+    width: 55px;
+    height: 55px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+
+.ext-icon {
+    color: #181818;
+    font-size: 32px;
+}
+
+.wf-ext-item-text {
+    font-size: 12px;
+    color: #666666;
+    margin-top: 8px;
+}
+
+.wf-message-input-toolbar {
+    position: relative;
+    padding: 8px 6px;
+    display: flex;
+    width: 100%;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-around;
+    border-top: 1px solid #dddddd;
+    border-bottom: 1px solid #dddddd;
+}
+
+.wf-input-middle {
+    flex: 1;
+}
+
+.wf-input-text-container {
+    margin: 0 6px;
+    min-height: 38px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding-top: 9px;
+    max-height: 113px;
+}
+
+.quote-message-container {
+    display: flex;
+    flex-direction: row;
+    background-color: #EBEFEF;
+    align-items: center;
+    position: relative;
+    margin: 0 6px;
+    padding: 5px;
+    border-radius: 12px;
+}
+
+.quoted-message {
+    flex: 1;
+    max-width: 250px;
+    font-size: 13px;
+    color: #666666;
+}
+
+.cancel {
+    padding: 0 5px;
+    color: #808080;
+    font-size: 16px;
+}
+
+.wf-input-textarea {
+    padding: 0 12px;
+    width: 100%;
+    background-color: #ffffff;
+}
+
+.wf-input-voice-container {
+    margin: 0 6px;
+    height: 38px;
+    border-radius: 12px;
+    background-color: #ffffff;
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+}
+
+.wf-input-text-send-button {
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid #1BC418;
+    background-color: #4168e0;
+}
+
+.send-button-text {
+    color: #ffffff;
+    font-size: 15px;
+}
+
+.wf-input-button-icon {
+    font-size: 32px;
+    color: #333333;
+}
+
+.wf-stickers-container {
+    min-height: 30px;
+    width: 100%;
+    flex-direction: column;
+}
+
+.category-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    height: 60px;
+    border-bottom: 1px solid #808080;
+}
+
+.category {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.category-poster {
+    width: 40px;
+    height: 40px;
+    padding: 5px;
+    margin: 0 5px;
+    border-radius: 5px;
+}
+
+.category-poster.active {
+    background-color: #d3d3d3;
+}
+
+.wf-emoji-content {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.emoji-item {
+    font-size: 22px;
+    width: 46px;
+    height: 46px;
+    text-align: center;
+    line-height: 46px;
+}
+
+.wf-sticker-content {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    align-content: flex-start;
+    padding: 10px 0;
+}
+
+.sticker-item {
+    width: 100px;
+    height: 100px;
+    padding: 4px;
+    border-radius: 5px;
+}
+</style>

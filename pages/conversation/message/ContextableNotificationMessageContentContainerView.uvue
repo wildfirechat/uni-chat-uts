@@ -1,0 +1,85 @@
+<template>
+    <view>
+        <view class="message-time-container" :class="{ checked: isMessageChecked }">
+            <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
+            <view class="message-content-container" :class="{ checked: isMessageChecked }">
+                <checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
+                <RichNotificationMessageContentView :message="message" v-if="message.messageContent.type == 12"
+                    @longpress="openMessageContextMenu" />
+                <ArticlesMessageContentView :message="message" v-else-if="message.messageContent.type == 13"
+                    @longpress="openMessageContextMenu" />
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import RichNotificationMessageContentView from "./RichNotificationMessageContentView.uvue";
+import ArticlesMessageContentView from "./ArticlesMessageContentView.uvue";
+import Message from "../../../wfc/messages/message.uts";
+import { conversationState, pickState } from "../../../store.uts";
+import eventBus from "@/common/eventBus.uts";
+import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
+
+export default {
+    name: "ContextableNotificationMessageContentContainerView",
+    components: { ArticlesMessageContentView, RichNotificationMessageContentView },
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        enableMessageMultiSelection(): boolean {
+            return conversationState.enableMessageMultiSelection
+        },
+        isMessageChecked(): boolean {
+            return pickState.messages.findIndex((m: Message): boolean => m.messageId == this.message.messageId) >= 0;
+        }
+    },
+    methods: {
+        openMessageContextMenu(event: UniTouchEvent) {
+            eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, this.message))
+        },
+    },
+}
+</script>
+
+<style scoped>
+.message-time-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-time-container.checked {
+    background-color: #e7e7e7;
+}
+
+.time {
+    width: 100%;
+    text-align: center;
+    color: #b4b4b4;
+    font-size: 10px;
+    background-color: #f3f3f3;
+}
+
+.message-content-container {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    padding: 10px 20px 4px 20px;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.checkbox {
+    position: absolute;
+    left: 0;
+    margin-left: 20px;
+}
+</style>

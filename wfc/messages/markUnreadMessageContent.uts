@@ -1,0 +1,43 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import { _patchToJavaLong, _reverseToJsLongString, stringValue } from "../util/longUtil.uts";
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+export default class MarkUnreadMessageContent extends MessageContent {
+    // 64 位 id，string 表示
+    messageUid = '0';
+    timestamp = '0';
+
+    constructor(messageUid: string = '0') {
+        super(MessageContentType.Mark_Unread_Sync);
+        this.messageUid = messageUid;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            u: stringValue(this.messageUid),
+            t: stringValue(this.timestamp),
+        } as UTSJSONObject
+        let str = JSON.stringify(obj)!
+        str = _patchToJavaLong(str, 'u');
+        str = _patchToJavaLong(str, 't');
+        payload.binaryContent = utf8_to_b64(str);
+
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+
+        let str = b64_to_utf8(payload.binaryContent);
+        str = _reverseToJsLongString(str, 'u');
+        str = _reverseToJsLongString(str, 't');
+        const obj = JSON.parseObject(str);
+        if (obj != null) {
+            this.messageUid = obj.getString('u') ?? '0';
+            this.timestamp = obj.getString('t') ?? '0';
+        }
+    }
+}

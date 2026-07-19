@@ -1,0 +1,16 @@
+/**
+ * 弹出菜单项。
+ * 原 JS 版本菜单项是任意对象（可携带 conversationInfo 等上下文）；
+ * UTS 版本改为固定结构，上下文数据由调用方自行保存（如 store 的 contextMenuConversationInfo）。
+ */
+export class PopupMenuItem {
+    title = ''
+    tag = ''
+    icon = ''
+    disabled = false
+
+    constructor(title: string, tag: string) {
+        this.title = title
+        this.tag = tag
+    }
+}

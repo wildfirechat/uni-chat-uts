@@ -1,0 +1,149 @@
+<template>
+    <view class="new-friend-item-container">
+        <view v-for="(friendRequest, index) in friendRequestList" :key="index" @tap="showFriendRequest(friendRequest)"
+            class="new-friend-item">
+            <image class="avatar" :src="portraitOf(friendRequest)" />
+            <view class="info">
+                <view class="name">
+                    <text class="single-line request-name">{{ displayNameOf(friendRequest) }}</text>
+                    <text class="reason single-line">{{ reasonOf(friendRequest) }}</text>
+                </view>
+                <text v-if="friendRequest.status == 1" class="status">已添加</text>
+                <button v-else-if="friendRequest.status == 0" class="accept" size="mini"
+                    @tap="accept(friendRequest)">添加</button>
+                <text v-else-if="friendRequest.status == 3" class="status">已拒绝</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState } from "../../store.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import EventType from "../../wfc/client/wfcEvent.uts";
+import FriendRequest from "../../wfc/model/friendRequest.uts";
+import Config from "../../config.uts";
+
+export default {
+    name: "FriendRequestListView",
+    data() {
+        return {
+            isActive: false,
+        };
+    },
+    computed: {
+        friendRequestList(): FriendRequest[] {
+            return contactState.friendRequestList
+        }
+    },
+    methods: {
+        portraitOf(friendRequest: FriendRequest): string {
+            const target = friendRequest._target
+            const portrait = target != null ? target.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        displayNameOf(friendRequest: FriendRequest): string {
+            const target = friendRequest._target
+            return target != null ? target.displayName : ''
+        },
+        reasonOf(friendRequest: FriendRequest): string {
+            if (friendRequest.reason != '') {
+                return friendRequest.reason
+            }
+            return '我是' + this.displayNameOf(friendRequest)
+        },
+        showFriendRequest(friendRequest: FriendRequest) {
+            store.setCurrentFriendRequest(friendRequest);
+            uni.navigateTo({
+                url: '/pages/contact/FriendRequestDetailPage',
+                fail: (err) => {
+                    console.log('nav to FriendRequestDetailPage err', err);
+                }
+            } as NavigateToOptions);
+        },
+        accept(friendRequest: FriendRequest) {
+            wfc.handleFriendRequest(friendRequest.target, true, "", () => {
+                friendRequest.status = 1;
+            }, (err: number) => {
+                uni.showToast({
+                    title: '添加好友失败 ' + err,
+                    icon: 'none',
+                } as ShowToastOptions);
+                console.log('accept friend request error', err)
+            })
+        },
+        onFriendRequestUpdate(_args: Array<any | null>) {
+            if (this.isActive) {
+                wfc.clearUnreadFriendRequestStatus();
+            }
+        },
+    },
+
+    mounted() {
+        this.isActive = true;
+        wfc.clearUnreadFriendRequestStatus();
+        wfc.eventEmitter.on(EventType.FriendRequestUpdate, this.onFriendRequestUpdate);
+    },
+
+    beforeUnmount() {
+        this.isActive = false;
+        wfc.eventEmitter.off(EventType.FriendRequestUpdate, this.onFriendRequestUpdate);
+    }
+}
+</script>
+
+<style scoped>
+.new-friend-item-container {
+    padding-left: 10px;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.new-friend-item {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    padding: 10px 10px 10px 0;
+    align-items: center;
+    position: relative;
+    border-bottom: 1px solid #f3f3f3;
+}
+
+.info {
+    margin-left: 10px;
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.name {
+    flex: 1;
+}
+
+.request-name {
+    font-size: 13px;
+}
+
+.accept {
+    text-align: center;
+    color: #ffffff;
+    background-color: #4168e0;
+    border: 1px solid #4168e0;
+}
+
+.status {
+    color: #b2b2b2;
+    font-size: 13px;
+}
+
+.reason {
+    font-size: 12px;
+    color: #b2b2b2;
+}
+</style>

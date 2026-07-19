@@ -1,0 +1,159 @@
+<template>
+    <view class="page-container">
+        <NavBar title="通讯录" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
+        <scroll-view class="contact-list" direction="vertical">
+            <view @tap="showNewFriends" class="category-item-container">
+                <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
+                <view class="category-item">
+                    <text class="title">新的朋友</text>
+                    <text class="desc unread" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
+                </view>
+            </view>
+            <view @tap="showGroups" class="category-item-container">
+                <image class="category-icon" src="/static/image/icon/ic_group_chat.png" />
+                <view class="category-item">
+                    <text class="title">群聊</text>
+                    <text class="desc">{{ favGroupCount }}</text>
+                </view>
+            </view>
+            <view @tap="showChannels" class="category-item-container">
+                <image class="category-icon" src="/static/image/icon/ic_channel_1.png" />
+                <view class="category-item">
+                    <text class="title">频道</text>
+                    <text class="desc">{{ channelCount }}</text>
+                </view>
+            </view>
+            <OrganizationListView />
+            <UserListView :users="contactList" padding-left="10px" v-if="expandFriendList" />
+        </scroll-view>
+        <main-action-menu ref="mainActionMenu"></main-action-menu>
+    </view>
+</template>
+<script lang="uts">
+import { contactState } from "../../store.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+import UserListView from "../user/UserListView.uvue";
+import OrganizationListView from "./OrganizationListView.uvue";
+import NavBar from "../common/NavBar.uvue";
+
+export default {
+    name: "ContactListPage",
+    components: { OrganizationListView, UserListView, NavBar },
+    data() {
+        return {
+            searchIcon: '\ue636',
+            plusIcon: '\ue657',
+        }
+    },
+
+    computed: {
+        unreadFriendRequestCount(): number {
+            return contactState.unreadFriendRequestCount
+        },
+        favGroupCount(): number {
+            return contactState.favGroupList.length
+        },
+        channelCount(): number {
+            return contactState.channelList.length
+        },
+        expandFriendList(): boolean {
+            return contactState.expandFriendList
+        },
+        contactList(): UserInfo[] {
+            return contactState.favContactList.concat(contactState.friendList)
+        },
+    },
+
+    onHide() {
+        console.log('contactList onHide');
+        (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
+    },
+
+    methods: {
+        onPlusTap() {
+            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('toggle');
+        },
+        onSearchTap() {
+            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
+            uni.navigateTo({
+                url: '/pages/search/SearchPortalPage'
+            } as NavigateToOptions);
+        },
+        showNewFriends() {
+            uni.navigateTo({
+                url: '/pages/contact/NewFriendListPage',
+                fail: (err) => {
+                    console.log('nav to NewFriendListPage err', err);
+                }
+            } as NavigateToOptions);
+        },
+        showGroups() {
+            uni.navigateTo({
+                url: '/pages/contact/GroupListPage',
+                fail: (err) => {
+                    console.log('nav to GroupListPage err', err);
+                }
+            } as NavigateToOptions);
+        },
+        showChannels() {
+            uni.navigateTo({
+                url: '/pages/contact/ChannelListPage',
+                fail: (err) => {
+                    console.log('nav to ChannelListPage err', err);
+                }
+            } as NavigateToOptions);
+        },
+    }
+}
+</script>
+
+<style scoped>
+.page-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.contact-list {
+    flex: 1;
+}
+
+.category-item-container {
+    height: 50px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 10px;
+    background-color: #fafafa;
+}
+
+.category-icon {
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+}
+
+.category-item {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.title {
+    color: #262626;
+    font-size: 14px;
+}
+
+.desc {
+    margin-right: 15px;
+    color: #262626;
+    font-size: 14px;
+}
+
+.desc.unread {
+    color: #ff0000;
+}
+</style>

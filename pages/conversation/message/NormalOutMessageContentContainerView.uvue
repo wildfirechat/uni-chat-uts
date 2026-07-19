@@ -1,0 +1,235 @@
+<template>
+    <view>
+        <view class="message-time-container" :class="{ checked: isMessageChecked }">
+            <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
+            <view class="message-content-container" :class="{ checked: isMessageChecked }">
+                <checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
+
+                <view class="message-avatar-content-container">
+                    <LoadingView v-if="message.status == 0 || isDownloading" />
+                    <text v-if="message.status == 2" class="icomoon resend-icon" @tap="resend">&#xf128;</text>
+                    <view class="flex-column flex-align-end">
+                        <MessageContentContainerView :message="message" class="message-content-container-view"
+                            @longpress="openMessageContextMenu" />
+                        <QuoteMessageView v-if="quotedMessage != null" class="quote-view"
+                            :quoted-message="quotedMessage" :show-close-button="false" />
+                    </view>
+
+                    <image class="avatar" @tap="onClickUserPortrait" :src="fromPortrait" />
+                </view>
+            </view>
+            <text v-if="shouldShowMessageReceipt" class="receipt" @tap="showMessageReceiptDetail">{{ messageReceipt }}</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import TextMessageContent from "@/wfc/messages/textMessageContent.uts";
+import MessageContentContainerView from "@/pages/conversation/message/MessageContentContainerView.uvue";
+import store, { conversationState, pickState } from "@/store.uts";
+import LoadingView from "@/pages/common/LoadingView.uvue";
+import wfc from "@/wfc/client/wfc.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import { gte } from "@/wfc/util/longUtil.uts";
+import QuoteMessageView from "@/pages/conversation/message/QuoteMessageView.uvue";
+import Config from "@/config.uts";
+import eventBus from "@/common/eventBus.uts";
+import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
+
+export default {
+    name: "NormalOutMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        },
+    },
+    data() {
+        return {
+            quotedMessage: null as Message | null,
+        }
+    },
+    components: {
+        QuoteMessageView,
+        LoadingView,
+        MessageContentContainerView,
+    },
+    mounted() {
+        const content = this.message.messageContent
+        if (content instanceof TextMessageContent) {
+            const quoteInfo = (content as TextMessageContent).quoteInfo
+            if (quoteInfo != null) {
+                const messageUid = quoteInfo.messageUid;
+                const msg = store.getMessageByUid(messageUid);
+                if (msg == null) {
+                    wfc.loadRemoteMessage(messageUid, (ms: Message[]) => {
+                        if (ms.length > 0) {
+                            this.quotedMessage = store._patchMessage(ms[0], 0);
+                        }
+                    }, (err: number) => {
+                        console.log('load remote message error', messageUid, err)
+                    })
+                } else {
+                    this.quotedMessage = msg;
+                }
+            }
+        }
+    },
+    methods: {
+        onClickUserPortrait() {
+            const from = this.message._from
+            if (from != null) {
+                store.setCurrentFriend(from);
+                uni.navigateTo({
+                    url: '/pages/contact/UserDetailPage',
+                    fail: (err) => {
+                        console.log('nav to UserDetailPage err', err);
+                    }
+                } as NavigateToOptions)
+            }
+        },
+        resend() {
+            wfc.deleteMessage(this.message.messageId);
+            wfc.sendMessage(this.message);
+        },
+        openMessageContextMenu(event: UniTouchEvent) {
+            eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, this.message))
+        },
+
+        showMessageReceiptDetail() {
+            // TODO 消息已读详情页面（与原版本一致，原版本亦未实现）
+        },
+    },
+
+    computed: {
+        enableMessageMultiSelection(): boolean {
+            return conversationState.enableMessageMultiSelection
+        },
+        fromPortrait(): string {
+            const from = this.message._from
+            return from != null ? from.portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        messageReceipt(): string {
+            const conversation = this.message.conversation;
+            const timestamp = this.message.timestamp;
+            let receiptDesc = ''
+            const readEntries = conversationState.currentConversationRead;
+
+            if (conversation.type == ConversationType.Single) {
+                let readDt: number = 0
+                if (readEntries != null) {
+                    readDt = readEntries.get(conversation.target) ?? 0
+                }
+                if (readDt > 0 && gte(readDt, timestamp)) {
+                    receiptDesc = "已读";
+                } else {
+                    receiptDesc = "未读";
+                }
+            } else if (conversation.type == ConversationType.Group) {
+                const groupMembers = wfc.getGroupMemberIds(conversation.target, false);
+                if (groupMembers.length == 0) {
+                    receiptDesc = '';
+                } else {
+                    const memberCount = groupMembers.length;
+                    let readCount = 0;
+                    for (let i = 0; i < groupMembers.length; i++) {
+                        const memberId = groupMembers[i]
+                        let readDt: number = 0
+                        if (readEntries != null) {
+                            readDt = readEntries.get(memberId) ?? 0
+                        }
+                        if ((readDt > 0 && gte(readDt, timestamp)) || memberId == this.message.from) {
+                            readCount++;
+                        }
+                    }
+                    receiptDesc = `已读 ${readCount}/${memberCount}`
+                }
+            }
+            return receiptDesc;
+        },
+
+        isDownloading(): boolean {
+            return store.isDownloadingMessage(this.message.messageId);
+        },
+
+        shouldShowMessageReceipt(): boolean {
+            return conversationState.isMessageReceiptEnable
+                && ["FireRobot", Config.FILE_HELPER_ID].indexOf(this.message.conversation.target) < 0;
+        },
+
+        isMessageChecked(): boolean {
+            return pickState.messages.findIndex((m: Message): boolean => m.messageId == this.message.messageId) >= 0;
+        }
+    },
+}
+</script>
+
+<style scoped>
+.message-time-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.message-time-container.checked {
+    background-color: #e7e7e7;
+}
+
+.time {
+    width: 100%;
+    margin-bottom: 20px;
+    text-align: center;
+    color: #b4b4b4;
+    font-size: 10px;
+    background-color: #f3f3f3;
+}
+
+.receipt {
+    margin-right: 70px;
+    font-size: 12px;
+    margin-top: -10px;
+    color: #b4b4b4;
+}
+
+.message-content-container {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    padding: 10px 20px;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+}
+
+.checkbox {
+    margin-right: 10px;
+}
+
+.message-avatar-content-container {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    overflow: hidden;
+    justify-content: flex-end;
+    align-items: flex-start;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.resend-icon {
+    color: #ff0000;
+    font-size: 20px;
+    align-self: center;
+}
+
+.quote-view {
+    padding: 5px 0;
+    max-width: 80%;
+}
+</style>

@@ -1,0 +1,13 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import GroupInfo from "./groupInfo.uts";
+
+export default class NullGroupInfo extends GroupInfo {
+    constructor(groupId: string) {
+        super();
+        this.target = groupId;
+        this.name = '群聊';
+    }
+}

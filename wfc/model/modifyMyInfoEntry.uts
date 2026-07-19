@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class ModifyMyInfoEntry {
+    /**
+     * 可选值，参考 ModifyMyInfoType
+     */
+    type = -1;
+    value = '';
+
+    constructor(type: number, value: string) {
+        this.type = type;
+        this.value = value;
+    }
+}

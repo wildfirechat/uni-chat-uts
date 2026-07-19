@@ -1,0 +1,11 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import Conversation from "./conversation.uts";
+
+export default class ReadEntry {
+    userId = '';
+    conversation: Conversation | null = null;
+    readTime = 0;
+}

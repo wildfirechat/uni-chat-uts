@@ -1,0 +1,60 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+export default class EventType {
+    // args: [message]
+    static SendMessage = 'sendMsg';
+    /**
+     * @deprecated 请使用 ReceiveMessages
+     */
+    static ReceiveMessage = 'receiveMsg';
+    // args: [Message[], hasMore]
+    static ReceiveMessages = 'receiveMsgs';
+    // args: [Map<userId, receiveTime>]
+    static MessageReceived = 'msgReceived';
+    // args: [ReadEntry[]]
+    static MessageRead = 'msgRead';
+    // 主动调用recallMessage时，也会触发
+    // args: [operator, messageUid]
+    static RecallMessage = 'recallMsg';
+    // 远程删除消息时触发
+    // args: [messageUid]
+    static MessageDeleted = 'msgDeleted'
+    // 本地主动删除消息时触发
+    // args: [messageId]
+    static DeleteMessage = 'deleteMsg';
+    // args: [message]
+    static MessageStatusUpdate = 'msgStatusUpdate';
+    // args: [connectionStatus]
+    static ConnectionStatusChanged = 'connectionStatusChanged';
+    // args: [host]
+    static ConnectToServer = 'connectToServer';
+    // args: [UserInfo[]]
+    static UserInfosUpdate = 'userInfosUpdate';
+    // args: [ChannelInfo[]]
+    static ChannelInfosUpdate = 'channelInfosUpdate';
+    // args: [GroupInfo[]]
+    static GroupInfosUpdate = 'groupInfosUpdate';
+    // args: [updatedFriendIds]
+    static FriendListUpdate = 'friendListUpdate';
+    // args: [newFriendRequests]
+    static FriendRequestUpdate = 'friendRequestUpdate';
+    // args: [conversationInfo]
+    static ConversationInfoUpdate = 'conversationInfoUpdate';
+    // args: []
+    static SettingUpdate = 'settingUpdate';
+    // args: [groupId, GroupMember[]]
+    static GroupMembersUpdate = 'groupMembersUpdate';
+
+    // args: [event]
+    static ConferenceEvent = 'conferenceEvent';
+    // args: [UserOnlineState[]]
+    static UserOnlineEvent = 'onlineEvent';
+    // args: [targetId, playedMessageId]
+    static SecretChatStartBurn = 'secretChatStartBurn';
+    // args: [messageId[]]
+    static SecretChatMessageBurned = 'secretChatMessageBurned';
+    // args: [targetId]
+    static SecretChatStateChange = 'secretChatStateChange';
+}

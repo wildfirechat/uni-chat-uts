@@ -1,40 +1,23 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    -webkit-app-region: no-drag;
-}
-
-img.emoji {
-    height: 1em !important;
-    width: 1em !important;
-    margin: 0 .05em 0 .1em;
-    vertical-align: -0.1em;
-    user-select: none;
-}
+/* uni-app x 版全局样式：
+ * - 移除了 web 专用选择器（*、标签选择器、img.emoji 等）
+ * - :root css 变量不支持，各页面直接使用具体值
+ */
 
 .single-line {
     max-width: 100%;
+    lines: 1;
     text-overflow: ellipsis;
     overflow: hidden;
-    white-space: nowrap;
 }
 
-ul,
-ol {
-    list-style: none;
+.customicons {
+    font-family: "customicons";
 }
 
-div,
-button,
-img,
-video {
-    outline: none;
+.wxfont {
+    font-family: "wxfont";
 }
 
-p,
-div {
-    word-break: break-all;
-    user-select: none;
+.icomoon {
+    font-family: "icomoon";
 }
-

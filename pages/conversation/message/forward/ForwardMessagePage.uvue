@@ -1,0 +1,61 @@
+<template>
+    <view class="forward-page">
+        <ForwardMessageByPickConversationView v-if="forwardTargetType == 'pickConversation' && messages.length > 0"
+            :messages="messages" @forward-target-type="changeForwardTargetType" :forward-type="forwardType" />
+        <ForwardMessageByCreateConversationView v-if="forwardTargetType != 'pickConversation' && messages.length > 0"
+            :messages="messages" @forward-target-type="changeForwardTargetType" :forward-type="forwardType" />
+    </view>
+</template>
+
+<script lang="uts">
+import ForwardMessageByPickConversationView from "./ForwardMessageByPickConversationView.uvue";
+import ForwardMessageByCreateConversationView from "./ForwardMessageByCreateConversationView.uvue";
+import ForwardType from "./ForwardType.uts";
+import Message from "@/wfc/messages/message.uts";
+import { pickState } from "../../../../store.uts";
+import { currentForwardOptions, clearForwardOptions } from "@/common/forward.uts";
+
+export default {
+    name: "ForwardMessagePage",
+    components: {
+        ForwardMessageByCreateConversationView,
+        ForwardMessageByPickConversationView
+    },
+
+    data() {
+        return {
+            forwardType: ForwardType.NORMAL as number,
+            messages: [] as Message[],
+            forwardTargetType: 'pickConversation',
+        }
+    },
+
+    onLoad(_options: OnLoadOptions) {
+        console.log('ForwardMessagePage onLoad')
+        const forwardOptions = currentForwardOptions()
+        if (forwardOptions != null) {
+            this.forwardType = forwardOptions.forwardType;
+            this.messages = forwardOptions.messages;
+        }
+    },
+
+    onUnload() {
+        clearForwardOptions();
+        pickState.conversations = [];
+        pickState.messages = [];
+        pickState.users = [];
+    },
+
+    methods: {
+        changeForwardTargetType(type: string) {
+            this.forwardTargetType = type;
+        }
+    },
+}
+</script>
+
+<style scoped>
+.forward-page {
+    flex: 1;
+}
+</style>

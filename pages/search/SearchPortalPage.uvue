@@ -1,0 +1,70 @@
+<template>
+    <view class="search-portal-container">
+        <input class="input" type="text" v-model="keyword" placeholder="搜索" @input="search" />
+        <SearchResultView :query="keyword" :search-user="searchUserOption" :search-contact="searchContactOption"
+            :search-group="searchGroupOption" :search-conversation="searchConversationOption"
+            v-if="keyword.trim() != ''" />
+        <view v-else class="tip-container">
+            <text class="tip">请输入关键字进行搜索</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import SearchResultView from "./SearchResultView.uvue";
+import store from "../../store.uts";
+
+export default {
+    name: "SearchPortalPage",
+    components: { SearchResultView },
+
+    data() {
+        return {
+            keyword: '',
+            searchUserOption: true,
+            searchContactOption: true,
+            searchConversationOption: true,
+            searchGroupOption: true,
+        }
+    },
+    onLoad(options: OnLoadOptions) {
+        this.searchUserOption = (options['user'] ?? 'true') == 'true'
+        this.searchGroupOption = (options['group'] ?? 'true') == 'true'
+        this.searchContactOption = (options['contact'] ?? 'true') == 'true'
+        this.searchConversationOption = (options['conversation'] ?? 'true') == 'true'
+    },
+    methods: {
+        search() {
+            store.setSearchQuery(this.keyword, this.searchContactOption, this.searchGroupOption, this.searchConversationOption, this.searchUserOption)
+        }
+    }
+}
+</script>
+
+<style scoped>
+.search-portal-container {
+    flex: 1;
+    position: relative;
+    background-color: #ffffff;
+}
+
+.input {
+    padding: 5px 10px;
+    height: 35px;
+    border-bottom: 1px solid #d3d3d3;
+    width: 100%;
+    background-color: #ffffff;
+}
+
+.tip-container {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+}
+
+.tip {
+    color: #808080;
+}
+</style>

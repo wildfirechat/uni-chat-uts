@@ -1,0 +1,81 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import Conversation from "./conversation.uts";
+import Message from "../messages/message.uts";
+import UnreadCount from "./unreadCount.uts";
+import { eq } from '../util/longUtil.uts'
+
+export default class ConversationInfo {
+    conversation: Conversation = new Conversation(0, '', 0);
+    lastMessage: Message | null = null;
+    timestamp = 0;
+    draft = '';
+    unreadCount: UnreadCount = new UnreadCount();
+    top = 0;
+    isSilent = false;
+
+    // ---- UI 层补丁字段 ----
+    _timeStr = '';
+    _unread = 0;
+
+    static protoConversationToConversationInfo(obj: UTSJSONObject | null): ConversationInfo | null {
+        if (obj == null) {
+            return null;
+        }
+        const conversationInfo = new ConversationInfo();
+        const convObj = obj.getJSON('conversation');
+        let conversation: Conversation | null
+        if (convObj != null) {
+            conversation = Conversation.fromJsonObject(convObj);
+        } else {
+            conversation = Conversation.fromJsonObject(obj);
+        }
+        if (conversation == null) {
+            return null;
+        }
+        conversationInfo.conversation = conversation;
+        conversationInfo.timestamp = obj.getNumber('timestamp') ?? 0;
+        conversationInfo.draft = obj.getString('draft') ?? '';
+        conversationInfo.unreadCount = UnreadCount.fromJsonObject(obj.getJSON('unreadCount'));
+        let top = obj.getNumber('isTop');
+        if (top == null) {
+            const topBool = obj.getBoolean('isTop');
+            top = topBool != null && topBool ? 1 : obj.getNumber('top');
+        }
+        conversationInfo.top = top ?? 0;
+        conversationInfo.isSilent = obj.getBoolean('isSilent') ?? false;
+        conversationInfo.lastMessage = Message.fromProtoMessage(obj.getJSON('lastMessage'));
+        return conversationInfo;
+    }
+
+    static equals(info1: ConversationInfo | null, info2: ConversationInfo | null): boolean {
+        if (info1 == null || info2 == null) {
+            return false;
+        }
+        if (!info1.conversation.equal(info2.conversation)) {
+            return false;
+        }
+
+        const unreadCount1 = info1.unreadCount;
+        const unreadCount2 = info2.unreadCount;
+        if (unreadCount1.unread != unreadCount2.unread
+            || unreadCount1.unreadMention != unreadCount2.unreadMention
+            || unreadCount1.unreadMentionAll != unreadCount2.unreadMentionAll) {
+            return false;
+        }
+
+        const lastMessage1 = info1.lastMessage
+        const lastMessage2 = info2.lastMessage
+        if ((lastMessage1 != null && lastMessage2 == null) || (lastMessage1 == null && lastMessage2 != null)) {
+            return false;
+        }
+
+        if (lastMessage1 != null && lastMessage2 != null && lastMessage1.messageId != lastMessage2.messageId) {
+            return false;
+        }
+        // 其他的应当都会反应在timestamp上
+        return eq(info1.timestamp, info2.timestamp) && info1.draft == info2.draft;
+    }
+}

@@ -1,0 +1,31 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from "../messageContent.uts";
+
+export default class NotificationMessageContent extends MessageContent {
+    // message#fromProtoMessage 时设置
+    fromSelf = false;
+
+    constructor(type: number) {
+        super(type);
+    }
+
+    override digest(message: any | null): string {
+        let desc = '';
+        try {
+            desc = this.formatNotification(message);
+        } catch (error) {
+            console.log('digest', error);
+        }
+        return desc;
+    }
+
+    /**
+     * @param message 原为 Message 类型；为避免循环依赖，这里用 any，需要时由子类转换
+     */
+    formatNotification(message: any | null): string {
+        return '..notification..';
+    }
+}

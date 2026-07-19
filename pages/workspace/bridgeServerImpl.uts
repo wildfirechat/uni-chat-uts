@@ -1,0 +1,160 @@
+/**
+ * 工作台开放平台 JS SDK 的 server 端实现（uni-app x 版）。
+ *
+ * 大概流程：
+ * 1. client 运行在工作台所加载的 webview 里面（bridgeClientImpl，注入 H5）
+ * 2. server 直接运行在工作台页面里面（本文件）
+ * 3. client 和 server 之间的交互，通过 uni.postMessage 和 webview.evalJS 实现
+ */
+import wfc from "../../wfc/client/wfc.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+import { contactState } from "../../store.uts";
+import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
+import { navigateToPage } from "../../common/nav.uts";
+
+export class WorkspaceBridge {
+    private webviewContext: WebviewContext | null = null
+
+    init(webviewContext: WebviewContext | null): void {
+        this.webviewContext = webviewContext
+    }
+
+    messageFromWebView(data: string): void {
+        const obj = JSON.parseObject(data);
+        if (obj == null) {
+            console.error('parse ws data error', data);
+            return;
+        }
+        const type = obj.getString('type') ?? ''
+        if (type != 'wf-op-request') {
+            return
+        }
+        const handlerName = obj.getString('handlerName') ?? ''
+        const requestId = obj.getNumber('requestId') ?? 0
+        const appUrl = obj.getString('appUrl') ?? ''
+        const args = obj.get('args')
+
+        switch (handlerName) {
+            case 'toast':
+                this.toast(args)
+                break;
+            case 'openUrl':
+                this.openUrl(args)
+                break;
+            case 'getAuthCode':
+                this.getAuthCode(args, appUrl, requestId)
+                break;
+            case 'config':
+                this.config(args, appUrl)
+                break;
+            case 'chooseContacts':
+                this.chooseContacts(appUrl, requestId)
+                break;
+            case 'close':
+                this.close()
+                break;
+            default:
+                console.log('wf-op-request, unknown handlerName', handlerName);
+                break;
+        }
+    }
+
+    private openUrl(args: any | null): void {
+        const url = args != null ? '' + args : ''
+        console.log('openUrl', url)
+        navigateToPage(`/pages/workspace/WorkspaceWebViewPage?url=${encodeURIComponent(url)}`, null);
+    }
+
+    private getAuthCode(args: any | null, appUrl: string, requestId: number): void {
+        if (!(args instanceof UTSJSONObject)) {
+            return
+        }
+        const argsObj = args as UTSJSONObject
+        let host = appUrl.substring(appUrl.indexOf('//') + 2)
+        host = host.indexOf('/') > 0 ? host.substring(0, host.indexOf('/')) : host
+        if (host.indexOf(':') > 0) {
+            host = host.substring(0, host.indexOf(':'))
+        }
+        wfc.getAuthCode(argsObj.getString('appId') ?? '', argsObj.getNumber('appType') ?? 0, host, (authCode: string) => {
+            this.response('getAuthCode', appUrl, requestId, 0, authCode);
+        }, (err: number) => {
+            console.log('getAuthCode error', err);
+            this.response('getAuthCode', appUrl, requestId, err, null)
+        })
+    }
+
+    private config(args: any | null, appUrl: string): void {
+        if (!(args instanceof UTSJSONObject)) {
+            return
+        }
+        const argsObj = args as UTSJSONObject
+        wfc.configApplication(argsObj.getString('appId') ?? '', argsObj.getNumber('appType') ?? 0,
+            argsObj.getNumber('timestamp') ?? 0, argsObj.getString('nonceStr') ?? '', argsObj.getString('signature') ?? '', () => {
+                console.log('config success');
+                this.notifyEvent('ready', appUrl, null)
+            }, (err: number) => {
+                console.log('config failed');
+                this.notifyEvent('error', appUrl, err)
+            })
+    }
+
+    private chooseContacts(appUrl: string, requestId: number): void {
+        const options = new PickUsersOptions()
+        options.users = contactState.friendList
+        options.confirmTitle = '确定'
+        options.successCB = (users: UserInfo[]) => {
+            const userList: UTSJSONObject[] = []
+            for (let i = 0; i < users.length; i++) {
+                userList.push({
+                    uid: users[i].uid,
+                    displayName: users[i].displayName,
+                    portrait: users[i].portrait,
+                } as UTSJSONObject)
+            }
+            this.response('chooseContacts', appUrl, requestId, 0, userList);
+        }
+        pickUsers(options)
+    }
+
+    private close(): void {
+        uni.navigateBack({
+            delta: 1,
+            fail: (err) => {
+                console.log('nav back err', err);
+            }
+        } as NavigateBackOptions);
+    }
+
+    private toast(args: any | null): void {
+        uni.showToast({
+            title: args != null ? '' + args : '',
+            icon: 'none',
+        } as ShowToastOptions);
+    }
+
+    private response(handlerName: string, appUrl: string, requestId: number, code: number, data: any | null): void {
+        const obj = {
+            type: 'wf-op-response',
+            handlerName: handlerName,
+            appUrl: appUrl,
+            requestId: requestId,
+            args: {
+                code: code,
+                data: data
+            } as UTSJSONObject,
+        } as UTSJSONObject
+        const str = JSON.stringify(obj)!
+        this.webviewContext?.evalJS(`__messageFromUni('${str}')`);
+    }
+
+    private notifyEvent(handlerName: string, appUrl: string, args: any | null): void {
+        const obj = {
+            type: 'wf-op-event',
+            handlerName: handlerName,
+            appUrl: appUrl,
+            args: args
+        } as UTSJSONObject
+        const str = JSON.stringify(obj)!
+        this.webviewContext?.evalJS(`__messageFromUni('${str}')`);
+    }
+}

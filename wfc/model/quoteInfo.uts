@@ -1,0 +1,55 @@
+import { getUserInfo } from "../client/userBrief.uts";
+import { stringValue } from "../util/longUtil.uts";
+
+export default class QuoteInfo {
+    // 64 位 id，string 表示
+    messageUid = '0';
+    userId = '';
+    userDisplayName = '';
+    messageDigest = '';
+
+    /**
+     * 原 initWithMessage(message)；为避免循环依赖，参数拆开传
+     */
+    static init(messageUid: string, from: string, digest: string): QuoteInfo {
+        const info = new QuoteInfo();
+        info.messageUid = messageUid;
+        info.userId = from;
+        const userInfo = getUserInfo(from, false);
+        info.userDisplayName = userInfo.displayName;
+        info.messageDigest = digest;
+        if (info.messageDigest.length > 48) {
+            info.messageDigest = info.messageDigest.substring(0, 48);
+        }
+        return info;
+    }
+
+    encode(): UTSJSONObject {
+        return {
+            u: stringValue(this.messageUid),
+            i: this.userId,
+            n: this.userDisplayName,
+            d: this.messageDigest,
+        } as UTSJSONObject;
+    }
+
+    decode(obj: UTSJSONObject): void {
+        const messageUid = obj.getString('messageUid')
+        if (messageUid != null) {
+            this.messageUid = messageUid;
+            this.userId = obj.getString('userId') ?? '';
+            this.userDisplayName = obj.getString('userDisplayName') ?? '';
+            this.messageDigest = obj.getString('messageDigest') ?? '';
+        } else {
+            let u = obj.getString('u')
+            if (u == null) {
+                const un = obj.getNumber('u')
+                u = un != null ? stringValue(un) : '0'
+            }
+            this.messageUid = u;
+            this.userId = obj.getString('i') ?? '';
+            this.userDisplayName = obj.getString('n') ?? '';
+            this.messageDigest = obj.getString('d') ?? '';
+        }
+    }
+}

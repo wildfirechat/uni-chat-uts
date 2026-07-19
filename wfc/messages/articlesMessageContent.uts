@@ -1,0 +1,96 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+import LinkMessageContent from "./linkMessageContent.uts";
+
+export class Article {
+    articleId = '';
+    cover = '';
+    title = '';
+    digest = '';
+    url = '';
+    readReport = false;
+
+    toJson(): UTSJSONObject {
+        return {
+            id: this.articleId,
+            cover: this.cover,
+            title: this.title,
+            url: this.url,
+            digest: this.digest,
+            rr: this.readReport
+        } as UTSJSONObject;
+    }
+
+    static fromJson(obj: UTSJSONObject): Article {
+        const a = new Article()
+        a.articleId = obj.getString('id') ?? '';
+        a.cover = obj.getString('cover') ?? '';
+        a.title = obj.getString('title') ?? '';
+        a.digest = obj.getString('digest') ?? '';
+        a.url = obj.getString('url') ?? '';
+        a.readReport = obj.getBoolean('rr') ?? false;
+        return a
+    }
+
+    toLinkMessageContent(): LinkMessageContent {
+        const content = new LinkMessageContent();
+        content.url = this.url;
+        content.title = this.title;
+        content.contentDigest = this.digest;
+        content.thumbnail = this.cover;
+        return content;
+    }
+}
+
+export default class ArticlesMessageContent extends MessageContent {
+    topArticle: Article = new Article();
+    subArticles: Article[] = [];
+
+    constructor() {
+        super(MessageContentType.Articles);
+    }
+
+    override digest(message: any | null): string {
+        return this.topArticle.title;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            top: this.topArticle.toJson(),
+            subArticles: this.subArticles.map((article: Article): UTSJSONObject => article.toJson()),
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            const top = obj.getJSON('top')
+            if (top != null) {
+                this.topArticle = Article.fromJson(top);
+            }
+            const subArr = obj.getArray<UTSJSONObject>('subArticles')
+            if (subArr != null) {
+                this.subArticles = [];
+                for (let i = 0; i < subArr.length; i++) {
+                    this.subArticles.push(Article.fromJson(subArr[i]));
+                }
+            }
+        }
+    }
+
+    toLinkMessageContent(): LinkMessageContent[] {
+        const contents: LinkMessageContent[] = [];
+        contents.push(this.topArticle.toLinkMessageContent())
+        for (let i = 0; i < this.subArticles.length; i++) {
+            contents.push(this.subArticles[i].toLinkMessageContent())
+        }
+        return contents;
+    }
+}

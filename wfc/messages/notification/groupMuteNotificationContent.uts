@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import GroupNotificationContent from "./groupNotification.uts";
+import MessageContentType from "../messageContentType.uts";
+import { getGroupMemberDisplayName } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessagePayload from '../messagePayload.uts';
+
+export default class GroupMuteNotificationContent extends GroupNotificationContent {
+    operator = '';
+
+    //0 正常；1 全局禁言
+    muteType = 0;
+
+    constructor(operator: string, muteType: number) {
+        super(MessageContentType.MuteGroup_Notification);
+        this.operator = operator;
+        this.muteType = muteType;
+    }
+
+    override formatNotification(message: any | null): string {
+        let notifyStr = this.fromSelf ? '您' : getGroupMemberDisplayName(this.groupId, this.operator);
+        notifyStr += this.muteType == 0 ? ' 关闭了全员禁言' : ' 开启了全员禁言';
+        return notifyStr;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            g: this.groupId,
+            o: this.operator,
+            n: this.muteType.toString()
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.operator = obj.getString('o') ?? '';
+            this.muteType = parseInt(obj.getString('n') ?? '0');
+        }
+    }
+}

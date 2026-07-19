@@ -1,0 +1,175 @@
+<template>
+    <view class="checkable-user-list">
+        <view v-for="(groupedUser, gi) in groupedUsers" :key="gi">
+            <view class="contact-item">
+                <view v-if="showCategoryLabel" class="label" :style="{ paddingLeft: paddingLeft }">
+                    <text class="label-text">{{ groupedUser.category.toUpperCase() }}</text>
+                </view>
+                <view v-for="(user, ui) in groupedUser.users" :key="ui">
+                    <view class="content" :style="{ paddingLeft: paddingLeft }" :class="{ disabled: isUserUncheckable(user) }"
+                        @tap="clickUserItem(user)">
+                        <checkbox class="checkbox" :disabled="isUserUncheckable(user)" :checked="isUserChecked(user)" />
+                        <image class="avatar" :src="user.portrait" />
+                        <text class="name single-line">{{ displayNameOf(user) }}</text>
+                    </view>
+                </view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { pickState } from "../../store.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+
+class GroupedUsers {
+    category = ''
+    users: UserInfo[] = []
+}
+
+export default {
+    name: "CheckableUserListView",
+    props: {
+        users: {
+            type: Array as PropType<UserInfo[]>,
+            required: true,
+        },
+        initialCheckedUsers: {
+            type: Array as PropType<UserInfo[]>,
+            default: (): UserInfo[] => [] as UserInfo[],
+        },
+        uncheckableUsers: {
+            type: Array as PropType<UserInfo[]>,
+            default: (): UserInfo[] => [] as UserInfo[],
+        },
+        showCategoryLabel: {
+            type: Boolean,
+            default: true,
+        },
+        paddingLeft: {
+            type: String,
+            default: '5px'
+        }
+    },
+    methods: {
+        displayNameOf(user: UserInfo): string {
+            if (user._displayName != '') {
+                return user._displayName
+            }
+            if (user.groupAlias != '') {
+                return user.groupAlias
+            }
+            if (user.friendAlias != '') {
+                return user.friendAlias
+            }
+            if (user.displayName != '') {
+                return user.displayName
+            }
+            return '用户'
+        },
+        clickUserItem(user: UserInfo) {
+            if (this.isUserUncheckable(user)) {
+                return;
+            }
+            store.pickOrUnpickUser(user)
+        },
+
+        isUserUncheckable(user: UserInfo): boolean {
+            return this.uncheckableUsers.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
+        },
+
+        isUserChecked(user: UserInfo): boolean {
+            return store.isUserPicked(user);
+        }
+    },
+
+    mounted() {
+        if (this.initialCheckedUsers.length > 0) {
+            const oriCUs = this.users.filter((u: UserInfo): boolean => this.initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) > -1);
+            for (let i = 0; i < oriCUs.length; i++) {
+                store.pickOrUnpickUser(oriCUs[i])
+            }
+        }
+    },
+
+    computed: {
+        groupedUsers(): GroupedUsers[] {
+            const groupedUsers: GroupedUsers[] = [];
+            if (!this.showCategoryLabel) {
+                const all = new GroupedUsers()
+                all.category = ''
+                all.users = this.users
+                groupedUsers.push(all)
+                return groupedUsers;
+            }
+            let current: GroupedUsers | null = null;
+            let lastCategory = '';
+            for (let i = 0; i < this.users.length; i++) {
+                const user = this.users[i]
+                if (current == null || lastCategory != user._category) {
+                    lastCategory = user._category;
+                    current = new GroupedUsers();
+                    current.category = user._category;
+                    current.users = [user];
+                    groupedUsers.push(current);
+                } else {
+                    current.users.push(user);
+                }
+            }
+            return groupedUsers;
+        },
+    },
+}
+</script>
+
+<style scoped>
+.checkable-user-list {
+    width: 100%;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.checkbox {
+    margin-right: 10px;
+}
+
+.contact-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    background-color: #ffffff;
+}
+
+.label {
+    width: 100%;
+    background-color: #fafafa;
+}
+
+.label-text {
+    padding: 5px 5px 5px 0;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 13px;
+}
+
+.content {
+    padding: 5px 5px 5px 0;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    align-items: center;
+}
+
+.name {
+    margin-left: 10px;
+    font-size: 14px;
+    flex: 1;
+}
+
+.disabled {
+    opacity: 0.6;
+}
+</style>

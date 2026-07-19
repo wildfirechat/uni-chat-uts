@@ -1,0 +1,72 @@
+<template>
+    <!-- 如果不添加一个层级的话，直接子 view 上的 @tap 不生效 -->
+    <view @longpress="onLongPress">
+        <TextMessageContentView :message="message" v-if="message.messageContent.type == 1" />
+        <StreamingTextMessageContentView :message="message"
+            v-else-if="message.messageContent.type == 14 || message.messageContent.type == 15" />
+        <AudioMessageContentView :message="message" v-else-if="message.messageContent.type == 2" />
+        <ImageMessageContentView :message="message" v-else-if="message.messageContent.type == 3" />
+        <FileMessageContentView :message="message" v-else-if="message.messageContent.type == 5" />
+        <VideoMessageContentView :message="message" v-else-if="message.messageContent.type == 6" />
+        <StickerMessageContentView :message="message" v-else-if="message.messageContent.type == 7" />
+        <CompositeMessageContentView :message="message" v-else-if="message.messageContent.type == 11" />
+        <CallStartMessageContentView :message="message" v-else-if="message.messageContent.type == 400" />
+        <ConferenceInviteMessageContentView :message="message" v-else-if="message.messageContent.type == 408" />
+        <UserCardMessageContentView :message="message" v-else-if="message.messageContent.type == 10" />
+        <TestCustomMessageContentView :message="message" v-else-if="message.messageContent.type == 1001" />
+        <!-- 更多自定义消息，注意 v-else-if -->
+        <UnknownMessageContentView :message="message" v-else />
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import TextMessageContentView from "@/pages/conversation/message/content/TextMessageContentView.uvue";
+import ImageMessageContentView from "@/pages/conversation/message/content/ImageMessageContentView.uvue";
+import VideoMessageContentView from "@/pages/conversation/message/content/VideoMessageContentView.uvue";
+import UnsupportMessageContentView from "@/pages/conversation/message/content/UnsupportMessageContentView.uvue";
+import FileMessageContentView from "@/pages/conversation/message/content/FileMessageContentView.uvue";
+import StickerMessageContentView from "@/pages/conversation/message/content/StickerMessageContentView.uvue";
+import CallStartMessageContentView from "@/pages/conversation/message/content/CallStartMessageContentView.uvue";
+import AudioMessageContentView from "@/pages/conversation/message/content/AudioMessageContentViewAMR.uvue";
+import CompositeMessageContentView from "@/pages/conversation/message/content/CompositeMessageContentView.uvue";
+import UserCardMessageContentView from "./content/UserCardMessageContentView.uvue";
+import ConferenceInviteMessageContentView from "./content/ConferenceInviteMessageContentView.uvue";
+import UnknownMessageContentView from "./content/UnknownMessageContentView.uvue";
+import StreamingTextMessageContentView from "./content/StreamingTextMessageContentView.uvue";
+import TestCustomMessageContentView from "./content/TestCustomMessageContentView.uvue";
+
+export default {
+    name: "MessageContentContainerView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    emits: ['longpress'],
+    methods: {
+        onLongPress(e: UniTouchEvent) {
+            this.$emit('longpress', e)
+        }
+    },
+    components: {
+        TestCustomMessageContentView,
+        StreamingTextMessageContentView,
+        UnknownMessageContentView,
+        ConferenceInviteMessageContentView,
+        CompositeMessageContentView,
+        AudioMessageContentView,
+        CallStartMessageContentView,
+        UnsupportMessageContentView,
+        TextMessageContentView,
+        ImageMessageContentView,
+        VideoMessageContentView,
+        FileMessageContentView,
+        StickerMessageContentView,
+        UserCardMessageContentView
+    }
+}
+</script>
+
+<style scoped></style>

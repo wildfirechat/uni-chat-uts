@@ -1,0 +1,210 @@
+<template>
+    <view class="pick-contact-container">
+        <view class="contact-list-container">
+            <view class="input-container">
+                <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery" />
+            </view>
+            <scroll-view class="friend-list-container" direction="vertical">
+                <CheckableUserListView :users="filteredUsers" :initial-checked-users="initialCheckedUsers"
+                    :uncheckable-users="uncheckableUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
+                    padding-left="20px" />
+            </scroll-view>
+        </view>
+        <view class="checked-contact-list-container">
+            <view class="panel-header">
+                <text class="panel-desc" v-if="checkedUsers.length == 0">已选择联系人</text>
+                <text class="panel-desc" v-else>已选择联系人 {{ checkedUsers.length }}</text>
+                <button size="mini" :disabled="checkedUsers.length == 0" @tap="confirm">{{ confirmTitle }}</button>
+            </view>
+            <scroll-view class="picked-content" direction="horizontal">
+                <view class="picked-user" v-for="(user, index) in checkedUsers" :key="index" @tap="unpick(user)">
+                    <image class="avatar" :src="user.portrait" />
+                    <text class="name single-line">{{ user.displayName }}</text>
+                </view>
+            </scroll-view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { pickState } from "@/store.uts";
+import CheckableUserListView from "@/pages/user/CheckableUserListView.uvue";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { currentPickUsersOptions, notifyPickedUsers } from "@/common/picker.uts";
+
+export default {
+    name: "PickUserPage",
+    data() {
+        return {
+            users: [] as UserInfo[],
+            initialCheckedUsers: [] as UserInfo[],
+            uncheckableUsers: [] as UserInfo[],
+            confirmTitle: '确定',
+            showCategoryLabel: true,
+            filterQuery: '',
+            confirmed: false,
+        }
+    },
+
+    onLoad(_options: OnLoadOptions) {
+        console.log('PickUserPage onLoad')
+        const options = currentPickUsersOptions()
+        if (options != null) {
+            this.users = options.users;
+            this.initialCheckedUsers = options.initialCheckedUsers;
+            this.uncheckableUsers = options.uncheckableUsers;
+            this.showCategoryLabel = options.showCategoryLabel;
+            this.confirmTitle = options.confirmTitle;
+        }
+    },
+
+    onUnload() {
+        pickState.users = []
+    },
+
+    methods: {
+        unpick(user: UserInfo) {
+            if (this.isUserUncheckable(user)) {
+                return;
+            }
+            store.pickOrUnpickUser(user);
+        },
+
+        isUserUncheckable(user: UserInfo): boolean {
+            return this.uncheckableUsers.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
+        },
+
+        /**
+         * 不包含默认选中的用户
+         */
+        confirm() {
+            let pickedUsers: UserInfo[]
+            if (this.initialCheckedUsers.length > 0) {
+                pickedUsers = pickState.users.filter((u: UserInfo): boolean => this.initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1);
+            } else {
+                pickedUsers = pickState.users;
+            }
+            const users = pickedUsers.slice(0);
+            pickState.users = []
+            this.confirmed = true
+
+            uni.navigateBack({} as NavigateBackOptions);
+            notifyPickedUsers(users);
+        },
+    },
+
+    computed: {
+        checkedUsers(): UserInfo[] {
+            const users = pickState.users;
+            if (this.initialCheckedUsers.length == 0) {
+                return users;
+            }
+            return users.filter((u: UserInfo): boolean => {
+                return this.initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1
+            })
+        },
+        filteredUsers(): UserInfo[] {
+            if (this.filterQuery != '') {
+                return store.filterUsers(this.users, this.filterQuery);
+            } else {
+                return this.users;
+            }
+        }
+    },
+
+    components: { CheckableUserListView },
+}
+</script>
+
+<style scoped>
+.pick-contact-container {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.contact-list-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    background-color: #f7f7f7;
+    overflow: hidden;
+}
+
+.input-container {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+}
+
+.search-input {
+    height: 25px;
+    margin: 15px 20px 0 15px;
+    flex: 1;
+    border-radius: 3px;
+    border: 1px solid #ededed;
+    background-color: #ffffff;
+    padding-left: 10px;
+}
+
+.friend-list-container {
+    flex: 1;
+    margin-top: 10px;
+}
+
+.checked-contact-list-container {
+    display: flex;
+    height: 150px;
+    flex-direction: column;
+    background-color: #ffffff;
+    border-top: 1px solid #ececec;
+}
+
+.panel-header {
+    height: 45px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.panel-desc {
+    font-size: 13px;
+}
+
+.picked-content {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    padding: 0 20px;
+}
+
+.picked-user {
+    width: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 5px;
+}
+
+.avatar {
+    width: 45px;
+    height: 45px;
+    background-color: #d6d6d6;
+    border-radius: 3px;
+}
+
+.name {
+    width: 100%;
+    font-size: 12px;
+    text-align: center;
+}
+</style>

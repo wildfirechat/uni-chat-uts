@@ -1,0 +1,20 @@
+<template>
+    <scroll-view class="group-list-page" direction="vertical">
+        <GroupListView />
+    </scroll-view>
+</template>
+<script lang="uts">
+import GroupListView from "./GroupListView.uvue";
+
+export default {
+    name: "GroupListPage",
+    components: { GroupListView },
+}
+</script>
+
+<style scoped>
+.group-list-page {
+    flex: 1;
+    background-color: #ffffff;
+}
+</style>

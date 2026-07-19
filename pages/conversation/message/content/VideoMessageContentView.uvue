@@ -1,0 +1,79 @@
+<template>
+    <view class="video-content-container">
+        <image class="thumbnail" mode="aspectFill" @tap="preview" :src="thumbnailUri" />
+        <text class="customicons play-button" @tap="preview">&#xe6a6;</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import MessageStatus from "../../../../wfc/messages/messageStatus.uts";
+import VideoMessageContent from "../../../../wfc/messages/videoMessageContent.uts";
+import Config from "../../../../config.uts";
+
+export default {
+    name: "VideoMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        },
+        isInCompositeView: {
+            type: Boolean,
+            default: false,
+        }
+    },
+    emits: ['previewCompositeMessage'],
+    computed: {
+        content(): VideoMessageContent {
+            return this.message.messageContent as VideoMessageContent
+        },
+        thumbnailUri(): string {
+            if (this.message.status == MessageStatus.Sending) {
+                return Config.DEFAULT_VIDEO_POSTER;
+            } else if (this.content.thumbnail != '') {
+                return 'data:image/jpeg;base64,' + this.content.thumbnail;
+            }
+            return Config.DEFAULT_VIDEO_POSTER;
+        },
+    },
+    methods: {
+        preview() {
+            if (this.isInCompositeView) {
+                this.$emit('previewCompositeMessage', this.message.messageUid);
+            } else {
+                uni.navigateTo({
+                    url: `/pages/misc/PreviewVideoPage?url=${encodeURIComponent(this.content.remotePath)}`,
+                    fail: (e) => {
+                        console.log('navigate to PreviewVideoPage error', e)
+                    }
+                } as NavigateToOptions);
+            }
+        },
+    }
+}
+</script>
+
+<style scoped>
+.video-content-container {
+    margin: 0 10px;
+    position: relative;
+    border: 1px solid #efefef;
+    border-radius: 5px;
+}
+
+.thumbnail {
+    width: 200px;
+    height: 150px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.play-button {
+    position: absolute;
+    left: 70px;
+    top: 45px;
+    color: #ffffff;
+    font-size: 60px;
+}
+</style>

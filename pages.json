@@ -5,11 +5,7 @@
             "path": "pages/SplashPage",
             "style": {
                 "navigationBarTitleText": "",
-                "navigationStyle": "custom",
-                "app-plus": {
-                    "animationType": "none",
-                    "animationDuration": 100
-                }
+                "navigationStyle": "custom"
             }
         },
         {
@@ -19,47 +15,20 @@
             }
         },
         {
+            // 原生标题栏按钮 uni-app x 不支持，改为页面内自定义导航栏
             "path": "pages/conversationList/ConversationListPage",
             "style": {
                 "navigationBarTitleText": "会话列表",
-                "app-plus": {
-                    "titleNView": {
-                        "buttons": [
-                            {
-                                "text": "\ue657",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "28px"
-                            },
-                            {
-                                "text": "\ue636",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "26px"
-                            }
-                        ]
-                    }
-                }
+                "navigationStyle": "custom"
             }
         },
-        // TODO 打开之后，白屏，奇怪
         {
             "path": "pages/conversation/ConversationPage",
             "style": {
                 "navigationBarTitleText": "会话详情",
-                "enablePullDownRefresh": false,
+                "navigationStyle": "custom",
                 "disableScroll": true,
-                "app-plus": {
-                    "titleNView": {
-                        "buttons": [
-                            {
-                                "text": "\ue623",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "28px"
-                            }
-                        ]
-                    },
-                    "softinputMode": "adjustResize",
-                    "bounce": "none"
-                }
+                "softinputMode": "adjustResize"
             }
         },
         {
@@ -101,18 +70,8 @@
         {
             "path": "pages/contact/ChannelListPage",
             "style": {
-                "navigationBarTitleText": " 频道列表",
-                "app-plus": {
-                    "titleNView": {
-                        "buttons": [
-                            {
-                                "text": "\ue657",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "28px"
-                            }
-                        ]
-                    }
-                }
+                "navigationBarTitleText": "频道列表",
+                "navigationStyle": "custom"
             }
         },
         {
@@ -143,44 +102,14 @@
             "path": "pages/contact/ContactListPage",
             "style": {
                 "navigationBarTitleText": "好友",
-                "app-plus": {
-                    "titleNView": {
-                        "buttons": [
-                            {
-                                "text": "\ue657",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "28px"
-                            },
-                            {
-                                "text": "\ue636",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "26px"
-                            }
-                        ]
-                    }
-                }
+                "navigationStyle": "custom"
             }
         },
         {
             "path": "pages/contact/NewFriendListPage",
             "style": {
                 "navigationBarTitleText": "新朋友",
-                "app-plus": {
-                    "titleNView": {
-                        "buttons": [
-                            {
-                                "text": "\ue63f",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "20px"
-                            },
-                            {
-                                "text": "\uE611",
-                                "fontSrc": "/static/iconfonts/wx_iconfont.ttf",
-                                "fontSize": "26px"
-                            }
-                        ]
-                    }
-                }
+                "navigationStyle": "custom"
             }
         },
         {
@@ -204,7 +133,7 @@
         {
             "path": "pages/workspace/WorkspacePage",
             "style": {
-                "navigationBarTitleText": " 工作台"
+                "navigationBarTitleText": "工作台"
             }
         },
         {
@@ -244,66 +173,6 @@
             }
         },
         {
-            "path": "pages/voip/Single",
-            "style": {
-                "titleNView": false,
-                "navigationBarTitleText": "单人音视频通话",
-                "navigationBarTextStyle": "white"
-            }
-        },
-        {
-            "path": "pages/voip/Multi",
-            "style": {
-                "titleNView": false,
-                "navigationBarTitleText": "多人音视频通话",
-                "navigationBarTextStyle": "white"
-            }
-        },
-        {
-            "path": "pages/voip/conference/ConferencePortalPage",
-            "style": {
-                "navigationBarTitleText": "会议"
-            }
-        },
-        {
-            "path": "pages/voip/conference/JoinConferencePage",
-            "style": {
-                "navigationBarTitleText": " 加入会议"
-            }
-        },
-        {
-            "path": "pages/voip/conference/CreateConferencePage",
-            "style": {
-                "navigationBarTitleText": "发起会议"
-            }
-        },
-        {
-            "path": "pages/voip/conference/OrderConferencePage",
-            "style": {
-                "navigationBarTitleText": "预定会议"
-            }
-        },
-        {
-            "path": "pages/voip/conference/ConferenceInfoPage",
-            "style": {
-                "navigationBarTitleText": "会议详情"
-            }
-        },
-        {
-            "path": "pages/voip/conference/ConferencePage",
-            "style": {
-                "titleNView": false,
-                "navigationBarTitleText": "音视频会议",
-                "navigationBarTextStyle": "white"
-            }
-        },
-        {
-            "path": "pages/voip/conference/ConferenceManagePage",
-            "style": {
-                "navigationBarTitleText": "会议管理"
-            }
-        },
-        {
             "path": "pages/misc/ApiTestPage",
             "style": {
                 "navigationBarTitleText": "API测试"
@@ -313,6 +182,7 @@
     "tabBar": {
         "selectedColor": "#3B62E0",
         "color": "#7f8389",
+        "backgroundColor": "#ffffff",
         "list": [
             {
                 "pagePath": "pages/conversationList/ConversationListPage",
@@ -344,15 +214,11 @@
                 "iconPath": "static/image/tabbar/me_normal.png",
                 "selectedIconPath": "static/image/tabbar/me_press.png"
             }
-        ],
-        "backgroundColor": "white"
+        ]
     },
-    "sitemapLocation": "sitemap.json",
     "globalStyle": {
-        "backgroundTextStyle": "light",
-        "navigationBarBackgroundColor": "#fff",
+        "navigationBarBackgroundColor": "#ffffff",
         "navigationBarTitleText": "野火IM",
         "navigationBarTextStyle": "black"
-    },
-    "subPackages": []
+    }
 }

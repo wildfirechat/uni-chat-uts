@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import { getGroupMemberDisplayName, getUserInfos, getUserId } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessageContentType from "../messageContentType.uts";
+import MessagePayload from '../messagePayload.uts';
+import GroupNotificationContent from "./groupNotification.uts";
+
+export default class KickoffGroupMemberNotification extends GroupNotificationContent {
+    operator = '';
+    kickedMembers: string[] = [];
+
+    constructor(operator: string, kickedMembers: string[]) {
+        super(MessageContentType.KickOffGroupMember_Notification);
+        this.operator = operator;
+        this.kickedMembers = kickedMembers;
+    }
+
+    override formatNotification(message: any | null): string {
+        let notifyStr: string;
+        if (this.fromSelf) {
+            notifyStr = '您把 ';
+        } else {
+            notifyStr = getGroupMemberDisplayName(this.groupId, this.operator) + '把 ';
+        }
+
+        let kickedMembersStr = '';
+        const userInfos = getUserInfos(this.kickedMembers, this.groupId);
+        for (let i = 0; i < userInfos.length; i++) {
+            const userInfo = userInfos[i]
+            if (userInfo.uid == getUserId()) {
+                kickedMembersStr += ' 您';
+            } else {
+                kickedMembersStr += ' ' + userInfo.displayName;
+            }
+        }
+
+        return notifyStr + kickedMembersStr + ' 移除了群组';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            g: this.groupId,
+            ms: this.kickedMembers,
+            o: this.operator,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.operator = obj.getString('o') ?? '';
+            this.kickedMembers = obj.getArray<string>('ms') ?? ([] as string[]);
+        }
+    }
+}

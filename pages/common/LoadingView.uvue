@@ -1,0 +1,26 @@
+<template>
+    <view class="loading">
+        <text class="loading-text">加载中...</text>
+    </view>
+</template>
+
+<script lang="uts">
+export default {
+    name: "LoadingView"
+}
+</script>
+
+<style scoped>
+.loading {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+}
+
+.loading-text {
+    font-size: 12px;
+    color: #848484;
+}
+</style>

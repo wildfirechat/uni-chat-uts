@@ -1,0 +1,34 @@
+<template>
+    <view class="video-container">
+        <video class="video" :src="url" :autoplay="true" :controls="true"></video>
+    </view>
+</template>
+
+<script lang="uts">
+export default {
+    name: "PreviewVideoPage",
+    data() {
+        return {
+            url: '',
+        }
+    },
+
+    onLoad(options: OnLoadOptions) {
+        const url = options['url'] ?? ''
+        console.log('onLoad option url', decodeURIComponent(url));
+        this.url = decodeURIComponent(url);
+    }
+}
+</script>
+
+<style scoped>
+.video-container {
+    flex: 1;
+    background-color: #000000;
+}
+
+.video {
+    width: 100%;
+    flex: 1;
+}
+</style>

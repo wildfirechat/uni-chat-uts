@@ -1,0 +1,15 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import UserInfo from "./userInfo.uts";
+
+export default class NullUserInfo extends UserInfo {
+    constructor(userId: string) {
+        super();
+        this.uid = userId;
+        this.name = '用户';
+        this.displayName = this.name;
+        this.portrait = '';
+    }
+}

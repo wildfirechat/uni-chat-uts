@@ -1,0 +1,192 @@
+<template>
+    <view class="organization-tree-container">
+        <scroll-view class="breadcrumb" direction="horizontal">
+            <view class="breadcrumb-list">
+                <view v-for="(org, index) in currentOrganizationPathList" :key="index" class="breadcrumb-item">
+                    <text class="breadcrumb-link" :class="{ last: index == currentOrganizationPathList.length - 1 }"
+                        @tap="loadAndShowOrganization(org)">{{ org.getString('name') ?? '' }}</text>
+                    <text v-if="index != currentOrganizationPathList.length - 1" class="breadcrumb-sep">&gt;</text>
+                </view>
+            </view>
+        </scroll-view>
+        <scroll-view class="member-list-container" direction="vertical">
+            <view v-for="(org, index) in subOrganizations" :key="'o-' + index">
+                <view class="organization-item" @tap="loadAndShowOrganization(org)">
+                    <image class="item-portrait" :src="orgPortrait(org)" />
+                    <text class="name">{{ org.getString('name') ?? '' }}</text>
+                </view>
+            </view>
+            <view v-for="(employee, index) in employees" :key="'e-' + index">
+                <view class="organization-item" @tap="showUserInfo(employee)">
+                    <image class="item-portrait" :src="employeePortrait(employee)" />
+                    <text class="name">{{ employee.getString('name') ?? '' }}</text>
+                </view>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState } from "../../store.uts";
+import Config from "../../config.uts";
+import organizationServerApi from "../../api/organizationServerApi.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+
+export default {
+    name: "OrganizationTreePage",
+    data() {
+        return {
+            subOrganizations: [] as UTSJSONObject[],
+            employees: [] as UTSJSONObject[],
+            currentOrganizationPathList: [] as UTSJSONObject[],
+        }
+    },
+    mounted() {
+        const currentOrganization = contactState.currentOrganization
+        if (currentOrganization != null) {
+            this.loadAndShowOrganization(currentOrganization);
+        }
+    },
+    methods: {
+        orgPortrait(org: UTSJSONObject): string {
+            const portrait = org.getString('portrait')
+            return portrait != null && portrait != '' ? portrait : Config.DEFAULT_DEPARTMENT_PORTRAIT_URL
+        },
+        employeePortrait(employee: UTSJSONObject): string {
+            const portrait = employee.getString('portrait')
+            return portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        toJsonObjectList(value: any | null): UTSJSONObject[] {
+            const list: UTSJSONObject[] = []
+            if (value != null && value instanceof Array) {
+                const arr = value as Array<any>
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        list.push(o as UTSJSONObject)
+                    }
+                }
+            }
+            return list
+        },
+        loadAndShowOrganization(org: UTSJSONObject) {
+            const orgId = org.getNumber('id') ?? 0
+            organizationServerApi.getOrganizationEx(orgId)
+                .then((res): void => {
+                    if (res != null && res instanceof UTSJSONObject) {
+                        const obj = res as UTSJSONObject
+                        this.subOrganizations = this.toJsonObjectList(obj.get('subOrganizations'));
+                        this.employees = this.toJsonObjectList(obj.get('employees'));
+                    }
+                })
+                .catch((err): void => {
+                    console.log('getOrganizationEx error', err)
+                });
+            this.loadOrganizationPath(orgId)
+        },
+        // 逐级加载组织路径（替代原递归实现）
+        loadOrganizationPath(orgId: number) {
+            const pathList: UTSJSONObject[] = []
+            this.loadOrganizationPathStep(orgId, pathList)
+        },
+        loadOrganizationPathStep(orgId: number, pathList: UTSJSONObject[]) {
+            organizationServerApi.getOrganizations([orgId])
+                .then((res): void => {
+                    const orgs = this.toJsonObjectList(res)
+                    if (orgs.length > 0) {
+                        const org = orgs[0]
+                        pathList.push(org)
+                        const parentId = org.getNumber('parentId') ?? 0
+                        if (parentId > 0) {
+                            this.loadOrganizationPathStep(parentId, pathList)
+                            return
+                        }
+                    }
+                    this.currentOrganizationPathList = pathList.slice(0).reverse();
+                })
+                .catch((err): void => {
+                    console.log('loadOrganizationPath error', err)
+                    this.currentOrganizationPathList = pathList.slice(0).reverse();
+                })
+        },
+        showUserInfo(employee: UTSJSONObject) {
+            const employeeId = employee.getString('employeeId') ?? ''
+            wfc.getUserInfoEx(employeeId, false, (userInfo: UserInfo) => {
+                store.setCurrentFriend(userInfo);
+                uni.navigateTo({
+                    url: '/pages/contact/UserDetailPage',
+                    fail: (err) => {
+                        console.log('nav to UserDetailPage err', err);
+                    }
+                } as NavigateToOptions)
+            }, (err: number) => {
+                console.log('getUserInfoEx error', err)
+            })
+        },
+    },
+}
+</script>
+
+<style scoped>
+.organization-tree-container {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.breadcrumb {
+    padding: 10px 0 0 10px;
+}
+
+.breadcrumb-list {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.breadcrumb-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.breadcrumb-link {
+    font-size: 13px;
+    color: #4168e0;
+}
+
+.breadcrumb-link.last {
+    color: #8f959f;
+}
+
+.breadcrumb-sep {
+    margin: 0 10px;
+    color: #8f959f;
+    font-size: 13px;
+}
+
+.member-list-container {
+    flex: 1;
+}
+
+.organization-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 56px;
+    padding: 0 10px;
+}
+
+.item-portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    margin-right: 10px;
+}
+
+.name {
+    font-size: 14px;
+}
+</style>

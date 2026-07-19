@@ -1,0 +1,24 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import Conversation from "./conversation.uts";
+
+export default class FileRecord {
+    userId = '';
+    conversation: Conversation | null = null;
+    // 64 位 id，string 表示
+    messageUid = '0';
+    name = '';
+    url = '';
+    size = 0;
+    downloadCount = 0;
+    timestamp = 0;
+
+    // ---- UI 层补丁字段 ----
+    _userDisplayName = '';
+    _conversationDisplayName = '';
+    _timeStr = '';
+    _sizeStr = '';
+    _fileIconName = '';
+}

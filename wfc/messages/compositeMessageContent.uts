@@ -1,0 +1,186 @@
+import MessageContentType from "./messageContentType.uts";
+import MediaMessageContent from "./mediaMessageContent.uts";
+import { stringValue } from "../util/longUtil.uts";
+import Message from "./message.uts";
+import Conversation from "../model/conversation.uts";
+import MessagePayload from "./messagePayload.uts";
+import ArticlesMessageContent from "./articlesMessageContent.uts";
+import MessageContentMediaType from "./messageContentMediaType.uts";
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+export default class CompositeMessageContent extends MediaMessageContent {
+    title = '';
+    messages: Message[] = [];
+    loaded = false;
+
+    constructor() {
+        super(MessageContentType.Composite_Message, MessageContentMediaType.File, '', '')
+    }
+
+    setMessages(msgs: Message[]): void {
+        this.messages = [];
+        for (let i = 0; i < msgs.length; i++) {
+            const m = msgs[i]
+            const content = m.messageContent
+            if (content instanceof ArticlesMessageContent) {
+                const linkMessageContents = (content as ArticlesMessageContent).toLinkMessageContent();
+                for (let j = 0; j < linkMessageContents.length; j++) {
+                    const msg = m.clone();
+                    msg.messageContent = linkMessageContents[j];
+                    this.messages.push(msg);
+                }
+            } else {
+                this.messages.push(m)
+            }
+        }
+        this.messages.sort((m1: Message, m2: Message): number => {
+            return m1.messageUid.length == m2.messageUid.length
+                ? (m1.messageUid == m2.messageUid ? 0 : (m1.messageUid > m2.messageUid ? 1 : -1))
+                : (m1.messageUid.length > m2.messageUid.length ? 1 : -1);
+        })
+    }
+
+    override digest(message: any | null): string {
+        return '[聊天记录]' + this.title;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.title;
+        const arr: UTSJSONObject[] = [];
+        let binArr: UTSJSONObject[] | null = null;
+        let size = 0;
+        for (let i = 0; i < this.messages.length; i++) {
+            const msg = this.messages[i]
+            const msgPayload = msg.messageContent.encode();
+            const o = {
+                uid: stringValue(msg.messageUid),
+                type: msg.conversation.type,
+                target: msg.conversation.target,
+                line: msg.conversation.line,
+                from: msg.from,
+                tos: msg.to,
+                direction: msg.direction,
+                status: msg.status,
+                serverTime: stringValue(msg.timestamp),
+                ctype: msgPayload.type,
+                csc: msgPayload.searchableContent,
+                cpc: msgPayload.pushContent,
+                cpd: msgPayload.pushData,
+                cc: msgPayload.content,
+                cmt: msgPayload.mentionedType,
+                cmts: msgPayload.mentionedTargets,
+                ce: msgPayload.extra,
+            } as UTSJSONObject;
+            if (msgPayload.searchableContent != '') {
+                payload.searchableContent = payload.searchableContent + msgPayload.searchableContent + ' ';
+            }
+
+            if (msgPayload.binaryContent != '') {
+                o.set('cbc', msgPayload.binaryContent);
+            }
+            if (msg.messageContent instanceof MediaMessageContent) {
+                const mediaContent = msg.messageContent as MediaMessageContent
+                o.set('mt', mediaContent.mediaType);
+                o.set('mru', mediaContent.remotePath);
+            }
+
+            if (binArr == null) {
+                size += JSON.stringify(o)!.length;
+                if (size > 20480 && arr.length > 0) {
+                    binArr = arr.slice(0);
+                }
+            }
+
+            arr.push(o);
+        }
+
+        let obj: UTSJSONObject
+        if (binArr != null) {
+            // 消息内容过大，把完整内容写入本地文件（上传用），binaryContent 只保留前面部分
+            const fullObj = { ms: arr } as UTSJSONObject;
+            let fullStr = JSON.stringify(fullObj)!;
+            fullStr = fullStr.replace(/"uid":"([0-9]+)"/, "\"uid\":$1");
+            fullStr = fullStr.replace(/"serverTime":"([0-9]+)"/, "\"serverTime\":$1");
+            const fileName = 'wcf-' + new Date().getTime() + '.data';
+            try {
+                const path = this.createTextFile(fileName, fullStr);
+                payload.localMediaPath = path;
+                console.log('localPath', path);
+            } catch (e) {
+                console.error('createLocalFile error', e);
+            }
+            obj = { ms: binArr } as UTSJSONObject;
+        } else {
+            obj = { ms: arr } as UTSJSONObject;
+        }
+
+        let str = JSON.stringify(obj)!;
+        str = str.replace(/"uid":"([0-9]+)"/, "\"uid\":$1");
+        str = str.replace(/"serverTime":"([0-9]+)"/, "\"serverTime\":$1");
+
+        payload.binaryContent = utf8_to_b64(str)
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+
+        this.title = payload.content;
+        const str = b64_to_utf8(payload.binaryContent);
+        this._decodeMessages(str);
+    }
+
+    _decodeMessages(orgStr: string): void {
+        if (this.loaded) {
+            return;
+        }
+        this.messages = [];
+        let str = orgStr.substring(0, orgStr.lastIndexOf('}') + 1);
+        str = str.replace(/"uid":([0-9]+)/g, "\"uid\":\"$1\"");
+        str = str.replace(/"serverTime":([0-9]+)/g, "\"serverTime\":\"$1\"");
+        const obj = JSON.parseObject(str);
+        if (obj == null) {
+            return;
+        }
+        const ms = obj.getArray<UTSJSONObject>('ms');
+        if (ms == null) {
+            return;
+        }
+        for (let i = 0; i < ms.length; i++) {
+            const o = ms[i]
+            const conv = new Conversation(o.getNumber('type') ?? 0, o.getString('target') ?? '', o.getNumber('line') ?? 0);
+            const msg = new Message(conv, null)
+            msg.messageUid = o.getString('uid') ?? '0';
+            msg.from = o.getString('from') ?? '';
+            msg.to = o.getString('tos') ?? '';
+            msg.direction = o.getNumber('direction') ?? 0;
+            msg.status = o.getNumber('status') ?? 0;
+            msg.timestamp = parseFloat(o.getString('serverTime') ?? '0');
+
+            const payload = new MessagePayload();
+            payload.type = o.getNumber('ctype') ?? 0;
+            payload.searchableContent = o.getString('csc') ?? '';
+            payload.pushContent = o.getString('cpc') ?? '';
+            payload.pushData = o.getString('cpd') ?? '';
+            payload.content = o.getString('cc') ?? '';
+            payload.mentionedType = o.getNumber('cmt') ?? 0;
+            payload.mentionedTargets = o.getArray<string>('cmts') ?? ([] as string[]);
+            payload.extra = o.getString('ce') ?? '';
+
+            payload.binaryContent = o.getString('cbc') ?? '';
+            payload.mediaType = o.getNumber('mt') ?? 0;
+            payload.remoteMediaUrl = o.getString('mru') ?? '';
+
+            msg.messageContent = Message.messageContentFromMessagePayload(payload, msg.from);
+            this.messages.push(msg);
+        }
+    }
+
+    createTextFile(fileName: string, data: string): string {
+        const path = uni.env.CACHE_PATH + '/' + fileName;
+        const fs = uni.getFileSystemManager();
+        fs.writeFileSync(path, data, 'utf-8');
+        return path;
+    }
+}

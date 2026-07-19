@@ -1,0 +1,68 @@
+<template>
+    <view class="call-start-message-container" :class="{ out: message.direction == 0 }">
+        <text class="icomoon call-icon">&#xf2d2;</text>
+        <text class="text">{{ textContent }}</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import CallStartMessageContent from "@/wfc/av/messages/callStartMessageContent.uts";
+
+export default {
+    name: "CallStartMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        textContent(): string {
+            const voip = this.message.messageContent as CallStartMessageContent;
+            let desc: string
+            if (voip.status == 0) {
+                desc = '未接听';
+            } else if (voip.status == 1) {
+                desc = '通话中';
+            } else {
+                if (voip.connectTime > 0 && voip.endTime > voip.connectTime) {
+                    const duration = Math.round((voip.endTime - voip.connectTime) / 1000);
+                    desc = `通话时长 : ${duration}s`
+                } else {
+                    desc = voip.audioOnly ? '[语音通话]' : '[视频通话]';
+                }
+            }
+            return desc;
+        }
+    }
+}
+</script>
+
+<style scoped>
+.call-start-message-container {
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.call-start-message-container.out {
+    background-color: #98ea70;
+}
+
+.call-icon {
+    font-size: 18px;
+    color: #050505;
+}
+
+.text {
+    padding-left: 5px;
+    color: #050505;
+    font-size: 16px;
+}
+</style>

@@ -1,0 +1,295 @@
+<template>
+    <view class="pick-conversation-container">
+        <view class="conversation-list-panel">
+            <view class="input-container">
+                <input class="search-input" type="text" placeholder="搜索" v-model="query" />
+            </view>
+            <scroll-view class="conversation-list-container" direction="vertical">
+                <view class="create-group" @tap="showForwardByCreateConversationModal">
+                    <text class="create-group-text">创建群聊</text>
+                </view>
+                <text class="section-label">最近聊天</text>
+                <view v-for="(conversationInfo, index) in conversationInfos" :key="index">
+                    <view class="conversation-item" @tap="onConversationItemClick(conversationInfo.conversation)">
+                        <checkbox class="checkbox" :checked="isConversationChecked(conversationInfo.conversation)" />
+                        <view class="item-header">
+                            <image class="avatar" :src="portraitOf(conversationInfo)" />
+                        </view>
+                        <text class="title single-line">{{ displayNameOf(conversationInfo) }}</text>
+                    </view>
+                </view>
+            </scroll-view>
+        </view>
+        <view class="checked-conversation-list-container">
+            <view class="panel-header">
+                <text class="panel-title">分别发送给</text>
+                <text class="panel-desc" v-if="pickedConversations.length == 0">未选择聊天</text>
+                <text class="panel-desc" v-else>已选择{{ pickedConversations.length }}个聊天</text>
+                <button size="mini" @tap="confirm" class="confirm">发送</button>
+            </view>
+            <scroll-view class="picked-content" direction="horizontal">
+                <view class="picked-user-container" v-for="(conversation, index) in pickedConversations" :key="index">
+                    <view class="picked-user" @tap="unpConversation(conversation)">
+                        <image class="avatar" :src="portraitOfConversation(conversation)" />
+                    </view>
+                    <text class="name single-line">{{ displayNameOfConversation(conversation) }}</text>
+                </view>
+            </scroll-view>
+            <ForwardMessageView ref="forwardMessageView" :forward-type="forwardType" :messages="messages" />
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { conversationState, pickState } from "@/store.uts";
+import ForwardMessageView from "@/pages/conversation/message/forward/ForwardMessageView.uvue";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import Message from "@/wfc/messages/message.uts";
+import Config from "@/config.uts";
+
+export default {
+    name: "ForwardMessageByPickConversationView",
+    props: {
+        forwardType: {
+            type: Number,
+            default: 0,
+        },
+        messages: {
+            type: Array as PropType<Message[]>,
+            required: true,
+        },
+    },
+    emits: ['forward-target-type'],
+    data() {
+        return {
+            query: '',
+        }
+    },
+
+    methods: {
+        portraitOf(conversationInfo: ConversationInfo): string {
+            const target = conversationInfo.conversation._target
+            const portrait = target != null ? target.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        displayNameOf(conversationInfo: ConversationInfo): string {
+            const target = conversationInfo.conversation._target
+            return target != null ? target._displayName : ''
+        },
+        portraitOfConversation(conversation: Conversation): string {
+            const target = conversation._target
+            const portrait = target != null ? target.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        displayNameOfConversation(conversation: Conversation): string {
+            const target = conversation._target
+            return target != null ? target._displayName : ''
+        },
+        onConversationItemClick(conversation: Conversation) {
+            store.pickOrUnpickConversation(conversation)
+        },
+        unpConversation(conversation: Conversation) {
+            store.pickOrUnpickConversation(conversation);
+        },
+
+        isConversationChecked(conversation: Conversation): boolean {
+            const index = pickState.conversations.findIndex((conv: Conversation): boolean => conv.equal(conversation));
+            return index >= 0;
+        },
+
+        showForwardByCreateConversationModal() {
+            pickState.conversations = [];
+            this.$emit('forward-target-type', 'createConversation')
+        },
+
+        confirm() {
+            const pickedConversations = pickState.conversations.slice(0);
+            pickState.conversations = []
+            let extraMessageText = ''
+            const forwardMessageView = this.$refs['forwardMessageView']
+            if (forwardMessageView != null) {
+                const extra = (forwardMessageView as ComponentPublicInstance).$callMethod('getExtraText')
+                if (extra != null) {
+                    extraMessageText = '' + extra
+                }
+            }
+            store.forwardMessage(this.forwardType, pickedConversations, this.messages, extraMessageText)
+            uni.navigateBack({} as NavigateBackOptions);
+        },
+    },
+
+    computed: {
+        pickedConversations(): Conversation[] {
+            return pickState.conversations
+        },
+        conversationInfos(): ConversationInfo[] {
+            if (this.query.trim() != '') {
+                return store.filterConversation(this.query)
+            } else {
+                return conversationState.conversationInfoList;
+            }
+        },
+    },
+
+    components: { ForwardMessageView },
+}
+</script>
+
+<style scoped>
+.pick-conversation-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+}
+
+.conversation-list-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    background-color: #f7f7f7;
+    overflow: hidden;
+}
+
+.input-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.search-input {
+    height: 25px;
+    margin: 15px 20px 0 15px;
+    flex: 1;
+    border-radius: 3px;
+    border: 1px solid #ededed;
+    background-color: #ffffff;
+    padding-left: 10px;
+}
+
+.create-group {
+    background-color: #f7f7f7;
+    height: 40px;
+    padding-left: 15px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.create-group-text {
+    font-size: 13px;
+}
+
+.conversation-list-container {
+    flex: 1;
+}
+
+.section-label {
+    background-color: #f7f7f7;
+    font-size: 12px;
+    color: #888888;
+    padding-left: 15px;
+}
+
+.conversation-item {
+    width: 100%;
+    height: 70px;
+    display: flex;
+    flex-direction: row;
+    border-bottom: 1px solid #eeeeee;
+    align-items: center;
+    justify-content: flex-start;
+    padding-left: 15px;
+    background-color: #ffffff;
+}
+
+.item-header {
+    padding: 10px 12px 10px 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.avatar {
+    width: 45px;
+    height: 45px;
+    background-color: #d6d6d6;
+    border-radius: 3px;
+}
+
+.title {
+    font-size: 14px;
+    color: #262626;
+    padding-right: 10px;
+    flex: 1;
+}
+
+.checkbox {
+    margin-right: 0;
+}
+
+.checked-conversation-list-container {
+    display: flex;
+    min-height: 230px;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.panel-header {
+    height: 55px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-title {
+    font-size: 16px;
+    margin-left: 30px;
+}
+
+.panel-desc {
+    font-size: 12px;
+    margin-right: 20px;
+}
+
+.confirm {
+    font-size: 12px;
+    margin-right: 20px;
+    color: #4168e0;
+}
+
+.picked-content {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    padding: 0 30px;
+}
+
+.picked-user-container {
+    width: 65px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 5px 10px;
+}
+
+.name {
+    width: 100%;
+    font-size: 12px;
+    text-align: center;
+}
+
+.picked-user {
+    position: relative;
+    height: 65px;
+    width: 65px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+</style>

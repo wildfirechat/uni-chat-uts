@@ -1,0 +1,84 @@
+<template>
+    <view class="composite-message-container" @tap="showCompositePage" :class="{ out: message.direction == 0 }">
+        <text class="title">{{ title }}</text>
+        <text class="content">{{ content }}</text>
+        <text class="desc">{{ recordsText }}</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import CompositeMessageContent from "@/wfc/messages/compositeMessageContent.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import { navigateToPage } from "@/common/nav.uts";
+import { t } from "@/i18n/i18n.uts";
+
+export default {
+    name: "CompositeMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+
+    computed: {
+        recordsText(): string {
+            return t('message.records')
+        },
+        title(): string {
+            return (this.message.messageContent as CompositeMessageContent).title;
+        },
+        content(): string {
+            const compositeMessageContent = this.message.messageContent as CompositeMessageContent;
+            const messages = compositeMessageContent.messages;
+            let str = '';
+            if (messages.length == 0) {
+                return str
+            }
+            const conversation = messages[0].conversation;
+            const groupId = conversation.type == ConversationType.Group ? conversation.target : '';
+            for (let i = 0; i < messages.length && i < 4; i++) {
+                str += wfc.getGroupMemberDisplayName(groupId, messages[i].from) + ': ' + messages[i].messageContent.digest(messages[i]);
+                str += '\n';
+            }
+            return str;
+        }
+    },
+
+    methods: {
+        showCompositePage() {
+            navigateToPage('/pages/conversation/message/CompositeMessagePage', this.message);
+        }
+    }
+}
+</script>
+
+<style scoped>
+.composite-message-container {
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+}
+
+.title {
+    color: #050505;
+    font-size: 15px;
+}
+
+.content {
+    padding: 5px 0;
+    font-size: 14px;
+    color: #b2b2b2;
+}
+
+.desc {
+    border-top: 1px solid #f2f2f2;
+    padding: 5px 0 0 0;
+    font-size: 14px;
+    color: #b2b2b2;
+}
+</style>

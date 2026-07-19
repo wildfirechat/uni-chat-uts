@@ -1,0 +1,45 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+export default class LinkMessageContent extends MessageContent {
+    title = '';
+    contentDigest = '';
+    url = '';
+    thumbnail = '';
+
+    constructor() {
+        super(MessageContentType.Link);
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            d: this.contentDigest,
+            u: this.url,
+            t: this.thumbnail
+        } as UTSJSONObject;
+
+        payload.searchableContent = this.title;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.title = payload.searchableContent;
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.contentDigest = obj.getString('d') ?? '';
+            this.url = obj.getString('u') ?? '';
+            this.thumbnail = obj.getString('t') ?? '';
+        }
+    }
+
+    override digest(message: any | null): string {
+        let tmp = this.title.trim() != '' ? this.title.trim() : this.contentDigest.trim();
+        return tmp != '' ? tmp : this.url;
+    }
+}

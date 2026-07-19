@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from './messageContent.uts'
+import MessagePayload from './messagePayload.uts'
+import Config from '../../config.uts'
+
+export default class MediaMessageContent extends MessageContent {
+    remotePath = '';
+    localPath = '';
+    mediaType = 0;
+
+    /**
+     *
+     * @param messageType 消息类型
+     * @param mediaType 媒体类型
+     * @param fileOrLocalPath 本地路径（绝对路径），没有时传 ''
+     * @param remotePath 远端地址，没有时传 ''
+     */
+    constructor(messageType: number, mediaType: number = 0, fileOrLocalPath: string = '', remotePath: string = '') {
+        super(messageType);
+        this.mediaType = mediaType;
+        if (fileOrLocalPath == '') {
+            this.localPath = '';
+            this.remotePath = remotePath;
+        } else if (!fileOrLocalPath.startsWith("http")) {
+            this.localPath = fileOrLocalPath;
+            this.remotePath = remotePath;
+        } else {
+            this.remotePath = fileOrLocalPath;
+        }
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.localMediaPath = this.localPath;
+        payload.remoteMediaUrl = this.remotePath;
+        payload.mediaType = this.mediaType;
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.localPath = payload.localMediaPath;
+        this.remotePath = Config.urlRedirect(payload.remoteMediaUrl);
+        this.mediaType = payload.mediaType;
+    }
+}

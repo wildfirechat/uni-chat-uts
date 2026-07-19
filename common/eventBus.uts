@@ -1,0 +1,43 @@
+/**
+ * 全局事件总线，替代原项目中的 mitt + app.config.globalProperties.$eventBus。
+ * 原 this.$eventBus.$emit('xx', data) → eventBus.$emit('xx', data)
+ */
+type BusListener = (data: any | null) => void
+
+class EventBus {
+    private listeners: Map<string, Array<BusListener>> = new Map<string, Array<BusListener>>()
+
+    $on(event: string, listener: BusListener): void {
+        let list = this.listeners.get(event)
+        if (list == null) {
+            list = new Array<BusListener>()
+            this.listeners.set(event, list)
+        }
+        list.push(listener)
+    }
+
+    $off(event: string, listener: BusListener): void {
+        const list = this.listeners.get(event)
+        if (list == null) {
+            return
+        }
+        const index = list.indexOf(listener)
+        if (index >= 0) {
+            list.splice(index, 1)
+        }
+    }
+
+    $emit(event: string, data: any | null): void {
+        const list = this.listeners.get(event)
+        if (list == null) {
+            return
+        }
+        const copy = list.slice(0)
+        for (let i = 0; i < copy.length; i++) {
+            copy[i](data)
+        }
+    }
+}
+
+const eventBus = new EventBus()
+export default eventBus

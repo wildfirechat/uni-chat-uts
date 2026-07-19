@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import Conversation from "./conversation.uts";
+import ConversationInfo from "./conversationInfo.uts";
+import Message from "../messages/message.uts";
+
+export default class ConversationSearchResult {
+    conversation: Conversation = new Conversation(0, '', 0);
+    //only matchCount == 1, load the message
+    matchMessage: Message | null = null;
+    timestamp = 0;
+    matchCount = 0;
+
+    // ---- UI 层补丁字段 ----
+    _conversationInfo: ConversationInfo | null = null;
+
+    static fromProtoConversationSearchResult(obj: UTSJSONObject): ConversationSearchResult | null {
+        const result = new ConversationSearchResult();
+        const convObj = obj.getJSON('conversation');
+        let conversation: Conversation | null
+        if (convObj != null) {
+            conversation = Conversation.fromJsonObject(convObj);
+        } else {
+            conversation = Conversation.fromJsonObject(obj);
+        }
+        if (conversation == null) {
+            return null;
+        }
+        result.conversation = conversation;
+        result.matchCount = obj.getNumber('marchedCount') ?? 0;
+        if (result.matchCount == 1) {
+            result.matchMessage = Message.fromProtoMessage(obj.getJSON('marchedMessage'));
+        }
+        result.timestamp = obj.getNumber('timestamp') ?? 0;
+
+        return result;
+    }
+}

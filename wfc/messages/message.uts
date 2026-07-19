@@ -1,0 +1,149 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import Conversation from '../model/conversation.uts'
+import UserInfo from '../model/userInfo.uts'
+import NotificationMessageContent from './notification/notificationMessageContent.uts'
+import RecallMessageNotification from './notification/recallMessageNotification.uts'
+import MessageConfig from '../client/messageConfig.uts';
+import MessageContent from './messageContent.uts';
+import MessagePayload from './messagePayload.uts';
+import UnknownMessageContent from './unknownMessageContent.uts';
+import PersistFlag from './persistFlag.uts';
+import { getUserId } from '../client/userBrief.uts'
+import { stringValue, numberValue } from '../util/longUtil.uts'
+
+export default class Message {
+    conversation: Conversation = new Conversation(0, '', 0);
+    from = '';
+    // 原始 payload
+    content: MessagePayload | null = null;
+    messageContent: MessageContent = new UnknownMessageContent();
+    messageId = 0;
+    direction = 0;
+    status = 0;
+    // 64 位 id，string 表示
+    messageUid = '0';
+    timestamp = 0;
+    to = '';
+    localExtra = '';
+
+    // ---- UI 层补丁字段 ----
+    _from: UserInfo | null = null;
+    _showTime = false;
+    _timeStr = '';
+
+    constructor(conversation: Conversation | null = null, messageContent: MessageContent | null = null) {
+        if (conversation != null) {
+            this.conversation = conversation;
+        }
+        if (messageContent != null) {
+            this.messageContent = messageContent;
+        }
+    }
+
+    clone(): Message {
+        const msg = new Message(this.conversation, this.messageContent);
+        msg.from = this.from;
+        msg.content = this.content;
+        msg.messageId = this.messageId;
+        msg.direction = this.direction;
+        msg.status = this.status;
+        msg.messageUid = this.messageUid;
+        msg.timestamp = this.timestamp;
+        msg.to = this.to;
+        msg.localExtra = this.localExtra;
+        msg._from = this._from;
+        msg._showTime = this._showTime;
+        msg._timeStr = this._timeStr;
+        return msg;
+    }
+
+    static fromProtoMessage(obj: UTSJSONObject | null): Message | null {
+        if (obj == null) {
+            return null;
+        }
+        const convObj = obj.getJSON('conversation');
+        const conversation = Conversation.fromJsonObject(convObj);
+        if (conversation == null || conversation.target == '') {
+            return null;
+        }
+
+        const msg = new Message(conversation, null);
+        msg.messageId = obj.getNumber('messageId') ?? 0;
+        if (msg.messageId == -1) {
+            return null;
+        }
+        msg.messageUid = stringValue(obj.get('messageUid'));
+        const timestamp = obj.get('timestamp');
+        if (timestamp != null) {
+            msg.timestamp = numberValue(timestamp);
+        } else {
+            // 移动端
+            msg.timestamp = numberValue(obj.get('serverTime'));
+        }
+        msg.direction = obj.getNumber('direction') ?? 0;
+        msg.status = obj.getNumber('status') ?? 0;
+        msg.to = obj.getString('to') ?? '';
+        msg.localExtra = obj.getString('localExtra') ?? '';
+        let from = obj.getString('from');
+        if (from == null || from == '') {
+            // 移动端
+            from = obj.getString('sender');
+        }
+        msg.from = from ?? '';
+
+        const payload = MessagePayload.fromJsonObject(obj.getJSON('content'));
+        msg.content = payload;
+
+        let content = MessageConfig.createMessageContent(payload.type);
+        try {
+            content.decode(payload);
+            if (content instanceof NotificationMessageContent) {
+                (content as NotificationMessageContent).fromSelf = msg.from == getUserId();
+            }
+            if (content instanceof RecallMessageNotification) {
+                (content as RecallMessageNotification)._conversation = conversation;
+            }
+        } catch (error) {
+            console.error('decode message payload failed, fallback to unknownMessage', payload.type, error);
+            const flag = MessageConfig.getMessageContentPersitFlag(payload.type);
+            if (PersistFlag.Persist == flag || PersistFlag.Persist_And_Count == flag) {
+                content = new UnknownMessageContent(payload);
+            } else {
+                return null;
+            }
+        }
+        msg.messageContent = content;
+
+        return msg;
+    }
+
+    static messageContentFromMessagePayload(payload: MessagePayload, from: string): MessageContent {
+        let content = MessageConfig.createMessageContent(payload.type);
+        try {
+            content.decode(payload);
+        } catch (error) {
+            console.error('decode message payload failed', payload.type, error);
+            content = new UnknownMessageContent(payload);
+        }
+
+        const selfUid = getUserId();
+        if (content instanceof NotificationMessageContent) {
+            if (content instanceof RecallMessageNotification) {
+                if ((content as RecallMessageNotification).operatorId == selfUid) {
+                    (content as NotificationMessageContent).fromSelf = true;
+                }
+            } else if (from == selfUid) {
+                (content as NotificationMessageContent).fromSelf = true;
+            }
+        }
+
+        return content;
+    }
+
+    static toMessagePayload(message: Message): MessagePayload {
+        return message.messageContent.encode();
+    }
+}

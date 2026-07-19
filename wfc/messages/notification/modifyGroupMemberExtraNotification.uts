@@ -1,0 +1,76 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import { getUserInfo } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessageContentType from '../messageContentType.uts';
+import MessagePayload from '../messagePayload.uts';
+import GroupNotificationContent from './groupNotification.uts';
+
+export default class ModifyGroupMemberExtraNotification extends GroupNotificationContent {
+    operator = '';
+    groupMemberExtra = '';
+    memberId = '';
+
+    constructor(creator: string, groupMemberExtra: string) {
+        super(MessageContentType.ModifyGroupMemberExtra_Notification);
+        this.operator = creator;
+        this.groupMemberExtra = groupMemberExtra;
+    }
+
+    override formatNotification(message: any | null): string {
+        let notificationStr = '';
+        if (this.fromSelf) {
+            notificationStr += '你';
+        } else {
+            const userInfo = getUserInfo(this.operator, false, this.groupId)
+            if (userInfo.friendAlias != '') {
+                notificationStr += userInfo.friendAlias;
+            } else if (userInfo.displayName != '') {
+                notificationStr += userInfo.displayName;
+            } else {
+                notificationStr += this.operator;
+            }
+        }
+        notificationStr += '修改';
+        if (this.memberId != '') {
+            const userInfo = getUserInfo(this.memberId, false);
+            if (userInfo.friendAlias != '') {
+                notificationStr += userInfo.friendAlias;
+            } else if (userInfo.displayName != '') {
+                notificationStr += userInfo.displayName;
+            } else {
+                notificationStr += this.memberId;
+            }
+            notificationStr += '的';
+        }
+        notificationStr += '群成员信息为';
+        notificationStr += this.groupMemberExtra;
+
+        return notificationStr;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            g: this.groupId,
+            n: this.groupMemberExtra,
+            o: this.operator,
+            m: this.memberId,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.operator = obj.getString('o') ?? '';
+            this.groupMemberExtra = obj.getString('n') ?? '';
+            this.memberId = obj.getString('m') ?? '';
+        }
+    }
+}

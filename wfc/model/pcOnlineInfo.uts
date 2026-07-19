@@ -1,0 +1,30 @@
+export default class PCOnlineInfo {
+    /**
+     * PCOnlineType
+     */
+    type = 0;
+    /**
+     * Platform_UNSET = 0; iOS = 1; Android = 2; Windows = 3; OSX = 4; WEB = 5; WX = 6;
+     * LINUX = 7; iPad = 8; APad = 9; Harmony = 10; Harmony_Pad = 11; Harmony_PC = 12;
+     */
+    platform = 0;
+    isOnline = false;
+    clientId = '';
+    clientName = '';
+    timestamp = 0;
+
+    static infoFromStr(value: string, type: number): PCOnlineInfo | null {
+        const parts = value.split('|');
+        if (parts.length >= 4) {
+            const info = new PCOnlineInfo();
+            info.type = type;
+            info.timestamp = parseFloat(parts[0]);
+            info.platform = parseInt(parts[1]);
+            info.clientId = parts[2];
+            info.clientName = parts[3];
+            info.isOnline = true;
+            return info;
+        }
+        return null;
+    }
+}

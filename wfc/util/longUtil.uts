@@ -1,0 +1,150 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+/**
+ * 64 位整数兼容工具。
+ *
+ * 原 JS 版本基于 'long' 库；uni-app x 版本约定：
+ * - messageUid 等 64 位 id 统一用 string 表示（native JSON 传输时即为字符串）
+ * - timestamp 用 number（毫秒，double 精度足够）
+ *
+ * 本文件提供与原 longUtil.js 同名的兼容函数，参数可以是 string / number / null。
+ */
+
+function normalize(v: any | null): string {
+    if (v == null) {
+        return '0'
+    }
+    if (v instanceof String) {
+        let s = (v as string).trim()
+        if (s == '') {
+            return '0'
+        }
+        return s
+    }
+    if (typeof v == 'string') {
+        let s = (v as string).trim()
+        if (s == '') {
+            return '0'
+        }
+        return s
+    }
+    if (typeof v == 'number') {
+        // 去掉可能出现的小数部分
+        return Math.trunc(v as number).toString()
+    }
+    if (typeof v == 'boolean') {
+        return (v as boolean) ? '1' : '0'
+    }
+    return '' + v
+}
+
+/**
+ * 比较两个 64 位整数（十进制字符串或 number）是否相等
+ */
+export function eq(a: any | null, b: any | null): boolean {
+    return compare(a, b) == 0
+}
+
+export function gt(a: any | null, b: any | null): boolean {
+    return compare(a, b) > 0
+}
+
+export function gte(a: any | null, b: any | null): boolean {
+    return compare(a, b) >= 0
+}
+
+export function lt(a: any | null, b: any | null): boolean {
+    return compare(a, b) < 0
+}
+
+export function lte(a: any | null, b: any | null): boolean {
+    return compare(a, b) <= 0
+}
+
+/**
+ * 十进制整数字符串比较，支持负数
+ * @return 1: a > b; 0: a == b; -1: a < b
+ */
+export function compare(a: any | null, b: any | null): number {
+    let sa = normalize(a)
+    let sb = normalize(b)
+    const negA = sa.startsWith('-')
+    const negB = sb.startsWith('-')
+    if (negA && !negB) {
+        return -1
+    }
+    if (!negA && negB) {
+        return 1
+    }
+    if (negA) {
+        sa = sa.substring(1)
+        sb = sb.substring(1)
+    }
+    // 去掉前导 0
+    sa = trimLeadingZero(sa)
+    sb = trimLeadingZero(sb)
+    let r: number
+    if (sa.length != sb.length) {
+        r = sa.length > sb.length ? 1 : -1
+    } else if (sa == sb) {
+        r = 0
+    } else {
+        r = sa > sb ? 1 : -1
+    }
+    return negA ? -r : r
+}
+
+function trimLeadingZero(s: string): string {
+    let i = 0
+    while (i < s.length - 1 && s.charAt(i) == '0') {
+        i++
+    }
+    return s.substring(i)
+}
+
+/**
+ * 转为 number。注意：超过 2^53 会有精度损失，仅用于时间戳等安全范围的值。
+ */
+export function numberValue(v: any | null): number {
+    if (v == null) {
+        return 0
+    }
+    if (typeof v == 'number') {
+        return v as number
+    }
+    const s = normalize(v)
+    const n = parseFloat(s)
+    return isNaN(n) ? 0 : n
+}
+
+/**
+ * 转为十进制字符串
+ */
+export function stringValue(v: any | null): string {
+    return normalize(v)
+}
+
+/**
+ * 兼容原 longUtil 的 longValue：uni-app x 中 64 位整数统一用 string 表示
+ */
+export function longValue(v: any | null): string {
+    return normalize(v)
+}
+
+/**
+ * 把 json 字符串中 "key":"123" 修改为 "key":123（java long 以数字形式传输）
+ */
+export function _patchToJavaLong(str: string, key: string): string {
+    const re = new RegExp('"' + key + '":"([0-9]+)"')
+    return str.replace(re, '"' + key + '":$1')
+}
+
+/**
+ * 把 json 字符串中 "key":123 修改为 "key":"123"（避免 JSON.parse 丢失精度）
+ */
+export function _reverseToJsLongString(str: string, key: string): string {
+    const re = new RegExp('"' + key + '":([0-9]+)', 'g')
+    return str.replace(re, '"' + key + '":"$1"')
+}

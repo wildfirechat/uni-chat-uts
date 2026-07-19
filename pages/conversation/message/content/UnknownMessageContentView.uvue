@@ -1,0 +1,45 @@
+<template>
+    <view class="text-message-container" :class="{ out: message.direction == 0 }">
+        <text class="text">{{ desc }}</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import { t } from "@/i18n/i18n.uts";
+
+// 未知消息
+export default {
+    name: "UnknownMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        desc(): string {
+            return t('message.unsupport_message_desc')
+        }
+    }
+}
+</script>
+
+<style scoped>
+.text-message-container {
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+}
+
+.text-message-container.out {
+    background-color: #98ea70;
+}
+
+.text {
+    color: #050505;
+    font-size: 16px;
+}
+</style>

@@ -1,0 +1,9 @@
+/**
+ * 剪贴板工具（原 copyImg 为 web 专用，uni-app x 版本仅保留文本复制）
+ */
+export function copyText(text: string): void {
+    uni.setClipboardData({
+        data: text,
+        showToast: true,
+    } as SetClipboardDataOptions)
+}

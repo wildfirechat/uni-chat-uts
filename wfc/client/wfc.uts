@@ -1,0 +1,2348 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ *
+ * uni-app x 版本说明：
+ * 原 JS 版本分为 wfc.js(门面) → proto.min.js(桥接) → utsWfcClient.js(插件转发) 三层，
+ * uni-app x 下合并为本文件一层，直接调用 wfc-client UTS 插件。
+ * 对外 API 与原 wfc.js 保持一致；回调事件通过 eventEmitter 通知，监听器签名统一为
+ * (args: Array<any | null>) => void，参数按原事件定义的顺序打包在数组里。
+ */
+
+import * as native from '@/uni_modules/wfc-client'
+import { EventEmitter } from '../util/eventEmitter.uts';
+import { utf8_to_b64 as _utf8_to_b64, b64_to_utf8 as _b64_to_utf8 } from '../util/base64.uts';
+import { stringValue, numberValue, eq } from '../util/longUtil.uts';
+import Config from "../../config.uts";
+import EventType from "./wfcEvent.uts";
+import ConnectionStatus from "./connectionStatus.uts";
+import UserSettingScope from "./userSettingScope.uts";
+import MessageConfig, { MessageContentCreator } from './messageConfig.uts';
+import Message from '../messages/message.uts';
+import MessageContent from '../messages/messageContent.uts';
+import MessagePayload from '../messages/messagePayload.uts';
+import MessageStatus from '../messages/messageStatus.uts';
+import MediaMessageContent from '../messages/mediaMessageContent.uts';
+import MarkUnreadMessageContent from '../messages/markUnreadMessageContent.uts';
+import Conversation from '../model/conversation.uts';
+import ConversationInfo from '../model/conversationInfo.uts';
+import ConversationSearchResult from '../model/conversationSearchResult.uts';
+import GroupSearchResult from '../model/groupSearchResult.uts';
+import UserInfo from '../model/userInfo.uts';
+import NullUserInfo from '../model/nullUserInfo.uts';
+import GroupInfo from '../model/groupInfo.uts';
+import NullGroupInfo from '../model/nullGroupInfo.uts';
+import GroupMember from '../model/groupMember.uts';
+import UnreadCount from '../model/unreadCount.uts';
+import FriendRequest from '../model/friendRequest.uts';
+import ChannelInfo from '../model/channelInfo.uts';
+import NullChannelInfo from '../model/NullChannelInfo.uts';
+import ChatRoomInfo from '../model/chatRoomInfo.uts';
+import ChatRoomMemberInfo from '../model/chatRoomMemberInfo.uts';
+import ReadEntry from '../model/readEntry.uts';
+import FileRecord from '../model/fileRecord.uts';
+import UserOnlineState from '../model/userOnlineState.uts';
+import UserCustomState from '../model/userCustomState.uts';
+import UserClientState from '../model/userClientState.uts';
+import UserSettingEntry from '../model/userSettingEntry.uts';
+import PCOnlineInfo from '../model/pcOnlineInfo.uts';
+import PCOnlineType from '../model/pcOnlineType.uts';
+import ModifyMyInfoEntry from '../model/modifyMyInfoEntry.uts';
+import AddGroupMemberNotification from '../messages/notification/addGroupMemberNotification.uts';
+
+/**
+ * 把 native 回调传回的 args(object) 转为数组
+ */
+function argsOf(value: object | null): Array<any | null> {
+    if (value == null) {
+        return []
+    }
+    if (value instanceof Array) {
+        return value as Array<any | null>
+    }
+    // 兜底：JSON 序列化再解析
+    try {
+        const str = JSON.stringify(value)
+        if (str != null && str.startsWith('[')) {
+            const arr = JSON.parseArray(str)
+            if (arr != null) {
+                return arr as Array<any | null>
+            }
+        }
+    } catch (e) {
+        console.error('argsOf error', e)
+    }
+    return []
+}
+
+export class WfcManager {
+    /**
+     * 事件通知，EventType 中定义的事件，都会采用本 eventEmitter 通知
+     */
+    eventEmitter: EventEmitter = new EventEmitter();
+
+    private connectionStatus = 0;
+    private userId = '';
+    private isLogined = false;
+    private firstSync = true;
+
+    private emit(event: string, args: Array<any | null>): void {
+        if (event == EventType.ConnectionStatusChanged || event == EventType.UserOnlineEvent) {
+            this.eventEmitter.emit(event, args)
+        } else {
+            if (this.connectionStatus == ConnectionStatus.ConnectionStatusConnected) {
+                this.eventEmitter.emit(event, args)
+            }
+            // else ignore
+        }
+    }
+
+    /**
+     * 初始化，请参考本demo的用法
+     */
+    init(): void {
+        console.log('wfc init');
+        native.initProto();
+
+        native.onWfcEventListener((value: object) => {
+            this._handleNativeEvent(value);
+        })
+
+        this.connectionStatus = native.getConnectionStatus();
+        this.isLogined = this.connectionStatus == ConnectionStatus.ConnectionStatusConnected;
+
+        this.registerDefaultMessageContents();
+        console.log('wfc init end')
+    }
+
+    private registerDefaultMessageContents(): void {
+        for (let i = 0; i < MessageConfig.MessageContents.length; i++) {
+            const e = MessageConfig.MessageContents[i]
+            native.registerMessageFlag(e.type, e.flag);
+        }
+    }
+
+    /**
+     * 注册新的自定义消息
+     */
+    registerMessageContent(name: string, flag: number, type: number, creator: MessageContentCreator): void {
+        MessageConfig.registerMessageContent(name, flag, type, creator);
+        native.registerMessageFlag(type, flag);
+    }
+
+    getClientId(): string {
+        return native.getClientId();
+    }
+
+    /**
+     * 启用国密加密。注意需要服务器端同步开启国密配置
+     */
+    useSM4(): void {
+        native.useSM4();
+    }
+
+    setSendLogCommand(command: string): void {
+        native.setSendLogCommand(command);
+    }
+
+    /**
+     * 连接服务器
+     */
+    connect(userId: string, token: string): void {
+        this.userId = userId;
+        native.connect(Config.IM_SERVER_HOST, userId, token);
+        console.log('connect', userId, Config.IM_SERVER_HOST);
+    }
+
+    setProxyInfo(host: string, ip: string, port: number, username: string, password: string): void {
+        native.setProxyInfo(host, ip, port, username, password);
+    }
+
+    /**
+     * 设置第三方推送设备token
+     */
+    setDeviceToken(pushType: number, token: string): void {
+        native.setDeviceToken(pushType, token);
+    }
+
+    /**
+     * 断开连接
+     */
+    disconnect(disablePush: boolean = false, clearSession: boolean = false): void {
+        this.userId = '';
+        native.disconnect(disablePush, clearSession);
+    }
+
+    getUserId(): string {
+        if (this.userId != '') {
+            return this.userId;
+        }
+        this.userId = native.getUserId();
+        return this.userId;
+    }
+
+    getServerDeltaTime(): number {
+        return native.getServerDeltaTime();
+    }
+
+    isLogin(): boolean {
+        return this.isLogined;
+    }
+
+    getConnectionStatus(): number {
+        return native.getConnectionStatus();
+    }
+
+    setBackupAddressStrategy(strategy: number): void {
+        native.setBackupAddressStrategy(strategy);
+    }
+
+    setBackupAddress(backupHost: string, backupPort: number): void {
+        native.setBackupAddress(backupHost, backupPort);
+    }
+
+    setProtoUserAgent(userAgent: string): void {
+        native.setUserAgent(userAgent);
+    }
+
+    addHttpHeader(header: string, value: string): void {
+        native.addHttpHeader(header, value);
+    }
+
+    /**
+     * 获取我保存到通讯录的群组信息列表
+     */
+    getFavGroupList(): GroupInfo[] {
+        const settings = this.getUserSettings(UserSettingScope.FavoriteGroup);
+        const groupInfos: GroupInfo[] = [];
+        for (let i = 0; i < settings.length; i++) {
+            const setting = settings[i]
+            if (setting.value == '1') {
+                groupInfos.push(this.getGroupInfo(setting.key, false));
+            }
+        }
+        return groupInfos;
+    }
+
+    getMyGroupList(): GroupInfo[] {
+        return this.getFavGroupList();
+    }
+
+    getUserDisplayName(userId: string): string {
+        const userInfo = this.getUserInfo(userId, false);
+        return this.getUserDisplayNameEx(userInfo);
+    }
+
+    getGroupMemberDisplayName(groupId: string, userId: string): string {
+        const userInfo = this.getUserInfo(userId, false, groupId);
+        return this.getGroupMemberDisplayNameEx(userInfo);
+    }
+
+    getUserDisplayNameEx(userInfo: UserInfo): string {
+        if (userInfo.friendAlias != '') {
+            return userInfo.friendAlias
+        }
+        if (userInfo.displayName != '') {
+            return userInfo.displayName
+        }
+        return '<' + userInfo.uid + '>';
+    }
+
+    getGroupMemberDisplayNameEx(userInfo: UserInfo): string {
+        if (userInfo.groupAlias != '') {
+            return userInfo.groupAlias
+        }
+        if (userInfo.friendAlias != '') {
+            return userInfo.friendAlias
+        }
+        if (userInfo.displayName != '') {
+            return userInfo.displayName
+        }
+        return '<' + userInfo.uid + '>';
+    }
+
+    /**
+     * 获取用户信息
+     */
+    getUserInfo(userId: string, refresh: boolean = false, groupId: string = ''): UserInfo {
+        if (userId == '') {
+            return new NullUserInfo('');
+        }
+        let userInfo: UserInfo
+        const userInfoStr = native.getUserInfo(userId, refresh, groupId);
+        if (userInfoStr == '') {
+            userInfo = new NullUserInfo(userId);
+        } else {
+            const obj = JSON.parseObject(userInfoStr)
+            userInfo = obj != null ? UserInfo.fromJsonObject(obj) : new NullUserInfo(userId);
+        }
+        if (userInfo.portrait == '') {
+            userInfo.portrait = this.defaultUserPortrait(userInfo);
+        }
+        return userInfo;
+    }
+
+    getUserInfoEx(userId: string, refresh: boolean, success: ((userInfo: UserInfo) => void) | null, fail: ((err: number) => void) | null): void {
+        native.getUserInfoEx(userId, refresh, (userInfoStr: string) => {
+            const obj = JSON.parseObject(userInfoStr)
+            if (obj != null && success != null) {
+                const userInfo = UserInfo.fromJsonObject(obj)
+                if (userInfo.portrait == '') {
+                    userInfo.portrait = this.defaultUserPortrait(userInfo);
+                }
+                success(userInfo);
+            }
+        }, (errorCode: number) => {
+            fail?.(errorCode);
+        });
+    }
+
+    /**
+     * 批量获取用户信息
+     */
+    getUserInfos(userIds: string[], groupId: string = ''): UserInfo[] {
+        const users: UserInfo[] = [];
+        if (userIds.length == 0) {
+            return users;
+        }
+        const userInfoStrs = native.getUserInfos(userIds, groupId);
+        if (userInfoStrs != '') {
+            const arr = JSON.parseArray(userInfoStrs);
+            if (arr != null) {
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        const u = UserInfo.fromJsonObject(o as UTSJSONObject)
+                        if (u.portrait == '') {
+                            u.portrait = this.defaultUserPortrait(u)
+                        }
+                        users.push(u)
+                    }
+                }
+            }
+        }
+        return users;
+    }
+
+    /**
+     * 服务端搜索用户
+     */
+    searchUser(keyword: string, searchType: number, page: number, successCB: ((keyword: string, userInfos: UserInfo[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.searchUser(keyword, searchType, page, (result: string) => {
+            const userList: UserInfo[] = [];
+            const arr = JSON.parseArray(result);
+            if (arr != null) {
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        const u = UserInfo.fromJsonObject(o as UTSJSONObject)
+                        if (u.portrait == '') {
+                            u.portrait = this.defaultUserPortrait(u)
+                        }
+                        userList.push(u)
+                    }
+                }
+            }
+            successCB?.(keyword, userList);
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 本地搜索好友
+     */
+    searchFriends(keyword: string): UserInfo[] {
+        const result = native.searchFriends(keyword);
+        const userList: UserInfo[] = [];
+        const arr = JSON.parseArray(result);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const u = UserInfo.fromJsonObject(o as UTSJSONObject)
+                    if (u.portrait == '') {
+                        u.portrait = this.defaultUserPortrait(u)
+                    }
+                    userList.push(u)
+                }
+            }
+        }
+        return userList;
+    }
+
+    /**
+     * 本地搜索群组
+     */
+    searchGroups(keyword: string): GroupSearchResult[] {
+        const result = native.searchGroups(keyword);
+        const list: GroupSearchResult[] = [];
+        const arr = JSON.parseArray(result);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const r = GroupSearchResult.fromProtoGroupSearchResult(o as UTSJSONObject)
+                    if (r.groupInfo.portrait == '') {
+                        r.groupInfo.portrait = this.defaultGroupPortrait(r.groupInfo);
+                    }
+                    list.push(r)
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 获取收到的好友请求
+     */
+    getIncommingFriendRequest(): FriendRequest[] {
+        const result = native.getIncommingFriendRequest();
+        return this._parseFriendRequests(result);
+    }
+
+    /**
+     * 获取发送出去的好友请求
+     */
+    getOutgoingFriendRequest(): FriendRequest[] {
+        const result = native.getOutgoingFriendRequest();
+        return this._parseFriendRequests(result);
+    }
+
+    private _parseFriendRequests(result: string): FriendRequest[] {
+        const list: FriendRequest[] = [];
+        const arr = JSON.parseArray(result);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    list.push(FriendRequest.fromJsonObject(o as UTSJSONObject))
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 获取单条好友请求
+     */
+    getFriendRequest(userId: string, incoming: boolean = true): FriendRequest | null {
+        const result = native.getFriendRequest(userId, incoming);
+        const obj = JSON.parseObject(result);
+        return obj != null ? FriendRequest.fromJsonObject(obj) : null;
+    }
+
+    loadFriendRequestFromRemote(): void {
+        native.loadFriendRequestFromRemote();
+    }
+
+    getUnreadFriendRequestCount(): number {
+        return native.getUnreadFriendRequestStatus();
+    }
+
+    clearUnreadFriendRequestStatus(): void {
+        native.clearUnreadFriendRequestStatus();
+    }
+
+    /**
+     * 清除好友请求
+     */
+    clearFriendRequest(incomming: boolean, beforeTime: number = 0): void {
+        native.clearFriendRequest(incomming ? 1 : 0, beforeTime);
+    }
+
+    /**
+     * 清除一条好友请求
+     */
+    deleteFriendRequest(userId: string, incomming: boolean): void {
+        native.deleteFriendRequest(userId, incomming ? 1 : 0);
+    }
+
+    deleteFriend(userId: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.deleteFriend(userId, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    handleFriendRequest(userId: string, accept: boolean, extra: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.handleFriendRequest(userId, accept, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        }, extra);
+    }
+
+    isBlackListed(userId: string): boolean {
+        return native.isBlackListed(userId);
+    }
+
+    getBlackList(): string[] {
+        const result = native.getBlackList();
+        const arr = JSON.parse<Array<string>>(result);
+        return arr ?? ([] as string[]);
+    }
+
+    setBlackList(userId: string, block: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setBlackList(userId, block, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取好友列表，返回好友id数组
+     */
+    getMyFriendList(fresh: boolean = false): string[] {
+        const idsStr = native.getMyFriendList(fresh);
+        if (idsStr != '') {
+            const arr = JSON.parse<Array<string>>(idsStr);
+            return arr ?? ([] as string[]);
+        }
+        return [];
+    }
+
+    getFriendAlias(userId: string): string {
+        return native.getFriendAlias(userId);
+    }
+
+    setFriendAlias(userId: string, alias: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setFriendAlias(userId, alias, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 创建群组
+     */
+    createGroup(groupId: string | null, groupType: number, name: string, portrait: string | null, groupExtra: string | null, memberIds: string[], memberExtra: string | null, lines: number[], notifyContent: MessageContent | null, successCB: ((groupId: string) => void) | null, failCB: ((err: number) => void) | null): void {
+        const gid = groupId ?? '';
+        const myUid = this.getUserId();
+        if (memberIds.indexOf(myUid) < 0) {
+            memberIds.push(myUid);
+        }
+        const notifyContentStr = notifyContent != null ? notifyContent.encode().toJsonStr() : '';
+        native.createGroup(gid, groupType, name, portrait ?? '', groupExtra ?? '', memberIds, memberExtra ?? '', lines, notifyContentStr,
+            (newGroupId: string) => {
+                successCB?.(newGroupId);
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    setGroupManager(groupId: string, isSet: boolean, memberIds: string[], lines: number[], notifyContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const notifyContentStr = notifyContent != null ? notifyContent.encode().toJsonStr() : '';
+        native.setGroupManager(groupId, isSet, memberIds, lines, notifyContentStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取群信息
+     */
+    getGroupInfo(groupId: string, refresh: boolean = false): GroupInfo {
+        const groupInfoStr = native.getGroupInfo(groupId, refresh);
+        let info: GroupInfo
+        if (groupInfoStr == '') {
+            info = new NullGroupInfo(groupId);
+        } else {
+            const obj = JSON.parseObject(groupInfoStr)
+            info = obj != null ? GroupInfo.fromJsonObject(obj) : new NullGroupInfo(groupId);
+        }
+        if (info.portrait == '') {
+            info.portrait = this.defaultGroupPortrait(info);
+        }
+        return info;
+    }
+
+    /**
+     * 批量获取群信息
+     */
+    getGroupInfos(groupIds: string[], refresh: boolean = false): GroupInfo[] {
+        const infos: GroupInfo[] = [];
+        if (groupIds.length == 0) {
+            return infos;
+        }
+        const groupInfosStr = native.getGroupInfos(groupIds, refresh);
+        if (groupInfosStr != '') {
+            const arr = JSON.parseArray(groupInfosStr);
+            if (arr != null) {
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        const g = GroupInfo.fromJsonObject(o as UTSJSONObject)
+                        if (g.portrait == '') {
+                            g.portrait = this.defaultGroupPortrait(g);
+                        }
+                        infos.push(g)
+                    }
+                }
+            }
+        }
+        return infos;
+    }
+
+    /**
+     * 添加群成员
+     */
+    addGroupMembers(groupId: string, memberIds: string[], extra: string, notifyLines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const content: MessageContent = notifyMessageContent ?? new AddGroupMemberNotification(this.getUserId(), memberIds);
+        const notifyContentStr = content.encode().toJsonStr();
+        native.addMembers(groupId, memberIds, extra, notifyLines, notifyContentStr,
+            () => {
+                successCB?.();
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 获取群成员id列表
+     */
+    getGroupMemberIds(groupId: string, fresh: boolean = false): string[] {
+        const groupMembers = this.getGroupMembers(groupId, fresh);
+        const groupMemberIds: string[] = [];
+        for (let i = 0; i < groupMembers.length; i++) {
+            groupMemberIds.push(groupMembers[i].memberId);
+        }
+        return groupMemberIds;
+    }
+
+    /**
+     * 获取群成员信息
+     */
+    getGroupMembers(groupId: string, fresh: boolean = false): GroupMember[] {
+        const memberIdsStr = native.getGroupMembers(groupId, fresh);
+        const members: GroupMember[] = [];
+        const arr = JSON.parseArray(memberIdsStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    members.push(GroupMember.fromJsonObject(o as UTSJSONObject))
+                }
+            }
+        }
+        return members;
+    }
+
+    /**
+     * 获取单个群成员信息
+     */
+    getGroupMember(groupId: string, memberId: string): GroupMember {
+        const result = native.getGroupMember(groupId, memberId);
+        const obj = JSON.parseObject(result);
+        return obj != null ? GroupMember.fromJsonObject(obj) : new GroupMember();
+    }
+
+    /**
+     * 将用户从群里移除
+     */
+    kickoffGroupMembers(groupId: string, memberIds: string[], notifyLines: number[], notifyMsg: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const strCont = notifyMsg != null ? notifyMsg.encode().toJsonStr() : '';
+        native.kickoffMembers(groupId, memberIds, notifyLines, strCont,
+            () => {
+                successCB?.();
+            }, (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 对群成员禁言
+     */
+    muteGroupMembers(groupId: string, isSet: boolean, memberIds: string[], notifyLines: number[], notifyMsg: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const notifyContentStr = notifyMsg != null ? notifyMsg.encode().toJsonStr() : '';
+        native.muteGroupMember(groupId, isSet, memberIds, notifyLines, notifyContentStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 群全局禁言之后，允许白名单成员发言
+     */
+    allowGroupMembers(groupId: string, isSet: boolean, memberIds: string[], notifyLines: number[], notifyMsg: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const notifyContentStr = notifyMsg != null ? notifyMsg.encode().toJsonStr() : '';
+        native.allowGroupMember(groupId, isSet, memberIds, notifyLines, notifyContentStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 退出群组
+     */
+    quitGroup(groupId: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.quitGroup(groupId, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    quitGroupEx(groupId: string, keepMessage: boolean, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.quitGroupEx(groupId, keepMessage, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 解散群组
+     */
+    dismissGroup(groupId: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.dismissGroup(groupId, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 修改群信息
+     */
+    modifyGroupInfo(groupId: string, type: number, newValue: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.modifyGroupInfo(groupId, type, newValue, lines, payloadStr,
+            () => {
+                successCB?.();
+            }, (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 修改我在群组的别名
+     */
+    modifyGroupAlias(groupId: string, alias: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.modifyGroupAlias(groupId, alias, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 修改群成员在群组的别名
+     */
+    modifyGroupMemberAlias(groupId: string, memberId: string, alias: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.modifyGroupMemberAlias(groupId, memberId, alias, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    modifyGroupMemberExtra(groupId: string, memberId: string, extra: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.modifyGroupMemberExtra(groupId, memberId, extra, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 转移群主
+     */
+    transferGroup(groupId: string, newOwner: string, lines: number[], notifyMessageContent: MessageContent | null, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = notifyMessageContent != null ? notifyMessageContent.encode().toJsonStr() : '';
+        native.transferGroup(groupId, newOwner, lines, payloadStr, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取保存到通讯录的群id列表
+     */
+    getFavGroups(): string[] {
+        const result = native.getFavGroups();
+        const arr = JSON.parse<Array<string>>(result);
+        return arr ?? ([] as string[]);
+    }
+
+    isFavGroup(groupId: string): boolean {
+        return native.isFavGroup(groupId);
+    }
+
+    setFavGroup(groupId: string, fav: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setFavGroup(groupId, fav, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    getGroupRemark(groupId: string): string {
+        return native.getGroupRemark(groupId);
+    }
+
+    setGroupRemark(groupId: string, remark: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setGroupRemark(groupId, remark, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取用户设置
+     */
+    getUserSetting(scope: number, key: string): string {
+        return native.getUserSetting(scope, key);
+    }
+
+    /**
+     * 获取某个命名空间下的所有设置
+     */
+    getUserSettings(scope: number): UserSettingEntry[] {
+        const result = native.getUserSettings(scope);
+        const list: UserSettingEntry[] = [];
+        const arr = JSON.parseArray(result);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    list.push(UserSettingEntry.fromJsonObject(o as UTSJSONObject))
+                }
+            }
+        }
+        return list;
+    }
+
+    setUserSetting(scope: number, key: string, value: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setUserSetting(scope, key, value, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 修改个人信息
+     */
+    modifyMyInfo(modifyMyInfoEntries: ModifyMyInfoEntry[], successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        if (modifyMyInfoEntries.length == 0) {
+            return;
+        }
+        native.modifyMyInfo(modifyMyInfoEntries[0].type, modifyMyInfoEntries[0].value, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    isGlobalSlient(): boolean {
+        return native.isGlobalSlient();
+    }
+
+    setGlobalSlient(silent: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setGlobalSlient(silent, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    isHiddenNotificationDetail(): boolean {
+        return native.isHiddenNotificationDetail();
+    }
+
+    setHiddenNotificationDetail(hide: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setHiddenNotificationDetail(hide, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    isHiddenGroupMemberName(groupId: string): boolean {
+        const setting = native.getUserSetting(UserSettingScope.GroupHideNickname, groupId);
+        return '1' == setting;
+    }
+
+    setHiddenGroupMemberName(groupId: string, hide: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setUserSetting(UserSettingScope.GroupHideNickname, groupId, hide ? '1' : '0', () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 加入聊天室
+     */
+    joinChatroom(chatroomId: string, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
+        native.joinChatroom(chatroomId, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 退出聊天室
+     */
+    quitChatroom(chatroomId: string, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
+        native.quitChatroom(chatroomId, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取聊天室信息
+     */
+    getChatroomInfo(chatroomId: string, updateDt: number, successCB: ((info: ChatRoomInfo) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getChatroomInfo(chatroomId, updateDt, (info: string) => {
+            const obj = JSON.parseObject(info);
+            if (obj != null) {
+                successCB?.(ChatRoomInfo.fromJsonObject(obj));
+            }
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取聊天室成员信息
+     */
+    getChatroomMemberInfo(chatroomId: string, maxCount: number, successCB: ((info: ChatRoomMemberInfo) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getChatroomMemberInfo(chatroomId, maxCount, (info: string) => {
+            const obj = JSON.parseObject(info);
+            if (obj != null) {
+                successCB?.(ChatRoomMemberInfo.fromJsonObject(obj));
+            }
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 创建频道
+     */
+    createChannel(name: string, portrait: string, desc: string, extra: string, successCB: ((channelInfo: ChannelInfo) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.createChannel(name, portrait, 0, desc, extra, (info: string) => {
+            const obj = JSON.parseObject(info);
+            if (obj != null) {
+                successCB?.(ChannelInfo.fromJsonObject(obj));
+            }
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取频道信息
+     */
+    getChannelInfo(channelId: string, refresh: boolean): ChannelInfo {
+        const result = native.getChannelInfo(channelId, refresh);
+        if (result == '') {
+            return new NullChannelInfo(channelId);
+        }
+        const obj = JSON.parseObject(result);
+        return obj != null ? ChannelInfo.fromJsonObject(obj) : new NullChannelInfo(channelId);
+    }
+
+    /**
+     * 修改频道信息
+     */
+    modifyChannelInfo(channelId: string, type: number, newValue: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.modifyChannelInfo(channelId, type, newValue, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 搜索频道
+     */
+    searchChannel(keyword: string, fuzzy: boolean, successCB: ((channels: ChannelInfo[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.searchChannel(keyword, (result: string) => {
+            const channels: ChannelInfo[] = [];
+            const arr = JSON.parseArray(result);
+            if (arr != null) {
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        channels.push(ChannelInfo.fromJsonObject(o as UTSJSONObject))
+                    }
+                }
+            }
+            successCB?.(channels);
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    isListenedChannel(channelId: string): boolean {
+        return native.isListenedChannel(channelId);
+    }
+
+    listenChannel(channelId: string, listen: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.listenChannel(channelId, listen, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取所收听的频道id列表
+     */
+    getListenedChannels(): string[] {
+        const result = native.getListenedChannels();
+        if (result == '') {
+            return [];
+        }
+        const arr = JSON.parse<Array<string>>(result);
+        return arr ?? ([] as string[]);
+    }
+
+    destoryChannel(channelId: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.destoryChannel(channelId, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取会话列表
+     */
+    getConversationList(types: number[], lines: number[]): ConversationInfo[] {
+        const conversationListStr = native.getConversationInfos(types, lines);
+        const conversationInfoList: ConversationInfo[] = [];
+        if (conversationListStr == '') {
+            console.log('getConversationInfos return empty')
+            return conversationInfoList;
+        }
+
+        const arr = JSON.parseArray(conversationListStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const info = ConversationInfo.protoConversationToConversationInfo(o as UTSJSONObject)
+                    if (info != null) {
+                        conversationInfoList.push(info)
+                    }
+                }
+            }
+        }
+        return conversationInfoList;
+    }
+
+    /**
+     * 获取会话详情
+     */
+    getConversationInfo(conversation: Conversation): ConversationInfo {
+        const convStr = native.getConversationInfo(conversation.toJsonStr());
+        if (convStr == '') {
+            const convInfo = new ConversationInfo()
+            convInfo.conversation = conversation
+            return convInfo
+        }
+        const obj = JSON.parseObject(convStr);
+        const info = obj != null ? ConversationInfo.protoConversationToConversationInfo(obj) : null;
+        if (info == null) {
+            const convInfo = new ConversationInfo()
+            convInfo.conversation = conversation
+            return convInfo
+        }
+        return info;
+    }
+
+    /**
+     * 搜索会话
+     */
+    searchConversation(keyword: string, types: number[] = [0, 1, 2], lines: number[] = [0, 1, 2]): ConversationSearchResult[] {
+        const result = native.searchConversation(keyword, types, lines);
+        const conversationSearchResults: ConversationSearchResult[] = [];
+        const arr = JSON.parseArray(result);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const r = ConversationSearchResult.fromProtoConversationSearchResult(o as UTSJSONObject)
+                    if (r != null) {
+                        conversationSearchResults.push(r)
+                    }
+                }
+            }
+        }
+        return conversationSearchResults;
+    }
+
+    /**
+     * 删除会话
+     */
+    removeConversation(conversation: Conversation, clearMsg: boolean): void {
+        native.removeConversation(conversation.toJsonStr(), clearMsg);
+    }
+
+    /**
+     * 会话置顶或取消置顶
+     */
+    setConversationTop(conversation: Conversation, top: number, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setConversationTop(conversation.toJsonStr(), top, () => {
+            const conversationInfo = this.getConversationInfo(conversation);
+            this.emit(EventType.ConversationInfoUpdate, [conversationInfo]);
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 会话免打扰或取消免打扰
+     */
+    setConversationSlient(conversation: Conversation, silent: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setConversationSlient(conversation.toJsonStr(), silent, () => {
+            const conversationInfo = this.getConversationInfo(conversation);
+            this.emit(EventType.ConversationInfoUpdate, [conversationInfo]);
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 保存会话草稿
+     */
+    setConversationDraft(conversation: Conversation, draft: string = ''): void {
+        const conversationInfo = this.getConversationInfo(conversation);
+        if (conversationInfo.draft == draft) {
+            return;
+        }
+        native.setConversationDraft(conversation.toJsonStr(), draft);
+        const newInfo = this.getConversationInfo(conversation);
+        this.emit(EventType.ConversationInfoUpdate, [newInfo]);
+    }
+
+    /**
+     * 设置会话时间戳，当会话不存在时，会创建一个新的会话
+     */
+    setConversationTimestamp(conversation: Conversation, timestamp: number): void {
+        native.setConversationTimestamp(conversation.toJsonStr(), stringValue(timestamp));
+        const conversationInfo = this.getConversationInfo(conversation);
+        this.emit(EventType.ConversationInfoUpdate, [conversationInfo]);
+    }
+
+    /**
+     * 获取未读消息数
+     */
+    getUnreadCount(types: number[] = [0, 1, 2], lines: number[] = [0]): UnreadCount {
+        const unreadCountStr = native.getUnreadCount(types, lines);
+        const obj = JSON.parseObject(unreadCountStr);
+        return UnreadCount.fromJsonObject(obj);
+    }
+
+    /**
+     * 获取某个会话的未读消息数
+     */
+    getConversationUnreadCount(conversation: Conversation): UnreadCount {
+        const unreadCountStr = native.getConversationUnreadCount(conversation.toJsonStr());
+        const obj = JSON.parseObject(unreadCountStr);
+        return UnreadCount.fromJsonObject(obj);
+    }
+
+    /**
+     * 清除会话消息未读状态
+     */
+    clearConversationUnreadStatus(conversation: Conversation): void {
+        native.clearUnreadStatus(conversation.toJsonStr());
+        const conversationInfo = this.getConversationInfo(conversation);
+        this.emit(EventType.ConversationInfoUpdate, [conversationInfo]);
+    }
+
+    /**
+     * 将会话最后一条消息置为未读
+     */
+    markConversationAsUnread(conversation: Conversation, syncToOtherClient: boolean): void {
+        native.setLastReceivedMessageUnRead(conversation.toJsonStr(), '0', '0');
+        const conversationInfo = this.getConversationInfo(conversation);
+        this.emit(EventType.ConversationInfoUpdate, [conversationInfo]);
+    }
+
+    /**
+     * 清除所有消息的未读状态
+     */
+    clearAllUnreadStatus(): void {
+        native.clearAllUnreadStatus();
+    }
+
+    setMediaMessagePlayed(messageId: number): void {
+        native.setMediaMessagePlayed(messageId);
+    }
+
+    setMessageLocalExtra(messageId: number, extra: string): void {
+        native.setMessageLocalExtra(messageId, extra);
+    }
+
+    isMyFriend(userId: string): boolean {
+        return native.isMyFriend(userId);
+    }
+
+    /**
+     * 获取星标用户id列表
+     */
+    getFavUsers(): string[] {
+        const result = native.getFavUsers();
+        const arr = JSON.parse<Array<string>>(result);
+        return arr ?? ([] as string[]);
+    }
+
+    isFavUser(userId: string): boolean {
+        return native.isFavUser(userId);
+    }
+
+    setFavUser(userId: string, fav: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setFavUser(userId, fav, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 发送好友请求
+     */
+    sendFriendRequest(userId: string, reason: string, extra: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.sendFriendRequest(userId, reason, extra, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    private _parseMessages(protoMsgsStr: string): Message[] {
+        const msgs: Message[] = [];
+        const arr = JSON.parseArray(protoMsgsStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const msg = Message.fromProtoMessage(o as UTSJSONObject)
+                    if (msg != null) {
+                        msgs.push(msg)
+                    }
+                }
+            }
+        }
+        return msgs;
+    }
+
+    /**
+     * 获取会话消息
+     */
+    getMessagesV2(conversation: Conversation, fromIndex: number, before: boolean, count: number, withUser: string, successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getMessagesV2(conversation.toJsonStr(), fromIndex, before, count, withUser, (protoMsgsStr: string) => {
+            successCB?.(this._parseMessages(protoMsgsStr));
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    getUserMessagesV2(userId: string, conversation: Conversation, fromIndex: number, before: boolean, count: number, successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getUserMessagesV2(userId, conversation.toJsonStr(), fromIndex, before, count, (protoMsgsStr: string) => {
+            successCB?.(this._parseMessages(protoMsgsStr));
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    getUserMessagesExV2(userId: string, conversationTypes: number[], lines: number[], fromIndex: number, before: boolean, count: number, contentTypes: number[], successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getUserMessagesExV2(userId, conversationTypes, lines, fromIndex, before, count, contentTypes, (protoMsgsStr: string) => {
+            successCB?.(this._parseMessages(protoMsgsStr));
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    /**
+     * 获取会话的远程历史消息
+     */
+    loadRemoteConversationMessages(conversation: Conversation, contentTypes: number[], beforeUid: string, count: number, successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getRemoteMessages(conversation.toJsonStr(), stringValue(beforeUid), count, (protoMsgsStr: string) => {
+            const msgs = this._parseMessages(protoMsgsStr);
+            console.log('loadRemoteMessages', msgs.length);
+            successCB?.(msgs);
+        }, (errorCode: number) => {
+            console.log("loadRemoteMessages failure:", errorCode);
+            failCB?.(errorCode);
+        });
+    }
+
+    loadRemoteMessages(conversation: Conversation, contentTypes: number[], beforeUid: string, count: number, successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        this.loadRemoteConversationMessages(conversation, contentTypes, beforeUid, count, successCB, failCB);
+    }
+
+    /**
+     * 根据消息 uid，获取远程消息
+     */
+    loadRemoteMessage(messageUid: string, successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getRemoteMessage(stringValue(messageUid), (protoMsgsStr: string) => {
+            successCB?.(this._parseMessages(protoMsgsStr));
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取消息
+     */
+    getMessageById(messageId: number): Message | null {
+        const mStr = native.getMessage(messageId);
+        const obj = JSON.parseObject(mStr);
+        return Message.fromProtoMessage(obj);
+    }
+
+    /**
+     * 获取消息
+     */
+    getMessageByUid(messageUid: string): Message | null {
+        const mStr = native.getMessageByUid(stringValue(messageUid));
+        const obj = JSON.parseObject(mStr);
+        return Message.fromProtoMessage(obj);
+    }
+
+    /**
+     * 搜索消息
+     */
+    searchMessage(conversation: Conversation, keyword: string, withUser: string = ''): Message[] {
+        const result = native.searchMessage(conversation.toJsonStr(), keyword, withUser);
+        return this._parseMessages(result);
+    }
+
+    searchMessageEx(conversation: Conversation, keyword: string, desc: boolean, limit: number, offset: number, withUser: string = ''): Message[] {
+        const result = native.searchMessageEx(conversation.toJsonStr(), keyword, desc, limit, offset, withUser);
+        return this._parseMessages(result);
+    }
+
+    searchMessageByTypes(conversation: Conversation, keyword: string, contentTypes: number[], desc: boolean, limit: number, offset: number, withUser: string = ''): Message[] {
+        const result = native.searchMessageByTypes(conversation.toJsonStr(), keyword, contentTypes, desc, limit, offset, withUser);
+        return this._parseMessages(result);
+    }
+
+    searchMessageByTypesAndTimes(conversation: Conversation, keyword: string, contentTypes: number[], startTime: number, endTime: number, desc: boolean, limit: number, offset: number, withUser: string = ''): Message[] {
+        const result = native.searchMessageByTypesAndTimes(conversation.toJsonStr(), keyword, contentTypes, startTime, endTime, desc, limit, offset, withUser);
+        return this._parseMessages(result);
+    }
+
+    searchMessageEx2(conversationTypes: number[], lines: number[], contentTypes: number[], keyword: string, fromIndex: number, desc: boolean, count: number, withUser: string = ''): Message[] {
+        const result = native.searchMessageEx2(conversationTypes, lines, contentTypes, keyword, fromIndex, desc, count, withUser);
+        return this._parseMessages(result);
+    }
+
+    /**
+     * 发送消息
+     */
+    sendConversationMessage(conversation: Conversation, messageContent: MessageContent, toUsers: string[] = [], preparedCB: ((messageId: number, timestamp: number) => void) | null = null, progressCB: ((uploaded: number, total: number) => void) | null = null, successCB: ((messageUid: string, timestamp: number) => void) | null = null, failCB: ((err: number) => void) | null = null): void {
+        const message = new Message(conversation, messageContent);
+        this.sendMessageEx(message, toUsers, preparedCB, progressCB, successCB, failCB);
+    }
+
+    sendMessage(message: Message, preparedCB: ((messageId: number, timestamp: number) => void) | null = null, progressCB: ((uploaded: number, total: number) => void) | null = null, successCB: ((messageUid: string, timestamp: number) => void) | null = null, failCB: ((err: number) => void) | null = null): void {
+        this.sendMessageEx(message, [], preparedCB, progressCB, successCB, failCB);
+    }
+
+    // toUsers 用来实现定向消息
+    sendMessageEx(message: Message, toUsers: string[] = [], preparedCB: ((messageId: number, timestamp: number) => void) | null = null, progressCB: ((uploaded: number, total: number) => void) | null = null, successCB: ((messageUid: string, timestamp: number) => void) | null = null, failCB: ((err: number) => void) | null = null): void {
+        const strConv = message.conversation.toJsonStr();
+        const payload = message.messageContent.encode();
+        message.content = payload;
+        message.from = this.getUserId();
+        const strCont = payload.toJsonStr();
+
+        native.sendMessage(strConv, strCont, toUsers, 0,
+            (value: object) => { //preparedCB
+                const args = argsOf(value);
+                const messageId = args.length > 0 ? numberValue(args[0]) : 0;
+                const timestamp = args.length > 1 ? numberValue(args[1]) : 0;
+                message.messageId = messageId;
+                message.timestamp = timestamp;
+                preparedCB?.(messageId, timestamp);
+                this.emit(EventType.SendMessage, [message]);
+            },
+            (value: object) => { //progressCB
+                const args = argsOf(value);
+                const uploaded = args.length > 0 ? numberValue(args[0]) : 0;
+                const total = args.length > 1 ? numberValue(args[1]) : 0;
+                progressCB?.(uploaded, total);
+            },
+            (value: object) => { //successCB
+                const args = argsOf(value);
+                const messageUid = args.length > 0 ? stringValue(args[0]) : '0';
+                const timestamp = args.length > 1 ? numberValue(args[1]) : 0;
+                message.status = MessageStatus.Sent;
+                message.messageUid = messageUid;
+                message.timestamp = timestamp;
+                // update remote url
+                if (message.messageContent instanceof MediaMessageContent) {
+                    const msg = this.getMessageById(message.messageId);
+                    if (msg != null) {
+                        message.messageContent = msg.messageContent;
+                    }
+                }
+                successCB?.(messageUid, timestamp);
+                this.emit(EventType.MessageStatusUpdate, [message]);
+            },
+            (errorCode: number) => { //errorCB
+                message.status = MessageStatus.SendFailure;
+                failCB?.(errorCode);
+                this.emit(EventType.MessageStatusUpdate, [message]);
+            });
+    }
+
+    /**
+     * 撤回消息
+     */
+    recallMessage(messageUid: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        console.log('recall', messageUid);
+        native.recall(stringValue(messageUid),
+            () => {
+                successCB?.();
+                this.onRecallMessage(this.getUserId(), stringValue(messageUid));
+            },
+            (errorCode: number) => {
+                console.log('recall, f', messageUid, errorCode);
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 删除本地消息
+     */
+    deleteMessage(messageId: number): void {
+        native.deleteMessage(messageId);
+        this.onMessageDeleted(messageId);
+    }
+
+    /**
+     * 删除远程消息
+     */
+    deleteRemoteMessageByUid(msgUid: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.deleteRemoteMessage(stringValue(msgUid),
+            () => {
+                successCB?.();
+                this.onDeleteRemoteMessage(stringValue(msgUid));
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 更新远程消息内容，只有专业版支持
+     */
+    updateRemoteMessageContent(msgUid: string, messageContent: MessageContent, distribute: boolean, updateLocal: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        const payloadStr = messageContent.encode().toJsonStr();
+        native.updateRemoteMessageContent(stringValue(msgUid), payloadStr, distribute, updateLocal,
+            () => {
+                successCB?.();
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 清除会话消息
+     */
+    clearMessages(conversation: Conversation): void {
+        native.clearMessages(conversation.toJsonStr());
+        const conversationInfo = this.getConversationInfo(conversation);
+        this.emit(EventType.ConversationInfoUpdate, [conversationInfo]);
+    }
+
+    clearRemoteConversationMessages(conversation: Conversation, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.clearRemoteConversationMessages(conversation.toJsonStr(),
+            () => {
+                successCB?.();
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            }
+        );
+    }
+
+    /**
+     * 插入消息
+     */
+    insertMessage(conversation: Conversation, messageContent: MessageContent, status: number, notify: boolean = false, toUsers: string[] = [], serverTime: number = 0): void {
+        const payloadStr = messageContent.encode().toJsonStr();
+        native.insertMessage(conversation.toJsonStr(), this.getUserId(), payloadStr, status, notify, toUsers, serverTime);
+    }
+
+    /**
+     * 更新消息
+     */
+    updateMessageContent(messageId: number, messageContent: MessageContent): void {
+        const payloadStr = messageContent.encode().toJsonStr();
+        native.updateMessage(messageId, payloadStr);
+    }
+
+    updateMessageStatus(messageId: number, status: number): void {
+        native.updateMessageStatus(messageId, status);
+    }
+
+    /**
+     * 上传媒体数据（base64）
+     */
+    uploadMedia(fileName: string, data: string, mediaType: number, successCB: ((remoteUrl: string) => void) | null, failCB: ((err: number) => void) | null, progressCB: ((current: number, total: number) => void) | null): void {
+        let b64Data = data
+        if (b64Data.indexOf("base64,") >= 0) {
+            b64Data = b64Data.substring(b64Data.indexOf(',') + 1);
+        }
+        native.uploadMedia(fileName, b64Data, mediaType,
+            (remoteUrl: string) => {
+                successCB?.(remoteUrl);
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            },
+            (value: object) => {
+                const args = argsOf(value);
+                const current = args.length > 0 ? numberValue(args[0]) : 0;
+                const total = args.length > 1 ? numberValue(args[1]) : 0;
+                progressCB?.(current, total);
+            });
+    }
+
+    /**
+     * 上传媒体文件
+     */
+    uploadMediaFile(filePath: string, mediaType: number, successCB: ((remoteUrl: string) => void) | null, failCB: ((err: number) => void) | null, progressCB: ((current: number, total: number) => void) | null): void {
+        native.uploadMediaFile(filePath, mediaType,
+            (remoteUrl: string) => {
+                successCB?.(remoteUrl);
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            },
+            (value: object) => {
+                const args = argsOf(value);
+                const current = args.length > 0 ? numberValue(args[0]) : 0;
+                const total = args.length > 1 ? numberValue(args[1]) : 0;
+                progressCB?.(current, total);
+            });
+    }
+
+    /**
+     * 获取经过认证的下载地址
+     */
+    getAuthorizedMediaUrl(messageUid: string, mediaType: number, mediaPath: string, successCB: ((url: string) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getAuthorizedMediaUrl(stringValue(messageUid), mediaType, mediaPath, (url: string) => {
+            successCB?.(url);
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    /**
+     * 是否支持大文件上传，只有专业版支持
+     */
+    isSupportBigFilesUpload(): boolean {
+        return native.isSupportBigFilesUpload();
+    }
+
+    /**
+     * 获取上传链接，一般用于大文件上传
+     */
+    getUploadMediaUrl(fileName: string, mediaType: number, contentType: string, successCB: ((uploadUrl: string) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getUploadMediaUrl(fileName, mediaType, contentType, (uploadUrl: string) => {
+            successCB?.(uploadUrl);
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    /**
+     * 是否开启了已送达报告和已读报告功能
+     */
+    isReceiptEnabled(): boolean {
+        return native.isReceiptEnabled();
+    }
+
+    /**
+     * 当前用户是否开启消息回执
+     */
+    isUserReceiptEnabled(): boolean {
+        return native.isUserReceiptEnabled();
+    }
+
+    isCommercialServer(): boolean {
+        return native.isCommercialServer();
+    }
+
+    isGlobalDisableSyncDraft(): boolean {
+        return native.isGlobalDisableSyncDraft();
+    }
+
+    setDisableSyncDraft(disable: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        this.setUserSetting(UserSettingScope.DisableSyncDraft, '', disable ? '1' : '0', successCB, failCB);
+    }
+
+    isDisableSyncDraft(): boolean {
+        return this.getUserSetting(UserSettingScope.DisableSyncDraft, '') == '1';
+    }
+
+    setUserEnableReceipt(enable: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.setUserReceiptEnable(enable, () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取会话已读情况
+     * @return Map<userId, readTime>
+     */
+    getConversationRead(conversation: Conversation): Map<string, number> {
+        const readedStr = native.getConversationRead(conversation.toJsonStr());
+        const result = new Map<string, number>();
+        const arr = JSON.parseArray(readedStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const obj = o as UTSJSONObject
+                    const key = obj.getString('key')
+                    const value = obj.getNumber('value')
+                    if (key != null && value != null) {
+                        result.set(key, value)
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    private _parseFileRecords(frsStr: string): FileRecord[] {
+        const fileRecords: FileRecord[] = [];
+        const arr = JSON.parseArray(frsStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const obj = o as UTSJSONObject
+                    const fileRecord = new FileRecord();
+                    fileRecord.userId = obj.getString('userId') ?? '';
+                    const convObj = obj.getJSON('conversation');
+                    if (convObj != null) {
+                        fileRecord.conversation = Conversation.fromJsonObject(convObj);
+                    } else {
+                        fileRecord.conversation = Conversation.fromJsonObject(obj);
+                    }
+                    fileRecord.messageUid = stringValue(obj.get('messageUid'));
+                    fileRecord.name = obj.getString('name') ?? '';
+                    fileRecord.url = obj.getString('url') ?? '';
+                    fileRecord.size = obj.getNumber('size') ?? 0;
+                    fileRecord.downloadCount = obj.getNumber('downloadCount') ?? 0;
+                    fileRecord.timestamp = obj.getNumber('timestamp') ?? 0;
+                    fileRecords.push(fileRecord);
+                }
+            }
+        }
+        return fileRecords;
+    }
+
+    /**
+     * 获取会话中的文件记录
+     */
+    getConversationFileRecords(conversation: Conversation, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getConversationFiles(conversation.toJsonStr(), fromUser, stringValue(beforeMessageUid), count, (frsStr: string) => {
+            successCB?.(this._parseFileRecords(frsStr));
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 获取我发送的文件记录
+     */
+    getMyFileRecords(beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getMyFiles(stringValue(beforeMessageUid), count, (frsStr: string) => {
+            successCB?.(this._parseFileRecords(frsStr));
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 删除文件记录
+     */
+    deleteFileRecord(messageUid: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.deleteFileRecord(stringValue(messageUid), () => {
+            successCB?.();
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /**
+     * 搜索远程文件记录
+     */
+    searchFiles(keyword: string, conversation: Conversation | null, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.searchFiles(keyword, conversation != null ? conversation.toJsonStr() : '', fromUser, stringValue(beforeMessageUid), count,
+            (files: string) => {
+                successCB?.(this._parseFileRecords(files));
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            })
+    }
+
+    searchMyFiles(keyword: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.searchMyFiles(keyword, stringValue(beforeMessageUid), count,
+            (files: string) => {
+                successCB?.(this._parseFileRecords(files));
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    /**
+     * 发送会议相关请求
+     */
+    sendConferenceRequest(sessionId: string, roomId: string, request: string, data: string, callback: ((errorCode: number, resp: string | null) => void) | null): void {
+        this.sendConferenceRequestEx(sessionId, roomId, request, data, false, callback)
+    }
+
+    sendConferenceRequestEx(sessionId: string, roomId: string, request: string, data: string, advance: boolean, callback: ((errorCode: number, resp: string | null) => void) | null): void {
+        native.sendConferenceRequest(sessionId, roomId, request, data,
+            (resp: string) => {
+                callback?.(0, resp);
+            },
+            (errorCode: number) => {
+                callback?.(errorCode, null)
+            }, advance);
+    }
+
+    isEnableUserOnlineState(): boolean {
+        return native.isEnableUserOnlineState();
+    }
+
+    private _parseUserOnlineStates(userOnlineStateStr: string): UserOnlineState[] {
+        const userOnlineStates: UserOnlineState[] = [];
+        const arr = JSON.parseArray(userOnlineStateStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const s = o as UTSJSONObject
+                    const userOnlineState = new UserOnlineState();
+                    userOnlineState.userId = s.getString('userId') ?? '';
+                    const customState = new UserCustomState();
+                    customState.state = s.getNumber('customState') ?? 0;
+                    customState.text = s.getString('customText') ?? '';
+                    userOnlineState.customState = customState;
+
+                    let clientStates = s.getArray<UTSJSONObject>('states');
+                    if (clientStates == null) {
+                        clientStates = s.getArray<UTSJSONObject>('clientStates');
+                    }
+                    if (clientStates != null) {
+                        for (let j = 0; j < clientStates.length; j++) {
+                            const ss = clientStates[j]
+                            const clientState = new UserClientState();
+                            clientState.state = ss.getNumber('state') ?? 0;
+                            clientState.platform = ss.getNumber('platform') ?? 0;
+                            clientState.lastSeen = numberValue(ss.get('lastSeen'));
+                            userOnlineState.clientStates.push(clientState)
+                        }
+                    }
+                    userOnlineStates.push(userOnlineState);
+                }
+            }
+        }
+        return userOnlineStates;
+    }
+
+    /**
+     * 关注用户在线状态
+     */
+    watchOnlineState(type: number, targets: string[], duration: number, successCB: ((states: UserOnlineState[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.watchOnlineState(type, targets, duration,
+            (strStates: string) => {
+                successCB?.(this._parseUserOnlineStates(strStates));
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    unwatchOnlineState(type: number, targets: string[], successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
+        native.unwatchOnlineState(type, targets,
+            () => {
+                successCB?.();
+            },
+            (errorCode: number) => {
+                failCB?.(errorCode);
+            });
+    }
+
+    getAuthCode(appId: string, appType: number, host: string, successCB: ((authCode: string) => void) | null, failCB: ((err: number) => void) | null): void {
+        // #ifdef APP-ANDROID
+        native.getAuthCode(appId, appType.toInt(), host, (authCode: string) => {
+            successCB?.(authCode);
+        }, (err: number) => {
+            failCB?.(err);
+        })
+        // #endif
+        // #ifndef APP-ANDROID
+        native.getAuthCode(appId, appType, host, (authCode: string) => {
+            successCB?.(authCode);
+        }, (err: number) => {
+            failCB?.(err);
+        })
+        // #endif
+    }
+
+    configApplication(appId: string, appType: number, timestamp: number, nonceStr: string, signature: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.configApplication(appId, appType, timestamp, nonceStr, signature, () => {
+            successCB?.();
+        }, (err: number) => {
+            failCB?.(err);
+        })
+    }
+
+    notify(title: string, content: string): void {
+        native.notify(title, content)
+    }
+
+    clearAllNotification(): void {
+        native.clearAllNotification();
+    }
+
+    /**
+     * 当前用户是否开启添加好友需要验证，默认为开启
+     */
+    isAddFriendNeedVerify(): boolean {
+        const setting = native.getUserSetting(UserSettingScope.AddFriend_NoVerify, '');
+        return '1' != setting;
+    }
+
+    setAddFriendNeedVerify(enable: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        this.setUserSetting(UserSettingScope.AddFriend_NoVerify, '', enable ? '0' : '1', successCB, failCB);
+    }
+
+    /**
+     * 设置是否 PC 在线时，本机是否静音
+     */
+    muteNotificationWhenPcOnline(mute: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        this.setUserSetting(UserSettingScope.MuteWhenPCOnline, '', mute ? '0' : '1', successCB, failCB);
+    }
+
+    isMuteNotificationWhenPcOnline(): boolean {
+        const value = this.getUserSetting(UserSettingScope.MuteWhenPCOnline, "");
+        return value != '1';
+    }
+
+    /**
+     * 获取 PC/Pad/Web/小程序 在线状态
+     */
+    getPCOnlineInfos(): PCOnlineInfo[] {
+        const pcOnline = this.getUserSetting(UserSettingScope.UserSettingPCOnline, "PC");
+        const webOnline = this.getUserSetting(UserSettingScope.UserSettingPCOnline, "Web");
+        const wxOnline = this.getUserSetting(UserSettingScope.UserSettingPCOnline, "WX");
+        const padOnline = this.getUserSetting(UserSettingScope.UserSettingPCOnline, "Pad");
+
+        const infos: PCOnlineInfo[] = [];
+        let info = PCOnlineInfo.infoFromStr(pcOnline, PCOnlineType.PC_Online);
+        if (info != null) {
+            infos.push(info);
+        }
+        info = PCOnlineInfo.infoFromStr(webOnline, PCOnlineType.Web_Online);
+        if (info != null) {
+            infos.push(info);
+        }
+        info = PCOnlineInfo.infoFromStr(wxOnline, PCOnlineType.WX_Online);
+        if (info != null) {
+            infos.push(info);
+        }
+        info = PCOnlineInfo.infoFromStr(padOnline, PCOnlineType.Pad_Online);
+        if (info != null) {
+            infos.push(info);
+        }
+
+        return infos;
+    }
+
+    /**
+     * 将 PC/Pad/Web/小程序端踢下线
+     */
+    kickoffPCClient(clientId: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        native.kickoffPCClient(clientId, () => {
+            successCB?.();
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    chooseFile(type: string, successCB: ((res: UTSJSONObject) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.chooseFile(type, (res: string) => {
+            const obj = JSON.parseObject(res);
+            if (obj != null) {
+                successCB?.(obj);
+            }
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
+    /**
+     * 仅鸿蒙端支持，将内容保存到文件
+     */
+    saveToFile(name: string, data: string): string {
+        // #ifdef APP-HARMONY
+        return native.saveToFile(name, data)
+        // #endif
+        // #ifndef APP-HARMONY
+        console.log('本 API 仅鸿蒙支持')
+        return ''
+        // #endif
+    }
+
+    /**
+     * 按日期获取消息数量
+     */
+    getMessageCountByDay(conversation: Conversation, contentTypes: number[], startTime: number, endTime: number): string {
+        return native.getMessageCountByDay(conversation.toJsonStr(), contentTypes, startTime, endTime);
+    }
+
+    /**
+     * utf8转base64
+     */
+    utf8_to_b64(str: string): string {
+        return _utf8_to_b64(str);
+    }
+
+    /**
+     * base64转utf8
+     */
+    b64_to_utf8(str: string): string {
+        return _b64_to_utf8(str);
+    }
+
+    defaultUserPortrait(userInfo: UserInfo): string {
+        if (userInfo.updateDt == 0) {
+            return Config.DEFAULT_PORTRAIT_URL
+        }
+        return `${Config.APP_SERVER}/avatar?name=${encodeURIComponent(userInfo.displayName)}`
+    }
+
+    defaultGroupPortrait(groupInfo: GroupInfo): string {
+        let memberIds = this.getGroupMemberIds(groupInfo.target)
+        memberIds = memberIds.slice(0, 9);
+        const members = this.getUserInfosInternal(memberIds, groupInfo.target);
+        const reqMembers: UTSJSONObject[] = []
+        let pending = false;
+        for (let i = 0; i < members.length; i++) {
+            const m = members[i]
+            if (m.portrait != '' && !m.portrait.startsWith(`${Config.APP_SERVER}`)) {
+                reqMembers.push({ avatarUrl: m.portrait } as UTSJSONObject)
+            } else {
+                reqMembers.push({ name: m.displayName } as UTSJSONObject)
+            }
+            if (m instanceof NullUserInfo) {
+                pending = true;
+                break
+            }
+        }
+        if (members.length == 0 || pending) {
+            return Config.DEFAULT_GROUP_PORTRAIT_URL;
+        }
+
+        const req = JSON.stringify({ members: reqMembers } as UTSJSONObject)!;
+
+        return `${Config.APP_SERVER}/avatar/group?request=${encodeURIComponent(req)}`
+    }
+
+    // 不填充默认头像的内部版本，避免 defaultGroupPortrait 死循环
+    private getUserInfosInternal(userIds: string[], groupId: string): UserInfo[] {
+        const users: UserInfo[] = [];
+        if (userIds.length == 0) {
+            return users;
+        }
+        const userInfoStrs = native.getUserInfos(userIds, groupId);
+        if (userInfoStrs != '') {
+            const arr = JSON.parseArray(userInfoStrs);
+            if (arr != null) {
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        users.push(UserInfo.fromJsonObject(o as UTSJSONObject))
+                    }
+                }
+            }
+        }
+        return users;
+    }
+
+    // ------------------- native 事件处理 -------------------
+
+    private _handleNativeEvent(e: object): void {
+        let args: Array<any | null> = []
+        if (e instanceof UTSJSONObject) {
+            const argsArr = (e as UTSJSONObject).getArray<any>('args')
+            if (argsArr != null) {
+                args = argsArr as Array<any | null>
+            }
+        } else {
+            // 兜底：JSON 序列化再解析
+            try {
+                const str = JSON.stringify(e)
+                if (str != null) {
+                    const obj = JSON.parseObject(str)
+                    if (obj != null) {
+                        const argsArr = obj.getArray<any>('args')
+                        if (argsArr != null) {
+                            args = argsArr as Array<any | null>
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('_handleNativeEvent parse error', err)
+            }
+        }
+        if (args.length == 0) {
+            return
+        }
+        const eventName = '' + args[0]
+        const params = args.slice(1)
+        this._dispatchNativeEvent(eventName, params)
+    }
+
+    private _dispatchNativeEvent(eventName: string, params: Array<any | null>): void {
+        switch (eventName) {
+            case 'onConnectionStatusChange':
+                this.onConnectionChanged(params.length > 0 ? numberValue(params[0]) : 0);
+                break;
+            case 'onConnectToServer':
+                this.emit(EventType.ConnectToServer, params);
+                break;
+            case 'onReceiveMessage':
+                this.onReceiveMessage(params.length > 0 ? '' + params[0] : '[]', params.length > 1 ? params[1] == true : false);
+                break;
+            case 'onRecallMessage':
+                this.onRecallMessage(params.length > 0 ? '' + params[0] : '', params.length > 1 ? stringValue(params[1]) : '0');
+                break;
+            case 'onDeleteMessage':
+                this.onDeleteRemoteMessage(params.length > 0 ? stringValue(params[0]) : '0');
+                break;
+            case 'onMessageDelivered':
+                this.onUserReceivedMessage(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onMessageRead':
+                this.onUserReadedMessage(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onMessageUpdate':
+                this.onMessageUpdate(params.length > 0 ? '' + params[0] : '');
+                break;
+            case 'onUserInfoUpdate':
+                this.onUserInfoUpdate(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onFriendListUpdate':
+                this.onFriendListUpdate(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onFriendRequestUpdate':
+                this.onFriendRequestUpdate(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onGroupInfoUpdate':
+                this.onGroupInfoUpdate(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onGroupMembersUpdate':
+                this.onGroupMemberUpdate(params.length > 0 ? '' + params[0] : '', params.length > 1 ? '' + params[1] : '[]');
+                break;
+            case 'onChannelInfoUpdate':
+                this.onChannelInfoUpdate(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onSettingUpdate':
+                this.onSettingUpdate();
+                break;
+            case 'onUserOnlineEvent':
+                this.onOnlineEvent(params.length > 0 ? '' + params[0] : '[]');
+                break;
+            case 'onConferenceEvent':
+                this.emit(EventType.ConferenceEvent, params);
+                break;
+            case 'onSendSuccess':
+            case 'onSendFail':
+            case 'onMediaUpload':
+                this.onSendStatusUpdate(params.length > 0 ? '' + params[0] : '');
+                break;
+            case 'onSendPrepare':
+                this.onSendPrepare(params.length > 0 ? '' + params[0] : '');
+                break;
+            default:
+                break;
+        }
+    }
+
+    private onConnectionChanged(status: number): void {
+        if (!this.isLogined && status == ConnectionStatus.ConnectionStatusConnected) {
+            this.isLogined = true;
+        }
+        this.connectionStatus = status;
+        this.eventEmitter.emit(EventType.ConnectionStatusChanged, [status]);
+        console.log('connection status changed', status);
+        if (this.isLogined && (status == ConnectionStatus.ConnectionStatusSecretKeyMismatch || status == ConnectionStatus.ConnectionStatusRejected)) {
+            this.disconnect();
+        }
+    }
+
+    private onReceiveMessage(messagesStr: string, hasMore: boolean): void {
+        if (!this.isLogined) {
+            return;
+        }
+        // receiving
+        if (this.connectionStatus == ConnectionStatus.ConnectionStatusReceiveing && this.firstSync) {
+            return;
+        }
+
+        if (this.connectionStatus == ConnectionStatus.ConnectionStatusConnected) {
+            this.firstSync = false;
+        }
+
+        const msgs: Message[] = []
+        const arr = JSON.parseArray(messagesStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (!(o instanceof UTSJSONObject)) {
+                    continue
+                }
+                const msg = Message.fromProtoMessage(o as UTSJSONObject);
+                if (msg == null) {
+                    continue
+                }
+                if (msg.messageContent instanceof MarkUnreadMessageContent && msg.from == this.getUserId()) {
+                    const markMsg = msg.messageContent as MarkUnreadMessageContent;
+                    native.setLastReceivedMessageUnRead(msg.conversation.toJsonStr(), stringValue(markMsg.messageUid), stringValue(markMsg.timestamp));
+                }
+                // 兼容旧版
+                this.emit(EventType.ReceiveMessage, [msg, hasMore]);
+                msgs.push(msg)
+            }
+        }
+        if (msgs.length > 0) {
+            this.emit(EventType.ReceiveMessages, [msgs, hasMore]);
+        }
+    }
+
+    private onSendStatusUpdate(messageStr: string): void {
+        const msg = Message.fromProtoMessage(JSON.parseObject(messageStr));
+        if (msg != null) {
+            this.emit(EventType.MessageStatusUpdate, [msg]);
+        }
+    }
+
+    private onSendPrepare(messageStr: string): void {
+        const msg = Message.fromProtoMessage(JSON.parseObject(messageStr));
+        if (msg != null) {
+            this.emit(EventType.SendMessage, [msg]);
+        }
+    }
+
+    private onMessageUpdate(messageStr: string): void {
+        const msg = Message.fromProtoMessage(JSON.parseObject(messageStr));
+        if (msg != null) {
+            this.emit(EventType.MessageStatusUpdate, [msg]);
+        }
+    }
+
+    private onOnlineEvent(event: string): void {
+        const userOnlineStates = this._parseUserOnlineStates(event);
+        this.eventEmitter.emit(EventType.UserOnlineEvent, [userOnlineStates]);
+    }
+
+    private onGroupInfoUpdate(groupInfosStr: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        const groupInfos: GroupInfo[] = [];
+        const arr = JSON.parseArray(groupInfosStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    groupInfos.push(GroupInfo.fromJsonObject(o as UTSJSONObject));
+                }
+            }
+        }
+        this.emit(EventType.GroupInfosUpdate, [groupInfos]);
+    }
+
+    private onChannelInfoUpdate(channelInfosStr: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        const channelInfos: ChannelInfo[] = [];
+        const arr = JSON.parseArray(channelInfosStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    channelInfos.push(ChannelInfo.fromJsonObject(o as UTSJSONObject));
+                }
+            }
+        }
+        this.emit(EventType.ChannelInfosUpdate, [channelInfos])
+    }
+
+    private onGroupMemberUpdate(groupId: string, groupMembersStr: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        const members: GroupMember[] = [];
+        const arr = JSON.parseArray(groupMembersStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    members.push(GroupMember.fromJsonObject(o as UTSJSONObject));
+                }
+            }
+        }
+        this.emit(EventType.GroupMembersUpdate, [groupId, members]);
+    }
+
+    private onSettingUpdate(): void {
+        if (!this.isLogined) {
+            return;
+        }
+        this.emit(EventType.SettingUpdate, []);
+    }
+
+    private onRecallMessage(operatorUid: string, messageUid: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        this.emit(EventType.RecallMessage, [operatorUid, messageUid]);
+    }
+
+    private onDeleteRemoteMessage(messageUid: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        this.emit(EventType.MessageDeleted, [messageUid]);
+    }
+
+    private onMessageDeleted(messageId: number): void {
+        if (!this.isLogined) {
+            return;
+        }
+        this.emit(EventType.DeleteMessage, [messageId]);
+    }
+
+    private onUserReceivedMessage(receivedMapStr: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        const deliveryMap = new Map<string, number>();
+        const arr = JSON.parseArray(receivedMapStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const obj = o as UTSJSONObject
+                    const key = obj.getString('key')
+                    const value = obj.getNumber('value')
+                    if (key != null && value != null) {
+                        deliveryMap.set(key, value);
+                    }
+                }
+            }
+        }
+        this.emit(EventType.MessageReceived, [deliveryMap]);
+    }
+
+    private onUserReadedMessage(readedMapStr: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        // [{"userId":"GNMtGtZZ","conversationType":1,"target":"Jl8jLjkk","line":0,"readDt":1590308777299} ]
+        const readEntries: ReadEntry[] = [];
+        const arr = JSON.parseArray(readedMapStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const e = o as UTSJSONObject
+                    const entry = new ReadEntry();
+                    entry.userId = e.getString('userId') ?? '';
+                    const convObj = e.getJSON('conversation');
+                    if (convObj != null) {
+                        entry.conversation = Conversation.fromJsonObject(convObj);
+                    } else {
+                        entry.conversation = Conversation.fromJsonObject(e);
+                    }
+                    entry.readTime = e.getNumber('readDt') ?? 0;
+                    readEntries.push(entry);
+                }
+            }
+        }
+        this.emit(EventType.MessageRead, [readEntries]);
+    }
+
+    private onUserInfoUpdate(userInfosStr: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        const userInfos: UserInfo[] = [];
+        const arr = JSON.parseArray(userInfosStr);
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    userInfos.push(UserInfo.fromJsonObject(o as UTSJSONObject));
+                }
+            }
+        }
+        this.emit(EventType.UserInfosUpdate, [userInfos]);
+    }
+
+    private onFriendListUpdate(friendListIds: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        console.log('friendList update, ids', friendListIds);
+        const ids = JSON.parse<Array<string>>(friendListIds);
+        this.emit(EventType.FriendListUpdate, [ids ?? ([] as string[])]);
+    }
+
+    private onFriendRequestUpdate(newRequests: string): void {
+        if (!this.isLogined) {
+            return;
+        }
+        const ids = JSON.parse<Array<string>>(newRequests);
+        this.emit(EventType.FriendRequestUpdate, [ids ?? ([] as string[])]);
+    }
+}
+
+const self = new WfcManager();
+export default self;

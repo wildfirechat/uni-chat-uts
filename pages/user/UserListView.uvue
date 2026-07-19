@@ -1,0 +1,151 @@
+<template>
+    <view class="user-list">
+        <view v-for="(groupedUser, gi) in groupedUsers" :key="gi">
+            <view class="contact-item">
+                <view v-if="showCategoryLabel" class="label" :style="{ paddingLeft: paddingLeft }">
+                    <text class="label-text">{{ groupedUser.category.toUpperCase() }}</text>
+                </view>
+                <view v-for="(user, ui) in groupedUser.users" :key="ui">
+                    <view class="content" :style="{ paddingLeft: paddingLeft }" @tap="clickUserItem(user)">
+                        <image class="avatar" :src="user.portrait" />
+                        <view class="name-container">
+                            <text class="single-line name">{{ user._displayName != '' ? user._displayName : user.displayName }}</text>
+                            <text v-if="user._userOnlineStatusDesc != ''" class="single-line user-online-status">{{ user._userOnlineStatusDesc }}</text>
+                        </view>
+                    </view>
+                </view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store from "../../store.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+
+class GroupedUsers {
+    category = ''
+    users: UserInfo[] = []
+}
+
+export default {
+    name: "UserListView",
+    props: {
+        users: {
+            type: Array as PropType<UserInfo[]>,
+            required: true,
+        },
+        showCategoryLabel: {
+            type: Boolean,
+            default: true,
+        },
+        // 为 true 时点击项时触发 userClick 事件，否则默认跳转用户详情
+        emitClickEvent: {
+            type: Boolean,
+            default: false,
+        },
+        paddingLeft: {
+            type: String,
+            default: '5px'
+        }
+    },
+    emits: ['userClick'],
+    methods: {
+        clickUserItem(user: UserInfo) {
+            if (this.emitClickEvent) {
+                this.$emit('userClick', user);
+            } else {
+                store.setCurrentFriend(user)
+                uni.navigateTo({
+                    url: '/pages/contact/UserDetailPage',
+                    fail: (err) => {
+                        console.log('nav to UserDetailPage err', err);
+                    }
+                } as NavigateToOptions);
+            }
+        },
+    },
+
+    computed: {
+        groupedUsers(): GroupedUsers[] {
+            const groupedUsers: GroupedUsers[] = [];
+            if (!this.showCategoryLabel) {
+                const all = new GroupedUsers()
+                all.category = 'not-show-category'
+                all.users = this.users
+                groupedUsers.push(all)
+            } else {
+                let current: GroupedUsers | null = null;
+                let lastCategory = '';
+                for (let i = 0; i < this.users.length; i++) {
+                    const user = this.users[i]
+                    if (current == null || lastCategory != user._category) {
+                        lastCategory = user._category;
+                        current = new GroupedUsers();
+                        current.category = user._category;
+                        current.users = [user];
+                        groupedUsers.push(current);
+                    } else {
+                        current.users.push(user);
+                    }
+                }
+            }
+            return groupedUsers;
+        },
+    },
+}
+</script>
+
+<style scoped>
+.user-list {
+    width: 100%;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.contact-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    background-color: #ffffff;
+}
+
+.label {
+    width: 100%;
+    background-color: #fafafa;
+}
+
+.label-text {
+    padding: 5px 5px 5px 0;
+    font-size: 13px;
+    color: #333333;
+}
+
+.content {
+    padding: 10px 5px 10px 0;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    align-items: center;
+    position: relative;
+    border-bottom: 1px solid #f4f4f4;
+}
+
+.name-container {
+    padding-left: 10px;
+    flex: 1;
+}
+
+.name {
+    font-size: 15px;
+}
+
+.user-online-status {
+    color: #808080;
+    font-size: 10px;
+}
+</style>

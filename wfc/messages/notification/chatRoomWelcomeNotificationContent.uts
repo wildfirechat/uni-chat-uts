@@ -1,0 +1,26 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import NotificationMessageContent from "./notificationMessageContent.uts";
+import MessagePayload from '../messagePayload.uts';
+
+export default class ChatRoomWelcomeNotificationContent extends NotificationMessageContent {
+    welcome = '';
+
+    constructor() {
+        super(0);
+    }
+
+    override formatNotification(message: any | null): string {
+        return this.welcome;
+    }
+
+    override encode(): MessagePayload {
+        return super.encode();
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+    }
+}

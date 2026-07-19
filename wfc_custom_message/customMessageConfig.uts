@@ -1,0 +1,19 @@
+import PersistFlag from "../wfc/messages/persistFlag.uts";
+import CustomMessageContentType from "./customMessageContentType.uts";
+import TestCustomMessageContent from "./testCustomMessageContent.uts";
+import TestCustomNotificationMessageContent from "./testCustomNotificationMessageContent.uts";
+import MessageContent from "../wfc/messages/messageContent.uts";
+import wfc from "../wfc/client/wfc.uts";
+
+export default class CustomMessageConfig {
+    // 请勿修改
+    static registerCustomMessages(): void {
+        // 在此注册更多自定义消息
+        wfc.registerMessageContent('testCustomMessage', PersistFlag.Persist,
+            CustomMessageContentType.MESSAGE_CONTENT_TYPE_CUSTOM_MESSAGE_TEST,
+            (): MessageContent => new TestCustomMessageContent())
+        wfc.registerMessageContent('testCustomNotificationMessage', PersistFlag.Persist,
+            CustomMessageContentType.MESSAGE_CONTENT_TYPE_CUSTOM_MESSAGE_TEST_NOTIFICATION,
+            (): MessageContent => new TestCustomNotificationMessageContent())
+    }
+}

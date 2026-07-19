@@ -1,0 +1,227 @@
+<template>
+    <view class="pick-user-container">
+        <view class="user-list-panel">
+            <view class="input-container">
+                <input class="search-input" type="text" placeholder="搜索" v-model="query" />
+            </view>
+            <scroll-view class="user-list-container" direction="vertical">
+                <view class="back-pick-conversation" @tap="backPickConversation">
+                    <text class="back-pick-conversation-text">选择已有会话</text>
+                </view>
+                <CheckableUserListView :users="filteredUsers" :show-category-label="true" padding-left="15px" />
+            </scroll-view>
+        </view>
+        <view class="checked-user-list-container">
+            <view class="panel-header">
+                <text class="panel-title">发送给</text>
+                <text class="panel-desc" v-if="pickedUsers.length == 0">未选择联系人</text>
+                <text class="panel-desc" v-else>已选择{{ pickedUsers.length }}个联系人</text>
+                <button size="mini" @tap="confirm" class="confirm">发送</button>
+            </view>
+            <scroll-view class="picked-content" direction="horizontal">
+                <view class="picked-user-container" v-for="(user, index) in pickedUsers" :key="index">
+                    <view class="picked-user" @tap="unpick(user)">
+                        <image class="avatar" :src="user.portrait" />
+                    </view>
+                    <text class="name single-line">{{ user._displayName }}</text>
+                </view>
+            </scroll-view>
+            <ForwardMessageView ref="forwardMessageView" :forward-type="forwardType" :messages="messages" />
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState, pickState } from "@/store.uts";
+import ForwardMessageView from "@/pages/conversation/message/forward/ForwardMessageView.uvue";
+import CheckableUserListView from "@/pages/user/CheckableUserListView.uvue";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import Message from "@/wfc/messages/message.uts";
+import Config from "@/config.uts";
+
+export default {
+    name: "ForwardMessageByCreateConversationView",
+    props: {
+        forwardType: {
+            type: Number,
+            default: 0,
+        },
+        messages: {
+            type: Array as PropType<Message[]>,
+            required: true,
+        }
+    },
+    emits: ['forward-target-type'],
+    data() {
+        return {
+            query: '',
+        }
+    },
+    methods: {
+        unpick(user: UserInfo) {
+            store.pickOrUnpickUser(user);
+        },
+
+        backPickConversation() {
+            pickState.users = []
+            this.$emit('forward-target-type', 'pickConversation')
+        },
+
+        confirm() {
+            const pickedUsers = pickState.users.slice(0);
+            pickState.users = []
+            let extraMessageText = ''
+            const forwardMessageView = this.$refs['forwardMessageView']
+            if (forwardMessageView != null) {
+                const extra = (forwardMessageView as ComponentPublicInstance).$callMethod('getExtraText')
+                if (extra != null) {
+                    extraMessageText = '' + extra
+                }
+            }
+            store.forwardByCreateConversation(this.forwardType, pickedUsers, this.messages, extraMessageText)
+            uni.navigateBack({} as NavigateBackOptions);
+        },
+    },
+
+    computed: {
+        pickedUsers(): UserInfo[] {
+            return pickState.users
+        },
+        filteredUsers(): UserInfo[] {
+            let result: UserInfo[];
+            if (this.query.trim() != '') {
+                result = store.filterContact(this.query)
+            } else {
+                result = contactState.friendList;
+            }
+            return result.filter((u: UserInfo): boolean => u.uid != Config.FILE_HELPER_ID)
+        }
+    },
+
+    components: {
+        CheckableUserListView,
+        ForwardMessageView
+    },
+}
+</script>
+
+<style scoped>
+.pick-user-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+}
+
+.user-list-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    background-color: #f7f7f7;
+    overflow: hidden;
+}
+
+.input-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.search-input {
+    height: 25px;
+    margin: 15px 20px 0 15px;
+    flex: 1;
+    border-radius: 3px;
+    border: 1px solid #ededed;
+    background-color: #ffffff;
+    padding-left: 10px;
+}
+
+.back-pick-conversation {
+    background-color: #f7f7f7;
+    height: 40px;
+    padding-left: 15px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.back-pick-conversation-text {
+    font-size: 13px;
+}
+
+.user-list-container {
+    flex: 1;
+}
+
+.checked-user-list-container {
+    display: flex;
+    min-height: 230px;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.panel-header {
+    height: 55px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-title {
+    font-size: 16px;
+    margin-left: 30px;
+}
+
+.panel-desc {
+    font-size: 12px;
+    margin-right: 20px;
+}
+
+.confirm {
+    font-size: 12px;
+    margin-right: 20px;
+    color: #4168e0;
+}
+
+.picked-content {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    padding: 0 30px;
+}
+
+.picked-user-container {
+    width: 65px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 5px 10px;
+}
+
+.picked-user {
+    position: relative;
+    height: 65px;
+    width: 65px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.avatar {
+    width: 45px;
+    height: 45px;
+    background-color: #d6d6d6;
+    border-radius: 3px;
+}
+
+.name {
+    width: 100%;
+    font-size: 12px;
+    text-align: center;
+}
+</style>

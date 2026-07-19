@@ -1,0 +1,230 @@
+<template>
+    <view class="conversation-item-container">
+        <view class="conversation-item">
+            <view class="header">
+                <image class="avatar" :src="portrait" mode="aspectFill" />
+                <text v-if="unread > 0" class="badge" :class="{ silent: conversationInfo.isSilent }">{{ unread > 99 ? '99' : '' + unread }}</text>
+            </view>
+            <view class="content-container">
+                <view class="title-time-container">
+                    <text class="title single-line">{{ conversationTitle }}</text>
+                    <text class="time">{{ conversationInfo._timeStr }}</text>
+                </view>
+                <view class="content">
+                    <text class="draft single-line" v-if="shouldShowDraft"><text class="draft-label">[草稿]</text>{{ draft }}</text>
+                    <text class="last-message-desc single-line" v-else><text v-if="unreadMention > 0" class="mention">[有人@我]</text>{{ lastMessageContent }}</text>
+                    <text v-if="conversationInfo.isSilent" class="icomoon silent-icon">&#xf39a;</text>
+                </view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import ConversationInfo from "../../wfc/model/conversationInfo.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import store, { conversationState } from "../../store.uts";
+import Draft from "../util/draft.uts";
+import NotificationMessageContent from "../../wfc/messages/notification/notificationMessageContent.uts";
+import Config from "../../config.uts";
+
+export default {
+    name: "ConversationItemView",
+    props: {
+        conversationInfo: {
+            type: Object as PropType<ConversationInfo>,
+            required: true,
+        },
+    },
+    computed: {
+        portrait(): string {
+            const target = this.conversationInfo.conversation._target
+            const portrait = target != null ? target.portrait : ''
+            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+        },
+        conversationTitle(): string {
+            const info = this.conversationInfo;
+            const target = info.conversation._target
+            if (target == null) {
+                return ''
+            }
+            if (info.conversation.type == ConversationType.Single) {
+                return target._displayName;
+            } else {
+                return target.name;
+            }
+        },
+
+        shouldShowDraft(): boolean {
+            const currentConversationInfo = conversationState.currentConversationInfo
+            if (currentConversationInfo != null && currentConversationInfo.conversation.equal(this.conversationInfo.conversation)) {
+                return false;
+            }
+            if (this.conversationInfo.unreadCount.unreadMention + this.conversationInfo.unreadCount.unreadMentionAll > 0) {
+                return false;
+            }
+            const draft = Draft.getConversationDraftEx(this.conversationInfo);
+            return draft.text.trim() != '' || draft.quotedMessage != null;
+        },
+
+        draft(): string {
+            const draft = Draft.getConversationDraftEx(this.conversationInfo);
+            let draftText = draft.text;
+            draftText = draftText.replace(/<img [:a-zA-Z0-9_+; ,\-=\/."]+>/g, '[图片]')
+            draftText = draftText.replace(/&nbsp;/g, ' ');
+            draftText = draftText.replace(/<br>/g, '')
+            if (draft.quotedMessage != null) {
+                draftText += '...'
+            }
+            return draftText;
+        },
+
+        lastMessageContent(): string {
+            const conversationInfo = this.conversationInfo;
+            const lastMessage = conversationInfo.lastMessage
+            if (lastMessage != null) {
+                let senderName = '';
+                if (conversationInfo.conversation.type == ConversationType.Group && lastMessage.direction == 1
+                    && !(lastMessage.messageContent instanceof NotificationMessageContent)) {
+                    let from = lastMessage._from
+                    if (from == null) {
+                        store._patchMessage(lastMessage, 0)
+                        from = lastMessage._from
+                    }
+                    if (from != null) {
+                        senderName = from._displayName + ': ';
+                    } else {
+                        senderName = '<' + lastMessage.from + '>: ';
+                    }
+                }
+                return senderName + lastMessage.messageContent.digest(lastMessage);
+            } else {
+                return '';
+            }
+        },
+
+        unread(): number {
+            const unreadCount = this.conversationInfo.unreadCount;
+            return unreadCount.unread + unreadCount.unreadMention + unreadCount.unreadMentionAll;
+        },
+        unreadMention(): number {
+            const unreadCount = this.conversationInfo.unreadCount;
+            return unreadCount.unreadMention + unreadCount.unreadMentionAll;
+        }
+    },
+};
+</script>
+
+<style scoped>
+.conversation-item-container {
+    padding-left: 10px;
+}
+
+.conversation-item {
+    width: 100%;
+    height: 70px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.header {
+    height: 70px;
+    padding: 10px 10px 10px 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.avatar {
+    width: 45px;
+    height: 45px;
+    background-color: #d6d6d6;
+    border-radius: 3px;
+}
+
+.badge {
+    position: absolute;
+    color: #ffffff;
+    font-size: 10px;
+    background-color: #ff0000;
+    border-radius: 8px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    right: 2px;
+    top: 6px;
+}
+
+.badge.silent {
+    width: 8px;
+    height: 8px;
+    font-size: 0;
+    line-height: 8px;
+}
+
+.content-container {
+    flex: 1;
+    height: 50px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    padding-right: 12px;
+}
+
+.title-time-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    justify-content: space-between;
+}
+
+.title {
+    font-size: 14px;
+    color: #262626;
+    padding-right: 10px;
+    flex: 1;
+}
+
+.time {
+    color: #808080;
+    font-size: 10px;
+}
+
+.content {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.draft {
+    font-size: 13px;
+    flex: 1;
+}
+
+.draft-label {
+    color: #ff0000;
+    font-size: 13px;
+    padding-right: 5px;
+}
+
+.mention {
+    color: #ff0000;
+    font-size: 13px;
+}
+
+.last-message-desc {
+    color: #b8b8b8;
+    font-size: 13px;
+    flex: 1;
+}
+
+.silent-icon {
+    color: #b8b8b8;
+    font-size: 14px;
+}
+</style>

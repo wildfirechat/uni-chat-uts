@@ -1,0 +1,14 @@
+/**
+ * 会话页面内部事件的负载类型（eventBus 传递用）
+ */
+import Message from "@/wfc/messages/message.uts";
+
+export class OpenMessageContextMenuEvent {
+    event: UniTouchEvent
+    message: Message
+
+    constructor(event: UniTouchEvent, message: Message) {
+        this.event = event
+        this.message = message
+    }
+}

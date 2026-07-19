@@ -1,0 +1,88 @@
+<template>
+    <view class="image-content-container">
+        <image class="image" :style="{ width: imageWidth + 'px', height: imageHeight + 'px' }" mode="aspectFill"
+            @tap="preview" :src="imageSrc" />
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "../../../../wfc/messages/message.uts";
+import ImageMessageContent from "../../../../wfc/messages/imageMessageContent.uts";
+import Config from "../../../../config.uts";
+
+export default {
+    name: "ImageMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        },
+        isInCompositeView: {
+            type: Boolean,
+            default: false,
+        }
+    },
+    emits: ['previewCompositeMessage'],
+    computed: {
+        content(): ImageMessageContent {
+            return this.message.messageContent as ImageMessageContent
+        },
+        imageWidth(): number {
+            const iw = this.content.imageWidth
+            const ih = this.content.imageHeight
+            if (iw > 0 && ih > 0) {
+                const scale = Math.min(200 / iw, 200 / ih, 1)
+                return Math.floor(iw * scale)
+            }
+            return 120
+        },
+        imageHeight(): number {
+            const iw = this.content.imageWidth
+            const ih = this.content.imageHeight
+            if (iw > 0 && ih > 0) {
+                const scale = Math.min(200 / iw, 200 / ih, 1)
+                return Math.floor(ih * scale)
+            }
+            return 120
+        },
+        imageSrc(): string {
+            const content = this.content
+            if (content.remotePath != '') {
+                return content.remotePath
+            }
+            if (content.localPath != '') {
+                return content.localPath
+            }
+            if (content.thumbnail != '') {
+                return 'data:image/jpeg;base64,' + content.thumbnail
+            }
+            return Config.DEFAULT_THUMBNAIL_URL
+        }
+    },
+    methods: {
+        preview() {
+            if (this.isInCompositeView) {
+                this.$emit('previewCompositeMessage', this.message.messageUid);
+            } else {
+                uni.previewImage({
+                    urls: [this.content.remotePath]
+                } as PreviewImageOptions);
+            }
+        },
+    },
+}
+</script>
+
+<style scoped>
+.image-content-container {
+    margin: 0 10px;
+    position: relative;
+    border: 1px solid #efefef;
+    border-radius: 5px;
+}
+
+.image {
+    border-radius: 5px;
+    overflow: hidden;
+}
+</style>

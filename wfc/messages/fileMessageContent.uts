@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContentMediaType from "./messageContentMediaType.uts";
+import MediaMessageContent from "./mediaMessageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+
+export default class FileMessageContent extends MediaMessageContent {
+    static FILE_NAME_PREFIX = '__fn__';
+
+    name = '';
+    size = 0;
+
+    constructor(fileOrLocalPath: string = '', remotePath: string = '', name: string = '', size: number = 0) {
+        super(MessageContentType.File, MessageContentMediaType.File, fileOrLocalPath, remotePath);
+        if (name != '') {
+            this.name = name;
+            this.size = size;
+        } else if (fileOrLocalPath != '' && !fileOrLocalPath.startsWith('http')) {
+            this.name = fileOrLocalPath.substring(fileOrLocalPath.lastIndexOf('/') + 1);
+            this.size = size;
+        } else if (remotePath != '') {
+            this.name = remotePath.substring(remotePath.lastIndexOf('/') + 1)
+            this.size = size;
+        }
+    }
+
+    override digest(message: any | null): string {
+        return '[文件]' + this.name;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.name;
+        payload.content = this.size.toString();
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        if (payload.searchableContent != '') {
+            this.name = payload.searchableContent;
+            const size = parseFloat(payload.content)
+            this.size = isNaN(size) ? 0 : size;
+        }
+    }
+}

@@ -1,0 +1,277 @@
+<template>
+    <view class="user-detail-container" v-if="user != null">
+        <view class="detail-header">
+            <view class="name-container">
+                <text class="user-name">{{ name }}</text>
+            </view>
+            <image class="avatar" :src="user.portrait" />
+        </view>
+        <view class="content">
+            <view class="info-item">
+                <text class="info-label">备注名</text>
+                <input class="alias-input" type="text" :value="user.friendAlias" placeholder="备注名"
+                    @confirm="updateFriendAlias" />
+            </view>
+            <view class="info-item">
+                <text class="info-label">野火ID</text>
+                <text class="info-value single-line">{{ user.name }}</text>
+            </view>
+            <view class="info-item">
+                <text class="info-label">地区</text>
+                <text class="info-value">未知</text>
+            </view>
+            <view class="info-item">
+                <text class="info-label">标签</text>
+                <text class="info-value">测试用户</text>
+            </view>
+        </view>
+        <view class="detail-footer">
+            <view class="action" @tap="chat">
+                <text class="icomoon action-icon">&#xf3fb;</text>
+                <text class="action-label">发消息</text>
+            </view>
+            <view class="action" @tap="startAudioCall">
+                <text class="icomoon action-icon">&#xf4b8;</text>
+                <text class="action-label">语音通话</text>
+            </view>
+            <view class="action" @tap="startVideoCall">
+                <text class="icomoon action-icon">&#xf4cc;</text>
+                <text class="action-label">视频通话</text>
+            </view>
+            <view v-if="!isFriend && !isSelf" class="action" @tap="addFriend">
+                <text class="icomoon action-icon">&#xf39f;</text>
+                <text class="action-label">添加好友</text>
+            </view>
+            <view v-if="isFriend && !isSelf" class="action" @tap="deleteFriend">
+                <text class="icomoon action-icon delete">&#xf2f4;</text>
+                <text class="action-label delete">删除好友</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store, { contactState } from "../../store.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+
+export default {
+    name: "UserDetailPage",
+    data() {
+        return {
+            user: contactState.currentFriend as UserInfo | null,
+        }
+    },
+
+    mounted() {
+        const user = this.user
+        if (user != null) {
+            wfc.getUserInfo(user.uid, true);
+        }
+    },
+
+    onUnload() {
+        store.setCurrentFriend(null);
+    },
+
+    methods: {
+        chat() {
+            const user = this.user
+            if (user == null) {
+                return
+            }
+            const conversation = new Conversation(ConversationType.Single, user.uid, 0);
+            store.setCurrentConversation(conversation);
+            go2ConversationPage();
+        },
+        updateFriendAlias(e: UniInputConfirmEvent) {
+            const user = this.user
+            if (user == null) {
+                return
+            }
+            const friendAlias = e.detail.value;
+            if (friendAlias.trim() != '' && friendAlias != user.friendAlias) {
+                wfc.setFriendAlias(user.uid, friendAlias,
+                    () => {
+                        console.log('setFriendAlias success', friendAlias);
+                    },
+                    (error: number) => {
+                        console.log('setFriendAlias error', error);
+                    })
+            }
+        },
+        deleteFriend() {
+            const user = this.user
+            if (user == null) {
+                return
+            }
+            wfc.deleteFriend(user.uid, () => {
+                uni.showToast({
+                    title: '删除好友成功',
+                    icon: 'none'
+                } as ShowToastOptions);
+                setTimeout(() => {
+                    uni.navigateBack({
+                        delta: 1
+                    } as NavigateBackOptions)
+                }, 1000)
+            }, (err: number) => {
+                uni.showToast({
+                    title: '删除好友失败' + err,
+                    icon: 'none'
+                } as ShowToastOptions);
+            })
+        },
+        addFriend() {
+            const user = this.user
+            if (user == null) {
+                return
+            }
+            const userInfo = wfc.getUserInfo(wfc.getUserId());
+            const reason = '你好，我是' + userInfo.displayName;
+            wfc.sendFriendRequest(user.uid, reason, '', () => {
+                uni.showToast({
+                    title: '好友请求发送成功',
+                    icon: 'none'
+                } as ShowToastOptions);
+                setTimeout(() => {
+                    uni.navigateBack({
+                        delta: 1
+                    } as NavigateBackOptions)
+                }, 1000)
+            }, (err: number) => {
+                uni.showToast({
+                    title: '好友请求发送失败 ' + err,
+                    icon: 'none'
+                } as ShowToastOptions);
+            })
+        },
+        startAudioCall() {
+            uni.showToast({
+                title: '当前版本暂不支持音视频通话',
+                icon: 'none'
+            } as ShowToastOptions)
+        },
+        startVideoCall() {
+            uni.showToast({
+                title: '当前版本暂不支持音视频通话',
+                icon: 'none'
+            } as ShowToastOptions)
+        }
+    },
+    computed: {
+        name(): string {
+            const friend = this.user;
+            if (friend == null) {
+                return '';
+            }
+            return friend.displayName != '' ? friend.displayName : friend.name;
+        },
+        isFriend(): boolean {
+            const user = this.user
+            return user != null && wfc.isMyFriend(user.uid);
+        },
+        isSelf(): boolean {
+            const user = this.user
+            return user != null && user.uid == wfc.getUserId();
+        }
+    }
+}
+</script>
+
+<style scoped>
+.user-detail-container {
+    margin-left: 30px;
+    margin-right: 30px;
+    flex: 1;
+}
+
+.detail-header {
+    margin-top: 30px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e6e6e6;
+}
+
+.avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 2px;
+}
+
+.user-name {
+    font-size: 20px;
+    margin-bottom: 5px;
+}
+
+.content {
+    width: 100%;
+    margin: 20px 0;
+}
+
+.info-item {
+    height: 40px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.info-label {
+    margin-right: 20px;
+    width: 60px;
+    font-size: 14px;
+    color: #333333;
+}
+
+.info-value {
+    flex: 1;
+    font-size: 14px;
+}
+
+.alias-input {
+    flex: 1;
+    height: 20px;
+    font-size: 14px;
+}
+
+.detail-footer {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    padding-top: 30px;
+    border-top: 1px solid #e6e6e6;
+}
+
+.action {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.action-label {
+    font-size: 10px;
+    padding-top: 1px;
+    color: #5d7ce8;
+}
+
+.action-icon {
+    font-size: 20px;
+    color: #5d7ce8;
+}
+
+.action-icon.delete {
+    color: #ff0000;
+}
+
+.action-label.delete {
+    color: #ff0000;
+}
+</style>

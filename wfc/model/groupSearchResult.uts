@@ -1,0 +1,23 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import GroupInfo from "./groupInfo.uts";
+
+export default class GroupSearchResult {
+    groupInfo: GroupInfo = new GroupInfo();
+    //0 march group name, 1 march group member name, 2 both
+    matchType = 0;
+    matchMembers: string[] = [];
+
+    static fromProtoGroupSearchResult(obj: UTSJSONObject): GroupSearchResult {
+        const result = new GroupSearchResult();
+        const groupInfoObj = obj.getJSON('groupInfo');
+        if (groupInfoObj != null) {
+            result.groupInfo = GroupInfo.fromJsonObject(groupInfoObj);
+        }
+        result.matchType = obj.getNumber('marchedType') ?? 0;
+        result.matchMembers = obj.getArray<string>('marchedMemberNames') ?? ([] as string[]);
+        return result;
+    }
+}

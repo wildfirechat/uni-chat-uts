@@ -1,0 +1,207 @@
+<template>
+    <view v-if="isActive" @touchmove.stop.prevent="onMove" @tap="hide" class="main-action-menu-root">
+        <view class="main-action-menu" :style="{ top: (height + 50) + 'px' }">
+            <view class="main-action-menu-top-arrow"></view>
+            <view class="menu-list">
+                <view class="menu-item" @tap="go2CreateGroup">
+                    <text class="customicons menu-item-icon">&#xe69e;</text>
+                    <text class="text solid-bottom">发起群聊</text>
+                </view>
+                <view class="menu-item" @tap="go2SearchFriend">
+                    <text class="customicons menu-item-icon">&#xe657;</text>
+                    <text class="text solid-bottom">添加朋友</text>
+                </view>
+                <view class="menu-item" @tap="go2ScanQrCode">
+                    <text class="customicons menu-item-icon">&#xe60a;</text>
+                    <text class="text">扫一扫</text>
+                </view>
+            </view>
+        </view>
+        <view class="main-action-menu-background-model"></view>
+    </view>
+</template>
+
+<script lang="uts">
+import Config from "../../config.uts";
+import store, { contactState } from "../../store.uts";
+import WfcScheme from "../../wfcScheme.uts";
+import wfc from "../../wfc/client/wfc.uts";
+import UserInfo from "../../wfc/model/userInfo.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+
+export default {
+    name: 'main-action-menu',
+    data() {
+        return {
+            height: 0, //距离顶部高度
+            isActive: false,
+        };
+    },
+    mounted() {
+        const sysInfo = uni.getSystemInfoSync();
+        this.height = sysInfo.statusBarHeight;
+    },
+    methods: {
+        go2CreateGroup() {
+            this.hide();
+            let users = contactState.favContactList.concat(contactState.friendList);
+            users = users.filter((u: UserInfo): boolean => {
+                return u.uid != Config.FILE_HELPER_ID
+            });
+            const options = new PickUsersOptions()
+            options.users = users
+            options.successCB = (pickedUsers: UserInfo[]) => {
+                store.createConversation(pickedUsers, (conversation: Conversation) => {
+                    // 不加延时的话，不能正常切换页面
+                    setTimeout(() => {
+                        go2ConversationPage();
+                    }, 50)
+                }, (err: number) => {
+                    console.log('createConversation error', err)
+                })
+            }
+            pickUsers(options);
+        },
+        go2SearchFriend() {
+            this.hide();
+            uni.navigateTo({
+                url: '/pages/contact/SearchUserPage',
+                fail: (err) => {
+                    console.log('nav to SearchUserPage err', err)
+                }
+            } as NavigateToOptions)
+        },
+        go2ScanQrCode() {
+            this.hide();
+            uni.scanCode({
+                success: (res) => {
+                    console.log('条码内容：' + res.result);
+                    if (res.result != '') {
+                        this.onScanQrCode(res.result)
+                    }
+                },
+                fail: (err) => {
+                    console.log('scan code err', err)
+                }
+            } as ScanCodeOptions);
+        },
+        onMove() {
+            this.hide()
+        },
+        toggle() {
+            if (this.isActive) {
+                this.hide();
+            } else {
+                this.show();
+            }
+        },
+        show() {
+            this.isActive = true
+        },
+        hide() {
+            if (this.isActive) {
+                this.isActive = false
+            }
+        },
+        onScanQrCode(qrcode: string) {
+            const prefix = qrcode.substring(0, qrcode.lastIndexOf('/') + 1)
+            const value = qrcode.substring(qrcode.lastIndexOf('/') + 1)
+            switch (prefix) {
+                case WfcScheme.QR_CODE_PREFIX_USER:
+                    wfc.getUserInfoEx(value, false, (userInfo: UserInfo) => {
+                        store.setCurrentFriend(userInfo);
+                        uni.navigateTo({
+                            url: '/pages/contact/UserDetailPage',
+                            fail: (err) => {
+                                console.log('nav to UserDetailPage err', err);
+                            }
+                        } as NavigateToOptions)
+                    }, (err: number) => {
+                        console.log('getUserInfoEx error', err)
+                    })
+                    break;
+                default:
+                    uni.showToast({
+                        title: '不支持该二维码: ' + qrcode,
+                        icon: 'none',
+                    } as ShowToastOptions);
+                    break;
+            }
+        }
+    }
+};
+</script>
+<style scoped>
+.main-action-menu-root {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9997;
+}
+
+.main-action-menu {
+    width: 150px;
+    position: fixed;
+    z-index: 9999;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.main-action-menu-background-model {
+    background-color: rgba(0, 0, 0, 0);
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    z-index: 9998;
+}
+
+.main-action-menu-top-arrow {
+    width: 0px;
+    height: 0px;
+    border-top: 10px solid transparent;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 10px solid #4C4C4C;
+    margin-left: 110px;
+}
+
+.menu-list {
+    width: 100%;
+    background-color: #4C4C4C;
+    border-radius: 5px;
+}
+
+.menu-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 18px;
+    padding-right: 0;
+}
+
+.menu-item-icon {
+    width: 19px;
+    height: 19px;
+    margin-right: 14px;
+    color: #ffffff;
+    font-size: 20px;
+}
+
+.text {
+    color: #ffffff;
+    font-size: 16px;
+    padding: 15px 0;
+    flex: 1;
+}
+
+.solid-bottom {
+    border-bottom: 1px solid #535353;
+}
+</style>

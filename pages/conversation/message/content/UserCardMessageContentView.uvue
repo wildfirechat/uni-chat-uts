@@ -1,0 +1,80 @@
+<template>
+    <view @tap="userInfo" class="user-card-content-container">
+        <view class="portrait-name-container">
+            <image class="portrait" :src="content.portrait" />
+            <text class="display-name">{{ content.displayName }}</text>
+        </view>
+        <text class="desc single-line">个人名片</text>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import CardMessageContent from "@/wfc/messages/cardMessageContent.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import store from "@/store.uts";
+
+export default {
+    name: "UserCardMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        content(): CardMessageContent {
+            return this.message.messageContent as CardMessageContent
+        }
+    },
+    methods: {
+        userInfo() {
+            const userInfo = wfc.getUserInfo(this.content.target);
+            store.setCurrentFriend(userInfo)
+            uni.navigateTo({
+                url: '/pages/contact/UserDetailPage',
+                fail: (err) => {
+                    console.log('nav to UserDetailPage err', err);
+                }
+            } as NavigateToOptions)
+        }
+    }
+}
+</script>
+
+<style scoped>
+.user-card-content-container {
+    width: 230px;
+    margin: 0 10px;
+    padding: 10px;
+    background-color: #ffffff;
+    position: relative;
+    border-radius: 5px;
+}
+
+.portrait-name-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eeeeee;
+}
+
+.portrait {
+    width: 45px;
+    height: 45px;
+    border-radius: 3px;
+}
+
+.display-name {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 15px;
+}
+
+.desc {
+    padding-top: 8px;
+    font-size: 13px;
+    color: #b8b8b8;
+}
+</style>

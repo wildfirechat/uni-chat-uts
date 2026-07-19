@@ -1,0 +1,80 @@
+<template>
+    <view>
+        <view v-for="(organization, index) in rootOrganizations" :key="index" @tap="showOrganization(organization)">
+            <view class="organization-item">
+                <image class="avatar" :src="portraitOf(organization)" />
+                <text class="org-name single-line">{{ organization.getString('name') ?? '' }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store from "../../store.uts";
+import organizationServerApi from "../../api/organizationServerApi.uts";
+import Config from "../../config.uts";
+
+export default {
+    name: "OrganizationListView",
+    data() {
+        return {
+            rootOrganizations: [] as UTSJSONObject[],
+        }
+    },
+    mounted() {
+        organizationServerApi.getRootOrganization()
+            .then((orgs): void => {
+                if (orgs != null && orgs instanceof Array) {
+                    const list: UTSJSONObject[] = []
+                    const arr = orgs as Array<any>
+                    for (let i = 0; i < arr.length; i++) {
+                        const o = arr[i]
+                        if (o instanceof UTSJSONObject) {
+                            list.push(o as UTSJSONObject)
+                        }
+                    }
+                    this.rootOrganizations = list;
+                }
+            }).catch((reason): void => {
+                console.log('getRootOrganization fail')
+            })
+    },
+    methods: {
+        portraitOf(organization: UTSJSONObject): string {
+            const portrait = organization.getString('portrait')
+            return portrait != null && portrait != '' ? portrait : Config.DEFAULT_ORGANIZATION_PORTRAIT_URL
+        },
+        showOrganization(organization: UTSJSONObject) {
+            store.setCurrentOrganization(organization)
+            uni.navigateTo({
+                url: '/pages/contact/OrganizationTreePage',
+                fail: (err) => {
+                    console.log('nav to OrganizationTreePage err', err);
+                }
+            } as NavigateToOptions)
+        },
+    },
+}
+</script>
+
+<style scoped>
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.organization-item {
+    height: 50px;
+    padding: 5px 10px 5px 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    background-color: #fafafa;
+}
+
+.org-name {
+    margin-left: 10px;
+    font-size: 14px;
+}
+</style>

@@ -1,0 +1,145 @@
+<template>
+    <view class="quoted-message-container">
+        <view class="quoted-message">
+            <view class="media-content" v-if="isMediaQuoted">
+                <text class="quoted-name single-line">{{ quotedFromName }}</text>
+                <image class="quoted-image" mode="aspectFit" :src="mediaSrc" @tap="onMessageClick" />
+            </view>
+            <text v-else class="quoted-text" @tap="onMessageClick">{{ quotedMessageStr }}</text>
+        </view>
+        <text v-if="showCloseButton" @tap="cancelQuoteMessage" class="icomoon close-icon">&#xf12a;</text>
+    </view>
+</template>
+
+<script lang="uts">
+import store from "@/store.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import Message from "@/wfc/messages/message.uts";
+import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
+import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
+
+export default {
+    name: "QuoteMessageView",
+    props: {
+        showCloseButton: {
+            type: Boolean,
+            default: false,
+        },
+        // 被引用的消息
+        quotedMessage: {
+            type: Object as PropType<Message>,
+            required: true,
+        },
+        quotedMessageDigest: {
+            type: String,
+            default: '',
+        },
+    },
+    emits: ['cancelQuoteMessage'],
+    computed: {
+        isMediaQuoted(): boolean {
+            const type = this.quotedMessage.messageContent.type
+            return type == MessageContentType.Image || type == MessageContentType.Video || type == MessageContentType.Sticker
+        },
+        quotedFromName(): string {
+            const from = this.quotedMessage._from
+            return (from != null ? from._displayName : '') + ':'
+        },
+        quotedMessageStr(): string {
+            let str = '';
+            const from = this.quotedMessage._from
+            str = (from != null ? from._displayName : '') + ':';
+            str += this.quotedMessage.messageContent.digest(this.quotedMessage);
+            if (MessageContentType.RecallMessage_Notification == this.quotedMessage.messageContent.type) {
+                str = "引用内容已撤回"
+            }
+            return str;
+        },
+        mediaSrc(): string {
+            const msgCnt = this.quotedMessage.messageContent;
+            let thumbnail = ''
+            let remotePath = ''
+            if (msgCnt instanceof ImageMessageContent) {
+                thumbnail = (msgCnt as ImageMessageContent).thumbnail
+                remotePath = (msgCnt as ImageMessageContent).remotePath
+            } else if (msgCnt instanceof VideoMessageContent) {
+                thumbnail = (msgCnt as VideoMessageContent).thumbnail
+                remotePath = (msgCnt as VideoMessageContent).remotePath
+            } else if (msgCnt instanceof StickerMessageContent) {
+                remotePath = (msgCnt as StickerMessageContent).remotePath
+            }
+            return thumbnail != '' ? 'data:image/jpeg;base64,' + thumbnail : remotePath;
+        }
+    },
+    methods: {
+        cancelQuoteMessage() {
+            this.$emit('cancelQuoteMessage')
+        },
+
+        onMessageClick() {
+            switch (this.quotedMessage.messageContent.type) {
+                case MessageContentType.Video:
+                case MessageContentType.Image:
+                    store.previewMessage(this.quotedMessage, false);
+                    break;
+                default:
+                    break
+            }
+        },
+    },
+}
+</script>
+
+<style scoped>
+.quoted-message-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.quoted-message {
+    display: flex;
+    flex-direction: row;
+    max-width: 100%;
+    background-color: #e9e9e9;
+    border-radius: 5px;
+    padding: 5px 10px;
+    margin-right: 10px;
+}
+
+.quoted-text {
+    max-width: 100%;
+    lines: 2;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    font-size: 13px;
+    color: #666666;
+}
+
+.media-content {
+    max-width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.quoted-name {
+    width: 100px;
+    max-width: 100px;
+    font-size: 13px;
+    color: #666666;
+}
+
+.quoted-image {
+    margin-left: 10px;
+    border-radius: 3px;
+    width: 60px;
+    height: 60px;
+}
+
+.close-icon {
+    font-size: 16px;
+    color: #888888;
+}
+</style>

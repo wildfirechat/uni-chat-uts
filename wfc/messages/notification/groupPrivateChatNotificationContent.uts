@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import GroupNotificationContent from "./groupNotification.uts";
+import MessageContentType from "../messageContentType.uts";
+import { getGroupMemberDisplayName } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessagePayload from '../messagePayload.uts';
+
+export default class GroupPrivateChatNotificationContent extends GroupNotificationContent {
+    operator = '';
+
+    //是否允许群中普通成员私聊。0 允许，1不允许
+    privateChatType = 0;
+
+    constructor(operator: string, privateChatType: number) {
+        super(MessageContentType.ChangePrivateChat_Notification);
+        this.operator = operator;
+        this.privateChatType = privateChatType;
+    }
+
+    override formatNotification(message: any | null): string {
+        let notifyStr = this.fromSelf ? '您' : getGroupMemberDisplayName(this.groupId, this.operator);
+        notifyStr += this.privateChatType == 0 ? ' 开启了成员私聊' : ' 关闭了成员私聊';
+        return notifyStr;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            g: this.groupId,
+            o: this.operator,
+            n: this.privateChatType.toString()
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.operator = obj.getString('o') ?? '';
+            this.privateChatType = parseInt(obj.getString('n') ?? '0');
+        }
+    }
+}

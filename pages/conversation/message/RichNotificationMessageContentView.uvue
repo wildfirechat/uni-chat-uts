@@ -1,0 +1,101 @@
+<template>
+    <view class="rich-root">
+        <view class="notification-container" @tap="onClickRichNotification" @longpress="onLongPress">
+            <text class="title">{{ content.title }}</text>
+            <text class="desc">{{ content.desc }}</text>
+            <view v-if="content.datas.length > 0">
+                <view v-for="(data, index) in content.datas" :key="index" class="data">
+                    <text class="key single-line">{{ data.getString('key') ?? '' }}</text>
+                    <text class="value">{{ data.getString('value') ?? '' }}</text>
+                </view>
+            </view>
+            <view class="ex-info-container">
+                <text class="exName">{{ content.exName }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "../../../wfc/messages/message.uts";
+import RichNotificationMessageContent from "../../../wfc/messages/notification/richNotificationMessageContent.uts";
+import { navigateToPage } from "../../../common/nav.uts";
+
+export default {
+    name: "RichNotificationMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true
+        }
+    },
+    emits: ['longpress'],
+    computed: {
+        content(): RichNotificationMessageContent {
+            return this.message.messageContent as RichNotificationMessageContent
+        }
+    },
+    methods: {
+        onLongPress(e: UniTouchEvent) {
+            this.$emit('longpress', e)
+        },
+        onClickRichNotification() {
+            const targetPageUrl = '/pages/workspace/WorkspaceWebViewPage';
+            navigateToPage(`${targetPageUrl}?url=${encodeURIComponent(this.content.exUrl)}`, null);
+        }
+    },
+}
+</script>
+
+<style scoped>
+.rich-root {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.notification-container {
+    background-color: #ffffff;
+    width: 300px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    margin: 5px 0;
+}
+
+.title {
+    margin: 5px 0;
+    font-size: 16px;
+}
+
+.desc {
+    font-size: 14px;
+}
+
+.data {
+    display: flex;
+    flex-direction: row;
+}
+
+.key {
+    width: 100px;
+    font-size: 14px;
+}
+
+.value {
+    flex: 1;
+    lines: 3;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+.ex-info-container {
+    border-top: 1px solid #d3d3d3;
+    padding-top: 5px;
+    margin: 5px 0;
+}
+
+.exName {
+    font-size: 14px;
+}
+</style>

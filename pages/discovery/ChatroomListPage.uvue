@@ -1,0 +1,57 @@
+<template>
+    <view class="chatroom-container">
+        <view class="item" @tap="go2Chatroom(1)">
+            <text class="item-text">野火聊天室1</text>
+        </view>
+        <view class="item" @tap="go2Chatroom(2)">
+            <text class="item-text">野火聊天室1</text>
+        </view>
+        <view class="item" @tap="go2Chatroom(3)">
+            <text class="item-text">野火聊天室2</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import store from "../../store.uts";
+import Conversation from "../../wfc/model/conversation.uts";
+import ConversationType from "../../wfc/model/conversationType.uts";
+import { go2ConversationPage } from "../../common/nav.uts";
+
+export default {
+    name: "ChatroomListPage",
+    methods: {
+        go2Chatroom(index: number) {
+            const conversation = new Conversation(ConversationType.ChatRoom, `chatroom${index}`, 0);
+            store.setCurrentConversation(conversation);
+            go2ConversationPage();
+        },
+    }
+}
+</script>
+
+<style scoped>
+.chatroom-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1;
+    background-color: #fafafa;
+}
+
+.item {
+    width: 100%;
+    height: 50px;
+    padding: 10px 10px;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.item-text {
+    flex: 1;
+    font-size: 15px;
+}
+</style>

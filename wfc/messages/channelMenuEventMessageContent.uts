@@ -1,0 +1,22 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import ChannelMenu from "../model/channelMenu.uts";
+
+export default class ChannelMenuEventMessageContent extends MessageContent {
+    menu: ChannelMenu | null = null
+
+    constructor(menu: ChannelMenu | null = null) {
+        super(MessageContentType.Channel_Menu_Event);
+        this.menu = menu;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const menu = this.menu
+        if (menu != null) {
+            payload.content = JSON.stringify(menu) ?? '';
+        }
+        return payload;
+    }
+}

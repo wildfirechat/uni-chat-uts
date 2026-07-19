@@ -1,0 +1,45 @@
+<template>
+    <view class="sticker-content-container">
+        <image class="sticker" mode="aspectFit" :src="stickerSrc" />
+    </view>
+</template>
+
+<script lang="uts">
+import Message from "@/wfc/messages/message.uts";
+import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
+
+export default {
+    name: "StickerMessageContentView",
+    props: {
+        message: {
+            type: Object as PropType<Message>,
+            required: true,
+        }
+    },
+    computed: {
+        stickerSrc(): string {
+            const content = this.message.messageContent as StickerMessageContent
+            if (content.remotePath != '') {
+                return content.remotePath
+            }
+            return content.localPath
+        }
+    },
+}
+</script>
+
+<style scoped>
+.sticker-content-container {
+    margin: 0 10px;
+    position: relative;
+    border: 1px solid #efefef;
+    border-radius: 5px;
+}
+
+.sticker {
+    width: 100px;
+    height: 100px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+</style>

@@ -1,0 +1,26 @@
+<template>
+    <web-view class="web-view" :src="url"></web-view>
+</template>
+
+<script lang="uts">
+export default {
+    name: "WebViewPage",
+    data() {
+        return {
+            url: '',
+        }
+    },
+
+    onLoad(options: OnLoadOptions) {
+        const url = options['url'] ?? ''
+        console.log('onLoad option url', decodeURIComponent(url));
+        this.url = decodeURIComponent(url);
+    }
+}
+</script>
+
+<style scoped>
+.web-view {
+    flex: 1;
+}
+</style>

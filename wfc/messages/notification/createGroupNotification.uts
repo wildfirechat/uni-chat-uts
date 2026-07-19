@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import { getUserDisplayName } from '../../client/userBrief.uts'
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+import MessageContentType from '../messageContentType.uts';
+import MessagePayload from '../messagePayload.uts';
+import GroupNotificationContent from './groupNotification.uts';
+
+export default class CreateGroupNotification extends GroupNotificationContent {
+    creator = '';
+    groupName = '';
+
+    constructor(creator: string, groupName: string) {
+        super(MessageContentType.CreateGroup_Notification);
+        this.creator = creator;
+        this.groupName = groupName;
+    }
+
+    override formatNotification(message: any | null): string {
+        if (this.fromSelf) {
+            return '您创建了群组 ' + this.groupName;
+        } else {
+            return getUserDisplayName(this.creator) + '创建了群组 ' + this.groupName;
+        }
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const obj = {
+            g: this.groupId,
+            n: this.groupName,
+            o: this.creator,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.creator = obj.getString('o') ?? '';
+            this.groupName = obj.getString('n') ?? '';
+        }
+    }
+}

@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+
+export default class UnsupportMessageContent extends MessageContent {
+    constructor() {
+        super(MessageContentType.Unknown);
+    }
+
+    override digest(message: any | null): string {
+        return '尚不支持该类型消息, 请手机查看 : ' + this.type;
+    }
+}
