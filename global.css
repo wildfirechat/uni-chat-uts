@@ -4,7 +4,6 @@
  */
 
 .single-line {
-    max-width: 100%;
     lines: 1;
     text-overflow: ellipsis;
     overflow: hidden;

@@ -177,7 +177,7 @@ export default {
 
 .quote-view {
     padding: 5px 0;
-    max-width: 80%;
+    width: 80%;
     margin-left: 10px;
 }
 </style>

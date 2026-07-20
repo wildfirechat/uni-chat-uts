@@ -27,9 +27,10 @@ export class OrganizationServerApi {
                         if (res.statusCode == 200 && body != null) {
                             const resultCode = body.getNumber('code') ?? -1
                             if (resultCode == 0) {
-                                let appAuthToken = res.header.getString('authtoken')
+                                const header = res.header as UTSJSONObject | null
+                                let appAuthToken = header?.getString('authtoken')
                                 if (appAuthToken == null) {
-                                    appAuthToken = res.header.getString('authToken')
+                                    appAuthToken = header?.getString('authToken')
                                 }
                                 if (appAuthToken != null) {
                                     setItem('authToken-org', appAuthToken);

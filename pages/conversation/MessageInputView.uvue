@@ -99,7 +99,7 @@ export default {
         return {
             emojiStickerList: emojiStickerConfig as EmojiStickerCategory[],
             currentEmojiStickerIndex: 0,
-            hideSendButton: Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8,
+            hideSendButton: (Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8) as boolean,
             showVoice: false,
             extList: [
                 new ExtItem('相册', 'image', ''),
@@ -191,7 +191,7 @@ export default {
                 const quotedMessage = conversationState.quotedMessage;
                 if (quotedMessage != null) {
                     const quoteInfo = QuoteInfo.init(quotedMessage.messageUid, quotedMessage.from, quotedMessage.messageContent.digest(quotedMessage));
-                    textMessageContent.setQuoteInfo(quoteInfo);
+                    textMessageContent.quoteInfo = quoteInfo;
                     store.quoteMessage(null);
                 }
                 if (this.conversationInfo.conversation.type == ConversationType.Group && this.mentions.length > 0) {
@@ -200,7 +200,7 @@ export default {
                     const matches = this.text.match(regex);
                     if (matches != null) {
                         for (let i = 0; i < matches.length; i++) {
-                            const match = matches[i].trim();
+                            const match = (matches[i] ?? '').trim();
                             if (match == '@所有人') {
                                 const index = this.mentions.findIndex((user: UserInfo): boolean => user.uid == '@all')
                                 if (index >= 0) {

@@ -17,7 +17,7 @@ export default class CompositeMessageContent extends MediaMessageContent {
         super(MessageContentType.Composite_Message, MessageContentMediaType.File, '', '')
     }
 
-    setMessages(msgs: Message[]): void {
+    setupMessages(msgs: Message[]): void {
         this.messages = [];
         for (let i = 0; i < msgs.length; i++) {
             const m = msgs[i]

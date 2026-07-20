@@ -24,13 +24,13 @@ export default {
         go2ConversationList() {
             uni.switchTab({
                 url: '/pages/conversationList/ConversationListPage',
-                success: () => {
+                success: (_) => {
                     console.log('to conversation list success');
                 },
                 fail: (e) => {
                     console.log('to conversation list error', e);
                 },
-                complete: () => {
+                complete: (_) => {
                     console.log('switch tab complete')
                 }
             } as SwitchTabOptions);

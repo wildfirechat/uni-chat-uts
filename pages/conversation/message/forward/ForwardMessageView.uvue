@@ -101,7 +101,7 @@ export default {
 .forward-message {
     display: flex;
     flex-direction: row;
-    max-width: 100%;
+    width: 100%;
     border-radius: 5px;
     justify-content: center;
     max-height: 100px;

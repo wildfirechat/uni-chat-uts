@@ -931,7 +931,7 @@ class Store {
                     m.messageContent = this._filterForwardMessageContent(m)
                     msgs.push(m)
                 }
-                compositeMessageContent.setMessages(msgs);
+                compositeMessageContent.setupMessages(msgs);
 
                 wfc.sendConversationMessage(conversation, compositeMessageContent);
             }

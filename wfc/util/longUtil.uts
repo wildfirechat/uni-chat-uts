@@ -16,7 +16,7 @@ function normalize(v: any | null): string {
     if (v == null) {
         return '0'
     }
-    if (v instanceof String) {
+    if (typeof v === 'string') {
         let s = (v as string).trim()
         if (s == '') {
             return '0'

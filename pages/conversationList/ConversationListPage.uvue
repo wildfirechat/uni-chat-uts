@@ -155,10 +155,11 @@ export default {
             return conv.target + '-' + conv.type + '-' + conv.line;
         },
 
-        showConversationContextMenu(e: UniTouchEvent, conversationInfo: ConversationInfo) {
-            if (e.touches.length > 0) {
-                this.contextMenuX = e.touches[0].clientX;
-                this.contextMenuY = e.touches[0].clientY;
+        showConversationContextMenu(e: any, conversationInfo: ConversationInfo) {
+            const touchEvent = e as UniTouchEvent;
+            if (touchEvent.touches.length > 0) {
+                this.contextMenuX = touchEvent.touches[0].clientX;
+                this.contextMenuY = touchEvent.touches[0].clientY;
             }
             this.contextMenuConversationInfo = conversationInfo;
             const items: PopupMenuItem[] = [];

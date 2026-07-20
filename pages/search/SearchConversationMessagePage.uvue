@@ -27,7 +27,7 @@ export default {
     name: "SearchConversationMessagePage",
     data() {
         return {
-            query: searchState.query,
+            query: searchState.query as string,
             conversationInfo: null as ConversationInfo | null,
             messages: [] as Message[],
         }

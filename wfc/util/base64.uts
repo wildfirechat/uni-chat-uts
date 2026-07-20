@@ -8,10 +8,10 @@ function utf8Bytes(str: string): number[] {
     const bytes: number[] = []
     let i = 0
     while (i < str.length) {
-        let code = str.charCodeAt(i)
+        let code = str.charCodeAt(i) ?? 0
         // 处理代理对
         if (code >= 0xD800 && code <= 0xDBFF && i + 1 < str.length) {
-            const low = str.charCodeAt(i + 1)
+            const low = str.charCodeAt(i + 1) ?? 0
             if (low >= 0xDC00 && low <= 0xDFFF) {
                 code = (code - 0xD800) * 0x400 + (low - 0xDC00) + 0x10000
                 i++

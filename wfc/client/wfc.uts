@@ -1733,13 +1733,13 @@ export class WfcManager {
     }
 
     sendConferenceRequestEx(sessionId: string, roomId: string, request: string, data: string, advance: boolean, callback: ((errorCode: number, resp: string | null) => void) | null): void {
-        native.sendConferenceRequest(sessionId, roomId, request, data,
+        native.sendConferenceRequest(sessionId, roomId, request, data, advance,
             (resp: string) => {
                 callback?.(0, resp);
             },
             (errorCode: number) => {
                 callback?.(errorCode, null)
-            }, advance);
+            });
     }
 
     isEnableUserOnlineState(): boolean {

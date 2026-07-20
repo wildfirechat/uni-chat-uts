@@ -57,13 +57,13 @@ export default class RecallMessageNotification extends NotificationMessageConten
         this.messageUid = b64_to_utf8(payload.binaryContent);
 
         try {
-            this.setExtra(payload.extra);
+            this.parseExtra(payload.extra);
         } catch (e) {
             console.error('decode recallMessage extra error', e)
         }
     }
 
-    setExtra(extra: string): void {
+    parseExtra(extra: string): void {
         if (extra != '') {
             const fixed = extra.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
             const obj = JSON.parseObject(fixed);

@@ -13,7 +13,7 @@ export default {
             global: true,
             family: 'customicons',
             source: "url('/static/iconfonts/customicons.ttf')",
-            success: () => { },
+            success: (_) => { },
             fail: (err) => {
                 console.log('load customicons font fail', err)
             }
@@ -22,7 +22,7 @@ export default {
             global: true,
             family: 'wxfont',
             source: "url('/static/iconfonts/wx_iconfont.ttf')",
-            success: () => { },
+            success: (_) => { },
             fail: (err) => {
                 console.log('load wxfont fail', err)
             }
@@ -31,7 +31,7 @@ export default {
             global: true,
             family: 'icomoon',
             source: "url('/static/iconfonts/icomoon/fonts/icomoon.ttf')",
-            success: () => { },
+            success: (_) => { },
             fail: (err) => {
                 console.log('load icomoon font fail', err)
             }

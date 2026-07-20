@@ -43,8 +43,7 @@ export default {
                     console.log('download file success', filePath);
                     uni.openDocument({
                         filePath: filePath,
-                        showMenu: true,
-                        success: () => {
+                        success: (_) => {
                             console.log('打开文档成功');
                         },
                         fail: (err) => {
