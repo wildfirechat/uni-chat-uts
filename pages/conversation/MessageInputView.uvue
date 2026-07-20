@@ -1,6 +1,6 @@
 <template>
     <view>
-        <view class="wf-message-input-container">
+        <view class="wf-message-input-container" :style="{ paddingBottom: safeAreaBottomHeight + 'px' }">
             <view class="wf-message-input-toolbar">
                 <text class="wf-input-button-icon customicons" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
                 <view class="wf-input-voice-container" v-if="showVoice">
@@ -117,7 +117,13 @@ export default {
             currentKeyboardHeight: 0,
             mentions: [] as UserInfo[],
             groupMemberUserInfos: [] as UserInfo[],
+            safeAreaBottomHeight: 0,
         };
+    },
+
+    created() {
+        const sysInfo = uni.getSystemInfoSync()
+        this.safeAreaBottomHeight = sysInfo.safeAreaInsets.bottom
     },
 
     computed: {
@@ -258,6 +264,9 @@ export default {
 
         onClickExt(ext: ExtItem) {
             console.log('onClick ext', ext.tag);
+            // 选择相册/拍摄/文件等会离开当前面板去挑选内容，提前收起，避免面板一直占据底部空间，
+            // 导致发送后消息列表可视区域变小，看起来像“没有滚动到底部”
+            this.showExt = false;
             switch (ext.tag) {
                 case 'image':
                     this.chooseImage();

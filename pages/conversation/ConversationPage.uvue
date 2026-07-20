@@ -477,6 +477,11 @@ export default {
             setTimeout(() => {
                 this.scrollTop = this.scrollTop == 999999 ? 999998 : 999999;
             }, 200)
+            // 图片/视频/语音等消息没有输入法弹出带来的额外滚动机会，且内容排版比纯文本慢，
+            // 200ms 时可能还没排版完成，这里再兜底滚动一次
+            setTimeout(() => {
+                this.scrollTop = this.scrollTop == 999999 ? 999998 : 999999;
+            }, 600)
         }
     },
 };
