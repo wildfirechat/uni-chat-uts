@@ -1,0 +1,23 @@
+import * as native from '@/uni_modules/wfc-av-client'
+
+/**
+ * 发起/接听音视频通话前检查摄像头、麦克风权限。
+ */
+export default function checkVoipPermissions(audioOnly: boolean): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+        native.requestVoipPermissions(audioOnly, () => {
+            resolve(true)
+        }, () => {
+            uni.showModal({
+                content: '需要摄像头、麦克风权限才能进行音视频通话',
+                confirmText: '去设置',
+                success: (res) => {
+                    if (res.confirm) {
+                        uni.openAppAuthorizeSetting({} as OpenAppAuthorizeSettingOptions)
+                    }
+                }
+            } as ShowModalOptions)
+            resolve(false)
+        })
+    })
+}

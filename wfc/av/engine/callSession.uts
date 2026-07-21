@@ -1,0 +1,58 @@
+import Conversation from '../../model/conversation.uts';
+
+export default class CallSession {
+    callId = '';
+    title = '';
+    desc = '';
+    initiator = '';
+    inviter = '';
+    state = 0;
+    startTime = 0;
+    connectedTime = 0;
+    endTime = 0;
+    conversation: Conversation = new Conversation(0, '');
+    audioOnly = false;
+    endReason = 0;
+    conference = false;
+    audience = false;
+    advanced = false;
+    audioMuted = false;
+    videoMuted = false;
+    multiCall = false;
+
+    static fromJsonObject(obj: UTSJSONObject | null): CallSession | null {
+        if (obj == null) {
+            return null;
+        }
+        const s = new CallSession();
+        s.callId = obj.getString('callId') ?? '';
+        s.title = obj.getString('title') ?? '';
+        s.desc = obj.getString('desc') ?? '';
+        s.initiator = obj.getString('initiator') ?? '';
+        s.inviter = obj.getString('inviter') ?? '';
+        s.state = obj.getNumber('state') ?? 0;
+        s.startTime = obj.getNumber('startTime') ?? 0;
+        s.connectedTime = obj.getNumber('connectedTime') ?? 0;
+        s.endTime = obj.getNumber('endTime') ?? 0;
+        const conv = Conversation.fromJsonObject(obj.getJSON('conversation'));
+        if (conv != null) {
+            s.conversation = conv;
+        }
+        s.audioOnly = obj.getBoolean('audioOnly') ?? false;
+        s.endReason = obj.getNumber('endReason') ?? 0;
+        s.conference = obj.getBoolean('conference') ?? false;
+        s.audience = obj.getBoolean('audience') ?? false;
+        s.advanced = obj.getBoolean('advanced') ?? false;
+        s.audioMuted = obj.getBoolean('audioMuted') ?? false;
+        s.videoMuted = obj.getBoolean('videoMuted') ?? false;
+        s.multiCall = obj.getBoolean('multiCall') ?? false;
+        return s;
+    }
+
+    static fromJsonStr(str: string | null): CallSession | null {
+        if (str == null || str == '' || str == 'null') {
+            return null;
+        }
+        return CallSession.fromJsonObject(JSON.parseObject(str));
+    }
+}

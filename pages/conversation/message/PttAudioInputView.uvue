@@ -1,0 +1,158 @@
+<template>
+    <view class="TUI-message-input-main" @longpress="handleLongPress" @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd">
+        <text class="record-text">{{ text }}</text>
+        <view class="record-modal" v-if="popupToggle">
+            <view class="wrapper">
+                <view class="modal-loading"></view>
+            </view>
+            <text class="modal-title">{{ title }}</text>
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import ConversationInfo from "../../../wfc/model/conversationInfo.uts";
+import pttClient from "../../../wfc/ptt/pttClient.uts";
+import TalkingCallback from "../../../wfc/ptt/talkingCallback.uts";
+import PttErrorCode from "../../../wfc/ptt/pttErrorCode.uts";
+
+export default {
+    name: 'PttAudioInputView',
+    props: {
+        conversationInfo: {
+            type: Object as PropType<ConversationInfo>,
+            required: true,
+        }
+    },
+    data() {
+        return {
+            popupToggle: false,
+            isTalking: false,
+            text: '按住对讲',
+            title: ' ',
+            recordTime: 0,
+            recordTimer: 0,
+            longPressClientY: 0,
+        }
+    },
+    beforeUnmount() {
+        if (this.isTalking) {
+            pttClient.releaseTalking(this.conversationInfo.conversation)
+        }
+        if (this.recordTimer != 0) {
+            clearInterval(this.recordTimer)
+            this.recordTimer = 0
+        }
+    },
+    methods: {
+        handleLongPress(e: UniTouchEvent) {
+            if (e.changedTouches.length > 0) {
+                this.longPressClientY = e.changedTouches[e.changedTouches.length - 1].clientY
+            }
+            this.popupToggle = true
+            this.title = '正在请求...'
+            this.text = '正在对讲'
+
+            const callback = new TalkingCallback()
+            callback.onStartTalking = (): void => {
+                this.isTalking = true
+                this.title = '正在对讲'
+                this.text = '松开结束对讲'
+                this.recordTime = 0
+                this.recordTimer = setInterval((): void => {
+                    this.recordTime++
+                }, 1000)
+            }
+            callback.onTalkingEnd = (_reason: number): void => {
+                this.resetState()
+            }
+            callback.onRequestFail = (errorCode: number): void => {
+                this.resetState()
+                uni.showToast({
+                    title: PttErrorCode.desc(errorCode),
+                    icon: 'none',
+                } as ShowToastOptions)
+            }
+            pttClient.requestTalk(this.conversationInfo.conversation, 0, callback)
+        },
+
+        // 对讲不支持上划取消，保留手势回调仅为和 AudioInputView 交互习惯保持一致
+        handleTouchMove(_e: UniTouchEvent) {
+            if (this.isTalking) {
+                this.title = '正在对讲'
+            }
+        },
+
+        handleTouchEnd() {
+            if (this.isTalking) {
+                pttClient.releaseTalking(this.conversationInfo.conversation)
+            }
+            this.resetState()
+        },
+
+        resetState() {
+            if (this.recordTimer != 0) {
+                clearInterval(this.recordTimer)
+                this.recordTimer = 0
+            }
+            this.isTalking = false
+            this.popupToggle = false
+            this.text = '按住对讲'
+            this.title = ' '
+        },
+    },
+}
+</script>
+
+<style scoped>
+.TUI-message-input-main {
+    background-color: #ffffff;
+    flex: 1;
+    height: 33px;
+    margin: 0 5px;
+    padding: 0 3px;
+    border-radius: 3px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.record-text {
+    font-size: 15px;
+}
+
+.record-modal {
+    height: 150px;
+    width: 220px;
+    background-color: rgba(0, 0, 0, 0.8);
+    position: fixed;
+    top: 300px;
+    z-index: 9999;
+    left: 70px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: row;
+    height: 100px;
+    padding: 35px;
+}
+
+.modal-loading {
+    width: 20px;
+    height: 8px;
+    border-radius: 2px;
+    background-color: #006fff;
+}
+
+.modal-title {
+    text-align: center;
+    color: #ffffff;
+    font-size: 14px;
+}
+</style>

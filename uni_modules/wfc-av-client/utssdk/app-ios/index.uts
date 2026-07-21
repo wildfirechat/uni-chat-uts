@@ -1,0 +1,366 @@
+/**
+ * 音视频通话 UTS 插件（iOS）。
+ *
+ * 直接封装 WFAVEngineKit.xcframework 的 WFAVEngineKit（引擎单例）与 WFAVCallSession
+ * （每次通话的会话对象），不经过旧版 nativeplugin 的 WFAVModule（WFAVUniPlugin.xcframework）
+ * ——那是给旧版 JS bridge 用的，没有证据表明它已经适配 uts 直接调用；这里改成直接对接
+ * 底层引擎，和 Android 侧 index.uts 的思路一致。方法/属性签名已对照 WFAVEngineKit.h 头文件核对。
+ *
+ * 关于 WFChatClient.xcframework（对应 Android 侧 client-release.aar 的角色）：
+ * 本插件 import { WFCCConversation } from 'WFChatClient'，每个 uts 插件的 Swift 编译只看得到自己
+ * Frameworks/ 下的 framework，所以本插件 Frameworks/ 下必须带一份 WFChatClient.xcframework
+ * （wfc-client / wfc-ptt-client 也各带一份）。这一点看似和 Android 上「client-release 不能在
+ * av/ptt 里重复放、否则 Duplicate class」的结论相反，原因是 WFChatClient.xcframework 是
+ * **动态 framework**（Mach-O MH_DYLIB，非静态库）：动态库是「链接 + 按 bundle 标识只嵌入一份」，
+ * 多个插件同时链接同名动态库不会产生静态库那种 duplicate symbols，Xcode 的 embed 阶段会按 framework
+ * 名去重，因此各插件都带一份是 iOS 上的常规做法。Android 的 Duplicate 是静态合并 .class 的概念，
+ * 不适用于这里。（曾被我不小心删掉过，已从 wfc-client 那份原样拷回。）
+ * 兜底：万一云打包在 embed 阶段报 "multiple commands produce .../WFChatClient.framework" 之类的
+ * 重复嵌入错误，再改成「av/ptt 不带 WFChatClient、只 wfc-client 带，靠共享 framework 搜索路径」的
+ * 非重复方案。
+ *
+ * 其余未经 HBuilderX iOS 编译验证的点（如报错优先查这里）：
+ * 1. WFAVEngineDelegate/WFAVCallSessionDelegate 的实现用 `class X implements Y`，具体语法
+ *    需要以 uni-app x 官方 UTS 原生混编（iOS/Swift）文档为准。
+ * 2. Objective-C block 参数（如 successBlock/errorBlock）在 uts 里的闭包写法按 wfc-client
+ *    已有代码里的具名参数风格（`ip=ip, port=port`）类推，未逐一验证。
+ * 3. 枚举取整数用 `.rawValue`（Swift），对应 Android/Kotlin 的 `.ordinal`——本文件已统一用 rawValue。
+ */
+
+import { NativeEventListener } from '../interface.uts'
+
+import { WFAVEngineKit, WFAVEngineDelegate, WFAVCallSession, WFAVCallSessionDelegate, WFAVEngineState, WFAVCallEndReason, WFAVVideoType, WFAVParticipantProfile, WFAVVideoScalingType } from 'WFAVEngineKit'
+import { WFCCConversation, WFCCConversationType } from 'WFChatClient'
+
+let avEngineEventListener: NativeEventListener | null = null
+let callSessionEventListener: NativeEventListener | null = null
+let initialized = false
+
+function jsonArrayString(args: any[]): string {
+    // uts 侧没有现成的 JSONSerialization 包装，这里手工拼装数组的 JSON 字符串。
+    // 约定：所有字符串元素（含 callSessionToJson/participantProfileToJson 生成的 JSON 文本）
+    // 一律作为字符串转义后放进数组——即数组里嵌的是"JSON 字符串"而不是"嵌套 JSON 对象"，
+    // 和 Android 侧 org.json.JSONArray(kotlinListOfString) 的行为保持一致，
+    // 应用层 wfc/av/engine/avEngineKit.uts 按"数组元素可能是待再次 JSON.parse 的字符串"来处理。
+    const parts: string[] = args.map((a: any): string => {
+        if (a == null) {
+            return "null"
+        }
+        if (typeof a == "string") {
+            const s = a as string
+            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        }
+        if (typeof a == "boolean") {
+            return (a as boolean) ? "true" : "false"
+        }
+        return "" + a
+    })
+    return "[" + parts.join(",") + "]"
+}
+
+function callSessionToJson(session: WFAVCallSession): string {
+    const conv = session.conversation
+    const convJson = "{\"type\":" + conv.type.rawValue + ",\"target\":\"" + conv.target + "\",\"line\":" + conv.line + "}"
+    const obj = "{" +
+        "\"callId\":\"" + session.callId + "\"," +
+        "\"initiator\":\"" + (session.initiator ?? "") + "\"," +
+        "\"inviter\":\"" + (session.inviter ?? "") + "\"," +
+        "\"state\":" + session.state.rawValue + "," +
+        "\"startTime\":" + session.startTime + "," +
+        "\"connectedTime\":" + session.connectedTime + "," +
+        "\"endTime\":" + session.endTime + "," +
+        "\"conversation\":" + convJson + "," +
+        "\"audioOnly\":" + (session.audioOnly ? "true" : "false") + "," +
+        "\"endReason\":" + session.endReason.rawValue + "," +
+        "\"conference\":" + (session.conference ? "true" : "false") + "," +
+        "\"audience\":" + (session.audience ? "true" : "false") + "," +
+        "\"advanced\":" + (session.advanced ? "true" : "false") + "," +
+        "\"audioMuted\":" + (session.audioMuted ? "true" : "false") + "," +
+        "\"videoMuted\":" + (session.videoMuted ? "true" : "false") + "," +
+        "\"title\":\"" + (session.title ?? "") + "\"," +
+        "\"desc\":\"" + (session.desc ?? "") + "\"," +
+        "\"pin\":\"" + (session.pin ?? "") + "\"," +
+        "\"host\":\"" + (session.host ?? "") + "\"," +
+        "\"multiCall\":" + (session.multiCall ? "true" : "false") +
+        "}"
+    return obj
+}
+
+function participantProfileToJson(p: WFAVParticipantProfile): string {
+    return "{" +
+        "\"userId\":\"" + p.userId + "\"," +
+        "\"startTime\":" + p.startTime + "," +
+        "\"state\":" + p.state.rawValue + "," +
+        "\"videoMuted\":" + (p.videoMuted ? "true" : "false") + "," +
+        "\"audioMuted\":" + (p.audioMuted ? "true" : "false") + "," +
+        "\"audience\":" + (p.audience ? "true" : "false") + "," +
+        "\"screenSharing\":" + (p.screeSharing ? "true" : "false") +
+        "}"
+}
+
+class NativeAVEngineDelegate implements WFAVEngineDelegate {
+    didReceiveCall(session: WFAVCallSession): void {
+        session.delegate = nativeCallSessionDelegate
+        avEngineEventListener?.("onReceiveCall", jsonArrayString([callSessionToJson(session)]))
+    }
+
+    shouldStartRing(isIncoming: boolean): void {
+        avEngineEventListener?.("shouldStartRing", jsonArrayString([isIncoming]))
+    }
+
+    shouldStopRing(): void {
+        avEngineEventListener?.("shouldStopRing", jsonArrayString([]))
+    }
+
+    didCallEnded(reason: WFAVCallEndReason, duration: number): void {
+        avEngineEventListener?.("didCallEnded", jsonArrayString([reason.rawValue, duration]))
+    }
+}
+
+class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
+    didChangeState(state: WFAVEngineState): void {
+        callSessionEventListener?.("didChangeState", jsonArrayString([state.rawValue]))
+    }
+
+    didParticipantJoined(userId: string, screenSharing: boolean): void {
+        callSessionEventListener?.("didParticipantJoined", jsonArrayString([userId, screenSharing]))
+    }
+
+    didParticipantConnected(userId: string, screenSharing: boolean): void {
+        callSessionEventListener?.("didParticipantConnected", jsonArrayString([userId, screenSharing]))
+    }
+
+    didParticipantLeft(userId: string, screenSharing: boolean, reason: WFAVCallEndReason): void {
+        callSessionEventListener?.("didParticipantLeft", jsonArrayString([userId, reason.rawValue, screenSharing]))
+    }
+
+    didChangeInitiator(initiator: string | null): void {
+        callSessionEventListener?.("didChangeInitiator", jsonArrayString([initiator ?? ""]))
+    }
+
+    didCallEndWithReason(reason: WFAVCallEndReason): void {
+        callSessionEventListener?.("didCallEndWithReason", jsonArrayString([reason.rawValue]))
+    }
+
+    didError(error: any): void {
+        callSessionEventListener?.("didError", jsonArrayString(["" + error]))
+    }
+
+    didChangeMode(isAudioOnly: boolean): void {
+        callSessionEventListener?.("didChangeMode", jsonArrayString([isAudioOnly]))
+    }
+
+    didGetStats(stats: any[]): void {
+        // 统计信息内容复杂，暂不转发详细数据
+    }
+
+    didCreateLocalVideoTrack(localVideoTrack: any): void {
+        callSessionEventListener?.("didCreateLocalVideoTrack", jsonArrayString([]))
+    }
+
+    didReceiveRemoteVideoTrack(remoteVideoTrack: any, userId: string, screenSharing: boolean): void {
+        callSessionEventListener?.("didReceiveRemoteVideoTrack", jsonArrayString([userId, screenSharing]))
+    }
+
+    didVideoMuted(videoMuted: boolean, userId: string): void {
+        callSessionEventListener?.("didVideoMuted", jsonArrayString([userId, videoMuted]))
+    }
+
+    didReportAudioVolume(volume: number, userId: string): void {
+        callSessionEventListener?.("didReportAudioVolume", jsonArrayString([userId, volume]))
+    }
+
+    didChangeType(audience: boolean, userId: string): void {
+        callSessionEventListener?.("didChangeType", jsonArrayString([userId, audience, false]))
+    }
+
+    didMuteStateChanged(userIds: string[]): void {
+        callSessionEventListener?.("didMuteStateChanged", jsonArrayString([jsonArrayString(userIds)]))
+    }
+}
+
+const nativeAVEngineDelegate = new NativeAVEngineDelegate()
+const nativeCallSessionDelegate = new NativeCallSessionDelegate()
+
+export function onAVEngineEvent(listener: NativeEventListener): void {
+    avEngineEventListener = listener
+}
+
+export function onCallSessionEvent(listener: NativeEventListener): void {
+    callSessionEventListener = listener
+}
+
+export function initAVEngineKit(): void {
+    if (initialized) {
+        return
+    }
+    initialized = true
+    WFAVEngineKit.sharedEngineKit().delegate = nativeAVEngineDelegate
+}
+
+export function addICEServer(url: string, name: string, password: string): void {
+    WFAVEngineKit.sharedEngineKit().addIceServer(url, userName = name, password = password)
+}
+
+export function isSupportMultiCall(): boolean {
+    return WFAVEngineKit.sharedEngineKit().supportMultiCall
+}
+
+export function setVideoProfile(profile: number, swapWidthHeight: boolean): void {
+    // profile 数值和 Android VideoProfile 常量、iOS WFAVVideoProfile 枚举原始值保持一致（见头文件注释）
+    WFAVEngineKit.sharedEngineKit().setVideoProfile(profile as WFAVVideoProfile, swapWidthHeight = swapWidthHeight)
+}
+
+function currentSessionOrNull(): WFAVCallSession | null {
+    return WFAVEngineKit.sharedEngineKit().currentSession
+}
+
+export function startSingleCall(userId: string, audioOnly: boolean): string | null {
+    const conv = WFCCConversation.singleConversation(userId)
+    const session = WFAVEngineKit.sharedEngineKit().startCall([userId], audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
+    return session == null ? null : callSessionToJson(session!)
+}
+
+export function startMultiCall(groupId: string, participants: string[], audioOnly: boolean): string | null {
+    const conv = WFCCConversation.groupConversation(groupId)
+    const session = WFAVEngineKit.sharedEngineKit().startCall(participants, audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
+    return session == null ? null : callSessionToJson(session!)
+}
+
+export function currentCallSession(): string | null {
+    const session = currentSessionOrNull()
+    return session == null ? null : callSessionToJson(session!)
+}
+
+export function answerCall(callId: string, audioOnly: boolean): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.answerCall(audioOnly, callExtra = "")
+    }
+}
+
+export function endCall(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.endCall()
+    }
+}
+
+export function muteAudio(callId: string, mute: boolean): boolean {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        return session!.muteAudio(mute)
+    }
+    return false
+}
+
+export function muteVideo(callId: string, mute: boolean): boolean {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        return session!.muteVideo(mute)
+    }
+    return false
+}
+
+export function downgrade2Voice(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.audioOnly = true
+    }
+}
+
+export function switchCamera(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.switchCamera()
+    }
+}
+
+export function setSpeakerOn(callId: string, speakerOn: boolean): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.enableSpeaker(speakerOn)
+    }
+}
+
+export function inviteNewParticipant(callId: string, userIds: string[]): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.inviteNewParticipants(userIds)
+    }
+}
+
+export function kickoffParticipant(callId: string, userId: string, successCB: () => void, failCB: (error: number) => void): void {
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        failCB(-1)
+        return
+    }
+    session!.kickoffParticipant(userId, success = (): void => {
+        successCB()
+    }, error = (code: number): void => {
+        failCB(code)
+    })
+}
+
+export function getParticipantProfiles(callId: string): string {
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        return "[]"
+    }
+    const items = session!.participants.map((p: WFAVParticipantProfile): string => participantProfileToJson(p))
+    return "[" + items.join(",") + "]"
+}
+
+export function getParticipantProfile(callId: string, userId: string, screenSharing: boolean): string | null {
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        return null
+    }
+    const p = session!.profileOfUser(userId, isScreenSharing = screenSharing)
+    return p == null ? null : participantProfileToJson(p!)
+}
+
+export function getMyProfile(callId: string): string | null {
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        return null
+    }
+    const p = session!.myProfile
+    return p == null ? null : participantProfileToJson(p!)
+}
+
+// iOS 由系统在首次实际使用摄像头/麦克风时自动弹出授权对话框，这里不做额外的预检查，
+// 直接放行；如果之前被拒绝过，SDK 内部调用会失败，通话会以 didError/didCallEndWithReason 结束。
+export function requestVoipPermissions(audioOnly: boolean, successCB: () => void, failCB: () => void): void {
+    successCB()
+}
+
+export function checkOverlayPermission(): boolean {
+    // iOS 没有 Android 悬浮窗的概念，通话继续在原生层进行，返回 true 表示无需额外授权
+    return true
+}
+
+export function minimize(callId: string): void {
+    // no-op：iOS 下由调用方（uts 应用层）自行处理返回上一页
+}
+
+export function setLocalVideoView(callId: string, view: any): void {
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        return
+    }
+    session!.setupLocalVideoView(view, scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill)
+}
+
+export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, view: any): void {
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        return
+    }
+    session!.setupRemoteVideoView(view, scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill, forUser = userId, screenSharing = screenSharing)
+}
+
+export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {
+    // WFAVEngineKit 中该接口仅为兼容专业版 UI 保留，免费版多人通话没有实际效果
+}

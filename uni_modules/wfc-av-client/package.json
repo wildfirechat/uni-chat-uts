@@ -1,0 +1,43 @@
+{
+  "id": "wfc-av-client",
+  "name": "野火IM音视频通话插件(UTS)",
+  "displayName": "野火IM音视频通话插件(UTS)",
+  "version": "0.1.0",
+  "description": "基于 avenginekit.aar / WFAVEngineKit.xcframework 为 uni-app x 重新封装的音视频通话 UTS 插件，官方目前未发布对应的 UTS 版本，此为项目内自建实现。",
+  "keywords": [
+    "IM",
+    "音视频通话",
+    "voip",
+    "rtc"
+  ],
+  "dcloudext": {
+    "declaration": {
+      "ads": "无",
+      "data": "插件使用的野火IM音视频SDK会采集数据，详情参考 https://www.wildfirechat.net/wildfirechat_user_privacy.html",
+      "permissions": "摄像头、麦克风、悬浮窗权限"
+    },
+    "type": "uts"
+  },
+  "uni_modules": {
+    "platforms": {
+      "client": {
+        "uni-app-x": {
+          "app": {
+            "android": {
+              "extVersion": "0.1.0",
+              "minVersion": "21"
+            },
+            "ios": {
+              "extVersion": "0.1.0",
+              "minVersion": "12"
+            }
+          }
+        }
+      }
+    }
+  },
+  "engines": {
+    "HBuilderX": "^4.84",
+    "uni-app-x": "^4.84"
+  }
+}

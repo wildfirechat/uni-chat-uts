@@ -1,0 +1,43 @@
+{
+  "id": "wfc-ptt-client",
+  "name": "野火IM对讲插件(UTS)",
+  "displayName": "野火IM对讲插件(UTS)",
+  "version": "0.1.0",
+  "description": "基于 pttclient-release.aar / PttClient.xcframework 为 uni-app x 重新封装的对讲（PTT）UTS 插件，官方目前未发布对应的 UTS 版本，此为项目内自建实现。",
+  "keywords": [
+    "IM",
+    "对讲",
+    "PTT",
+    "walkie-talkie"
+  ],
+  "dcloudext": {
+    "declaration": {
+      "ads": "无",
+      "data": "插件使用的野火IM对讲SDK会采集数据，详情参考 https://www.wildfirechat.net/wildfirechat_user_privacy.html",
+      "permissions": "麦克风权限"
+    },
+    "type": "uts"
+  },
+  "uni_modules": {
+    "platforms": {
+      "client": {
+        "uni-app-x": {
+          "app": {
+            "android": {
+              "extVersion": "0.1.0",
+              "minVersion": "21"
+            },
+            "ios": {
+              "extVersion": "0.1.0",
+              "minVersion": "12"
+            }
+          }
+        }
+      }
+    }
+  },
+  "engines": {
+    "HBuilderX": "^4.84",
+    "uni-app-x": "^4.84"
+  }
+}

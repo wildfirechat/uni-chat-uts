@@ -1,0 +1,298 @@
+/*
+ * 音视频通话引擎门面，包一层 uni_modules/wfc-av-client（本项目自建的 UTS 插件）。
+ * 对外 API 尽量对齐迁移前 wfc/av/engine/avengineKit.js 的方法名，方便对照旧实现。
+ *
+ * 和旧版 .nvue/.vue 时代不同：uni-app x 是单一运行时，不需要旧代码里
+ * “.nvue 页面必须通过 getApp().avengineKit 访问单例” 的 workaround，
+ * 页面直接 import 这个单例使用即可。
+ */
+import * as native from '@/uni_modules/wfc-av-client'
+import CallSession from './callSession.uts'
+import CallSessionCallback from './callSessionCallback.uts'
+import ParticipantProfile from './participantProfile.uts'
+import Config from '../../../config.uts'
+import ConversationType from '../../model/conversationType.uts'
+import { navigateToPage, notify } from '../../../common/nav.uts'
+
+function parseArgs(argsJson: string): Array<any | null> {
+    const arr = JSON.parseArray(argsJson)
+    return arr == null ? [] : arr as Array<any | null>
+}
+
+function argString(args: Array<any | null>, i: number): string {
+    if (i >= args.length || args[i] == null) return ''
+    return args[i] as string
+}
+
+function argNumber(args: Array<any | null>, i: number): number {
+    if (i >= args.length || args[i] == null) return 0
+    return args[i] as number
+}
+
+function argBoolean(args: Array<any | null>, i: number): boolean {
+    if (i >= args.length || args[i] == null) return false
+    return args[i] as boolean
+}
+
+const VOIP_ROUTES = ['pages/voip/Single', 'pages/voip/Multi']
+
+function isOnVoipPage(): boolean {
+    const pages = getCurrentPages()
+    if (pages.length == 0) {
+        return false
+    }
+    return VOIP_ROUTES.indexOf(pages[pages.length - 1].route) >= 0
+}
+
+let ringAudio: InnerAudioContext | null = null
+
+function startRing(isIncoming: boolean): void {
+    stopRing()
+    ringAudio = uni.createInnerAudioContext()
+    ringAudio!.loop = true
+    ringAudio!.src = isIncoming ? '/static/audios/incoming_call_ring.mp3' : '/static/audios/outgoing_call_ring.mp3'
+    ringAudio!.play()
+}
+
+function stopRing(): void {
+    if (ringAudio != null) {
+        ringAudio!.stop()
+        ringAudio = null
+    }
+}
+
+class AVEngineKit {
+    private initialized = false;
+    private sessionCallback: CallSessionCallback | null = null;
+
+    init(): void {
+        if (this.initialized) {
+            return
+        }
+        this.initialized = true
+        native.initAVEngineKit()
+        Config.ICE_SERVERS.forEach(s => native.addICEServer(s.uri, s.userName, s.password))
+        native.onAVEngineEvent((event: string, argsJson: string) => {
+            this._handleAVEngineEvent(event, parseArgs(argsJson))
+        })
+        native.onCallSessionEvent((event: string, argsJson: string) => {
+            this._handleCallSessionEvent(event, parseArgs(argsJson))
+        })
+    }
+
+    setSessionCallback(cb: CallSessionCallback | null): void {
+        this.sessionCallback = cb
+    }
+
+    isSupportMultiCall(): boolean {
+        return native.isSupportMultiCall()
+    }
+
+    setVideoProfile(profile: number, swapWidthHeight: boolean = false): void {
+        native.setVideoProfile(profile, swapWidthHeight)
+    }
+
+    startSingleCall(userId: string, audioOnly: boolean): CallSession | null {
+        return CallSession.fromJsonStr(native.startSingleCall(userId, audioOnly))
+    }
+
+    startMultiCall(groupId: string, participants: string[], audioOnly: boolean): CallSession | null {
+        return CallSession.fromJsonStr(native.startMultiCall(groupId, participants, audioOnly))
+    }
+
+    currentCallSession(): CallSession | null {
+        return CallSession.fromJsonStr(native.currentCallSession())
+    }
+
+    answerCall(callId: string, audioOnly: boolean): void {
+        native.answerCall(callId, audioOnly)
+    }
+
+    endCall(callId: string): void {
+        native.endCall(callId)
+    }
+
+    muteAudio(callId: string, mute: boolean): boolean {
+        return native.muteAudio(callId, mute)
+    }
+
+    muteVideo(callId: string, mute: boolean): boolean {
+        return native.muteVideo(callId, mute)
+    }
+
+    downgrade2Voice(callId: string): void {
+        native.downgrade2Voice(callId)
+    }
+
+    switchCamera(callId: string): void {
+        native.switchCamera(callId)
+    }
+
+    setSpeakerOn(callId: string, speakerOn: boolean): void {
+        native.setSpeakerOn(callId, speakerOn)
+    }
+
+    inviteNewParticipant(callId: string, userIds: string[]): void {
+        native.inviteNewParticipant(callId, userIds)
+    }
+
+    kickoffParticipant(callId: string, userId: string, successCB: () => void, failCB: (error: number) => void): void {
+        native.kickoffParticipant(callId, userId, successCB, failCB)
+    }
+
+    getParticipantProfiles(callId: string): ParticipantProfile[] {
+        const str = native.getParticipantProfiles(callId)
+        const arr = JSON.parseArray(str)
+        const list: ParticipantProfile[] = []
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                const o = arr[i]
+                if (o instanceof UTSJSONObject) {
+                    const p = ParticipantProfile.fromJsonObject(o as UTSJSONObject)
+                    if (p != null) {
+                        list.push(p)
+                    }
+                }
+            }
+        }
+        return list
+    }
+
+    getParticipantProfile(callId: string, userId: string, screenSharing: boolean = false): ParticipantProfile | null {
+        const str = native.getParticipantProfile(callId, userId, screenSharing)
+        if (str == null) {
+            return null
+        }
+        return ParticipantProfile.fromJsonObject(JSON.parseObject(str))
+    }
+
+    getMyProfile(callId: string): ParticipantProfile | null {
+        const str = native.getMyProfile(callId)
+        if (str == null) {
+            return null
+        }
+        return ParticipantProfile.fromJsonObject(JSON.parseObject(str))
+    }
+
+    checkOverlayPermission(): boolean {
+        return native.checkOverlayPermission()
+    }
+
+    minimize(callId: string): void {
+        native.minimize(callId)
+    }
+
+    setLocalVideoView(callId: string, view: any): void {
+        native.setLocalVideoView(callId, view)
+    }
+
+    setRemoteVideoView(callId: string, userId: string, view: any, screenSharing: boolean = false): void {
+        native.setRemoteVideoView(callId, userId, screenSharing, view)
+    }
+
+    setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {
+        native.setParticipantVideoType(callId, userId, screenSharing, videoType)
+    }
+
+    private _handleAVEngineEvent(event: string, args: Array<any | null>): void {
+        switch (event) {
+            case 'onReceiveCall': {
+                const session = CallSession.fromJsonStr(argString(args, 0))
+                if (session != null) {
+                    this._navigateToCallPage(session)
+                }
+                break
+            }
+            case 'shouldStartRing':
+                startRing(argBoolean(args, 0))
+                break
+            case 'shouldStopRing':
+                stopRing()
+                break
+            case 'didCallEnded':
+                stopRing()
+                if (isOnVoipPage()) {
+                    uni.navigateBack({} as NavigateBackOptions)
+                }
+                break
+            default:
+                break
+        }
+    }
+
+    private _navigateToCallPage(session: CallSession): void {
+        const url = session.conversation.type == ConversationType.Group ? '/pages/voip/Multi' : '/pages/voip/Single'
+        navigateToPage(url, session)
+    }
+
+    private _handleCallSessionEvent(event: string, args: Array<any | null>): void {
+        const cb = this.sessionCallback
+        if (cb == null) {
+            return
+        }
+        switch (event) {
+            case 'didCallEndWithReason':
+                stopRing()
+                cb.didCallEndWithReason(argNumber(args, 0))
+                break
+            case 'didChangeState':
+                cb.didChangeState(argNumber(args, 0))
+                break
+            case 'didParticipantJoined':
+                cb.didParticipantJoined(argString(args, 0), argBoolean(args, 1))
+                break
+            case 'didParticipantConnected':
+                cb.didParticipantConnected(argString(args, 0), argBoolean(args, 1))
+                break
+            case 'didParticipantLeft':
+                cb.didParticipantLeft(argString(args, 0), argNumber(args, 1), argBoolean(args, 2))
+                break
+            case 'didChangeMode':
+                cb.didChangeMode(argBoolean(args, 0))
+                break
+            case 'didChangeInitiator':
+                cb.didChangeInitiator(argString(args, 0))
+                break
+            case 'didCreateLocalVideoTrack':
+                cb.didCreateLocalVideoTrack()
+                break
+            case 'didReceiveRemoteVideoTrack':
+                cb.didReceiveRemoteVideoTrack(argString(args, 0), argBoolean(args, 1))
+                break
+            case 'didRemoveRemoteVideoTrack':
+                cb.didRemoveRemoteVideoTrack(argString(args, 0))
+                break
+            case 'didError':
+                cb.didError(argString(args, 0))
+                break
+            case 'didVideoMuted':
+                cb.didVideoMuted(argString(args, 0), argBoolean(args, 1))
+                break
+            case 'didReportAudioVolume':
+                cb.didReportAudioVolume(argString(args, 0), argNumber(args, 1))
+                break
+            case 'didAudioDeviceChanged':
+                cb.didAudioDeviceChanged(argNumber(args, 0))
+                break
+            case 'didChangeType':
+                cb.didChangeType(argString(args, 0), argBoolean(args, 1), argBoolean(args, 2))
+                break
+            case 'didMuteStateChanged': {
+                const arr = JSON.parseArray(argString(args, 0))
+                const list: string[] = []
+                if (arr != null) {
+                    for (let i = 0; i < arr.length; i++) {
+                        list.push(arr[i] as string)
+                    }
+                }
+                cb.didMuteStateChanged(list)
+                break
+            }
+            default:
+                break
+        }
+    }
+}
+
+const avEngineKit = new AVEngineKit()
+export default avEngineKit

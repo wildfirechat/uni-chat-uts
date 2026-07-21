@@ -1,0 +1,13 @@
+{
+  "minSdkVersion": "21",
+  "dependencies": [
+    {
+      "id": "wfc-client-libs-glob-root",
+      "source": "compileOnly fileTree(dir: rootProject.projectDir, include: ['**/wfc-client/**/client-release.aar', '**/wfc-client/**/mars-core-release.aar'])"
+    },
+    {
+      "id": "wfc-client-libs-glob-project",
+      "source": "compileOnly fileTree(dir: findProject(':uni_modules:wfc-client') != null ? project(':uni_modules:wfc-client').projectDir : rootProject.projectDir, include: ['**/client-release.aar', '**/mars-core-release.aar'])"
+    }
+  ]
+}

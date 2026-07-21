@@ -1,0 +1,608 @@
+<template>
+    <view class="voip-page" v-if="session != null">
+        <view class="content-container">
+            <!--self-->
+            <view class="participant-container" :class="manyParticipants ? 'participant-small' : 'participant-large'">
+                <view v-if="audioOnly || callState !== 4 || selfVideoMuted"
+                    class="participant-item" :class="manyParticipants ? 'participant-small' : 'participant-large'">
+                    <image class="avatar" :class="manyParticipants ? 'participant-small' : 'participant-large'"
+                        :src="selfUserInfo.portrait" />
+                    <text class="desc">我</text>
+                </view>
+                <wf-av-video-view v-else ref="localVideo" class="video localVideo"
+                    :class="manyParticipants ? 'participant-small' : 'participant-large'" />
+            </view>
+
+            <!--participants-->
+            <view v-for="p in participants" :key="p.userId" class="participant-container"
+                :class="manyParticipants ? 'participant-small' : 'participant-large'">
+                <view v-if="audioOnly || callState !== 4 || p.videoMuted || p.state !== 4"
+                    class="participant-item" :class="manyParticipants ? 'participant-small' : 'participant-large'">
+                    <image class="avatar" :class="manyParticipants ? 'participant-small' : 'participant-large'"
+                        :src="userInfoOf(p.userId).portrait" />
+                    <text class="desc">{{ userInfoOf(p.userId).displayName }}</text>
+                </view>
+                <wf-av-video-view v-else :ref="'remoteVideo-' + p.userId" class="video"
+                    :class="manyParticipants ? 'participant-small' : 'participant-large'"
+                    @tap="switchVideoType(p.userId)" />
+            </view>
+        </view>
+
+        <!--incoming-->
+        <view v-if="callState === 2" class="action-container">
+            <view class="action">
+                <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
+                <text class="action-desc">挂断</text>
+            </view>
+            <view class="action">
+                <image @tap="answer" class="action-img" src="/static/image/av/av_video_answer.png" />
+                <text class="action-desc">接听</text>
+            </view>
+        </view>
+
+        <!--outgoing / connecting-->
+        <view v-if="callState === 1 || callState === 3" class="action-container">
+            <view class="action">
+                <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
+                <text class="action-desc">挂断</text>
+            </view>
+        </view>
+
+        <!--connected-->
+        <view v-if="callState === 4" class="duration-action-container">
+            <text class="duration-text">{{ duration }}</text>
+            <view class="actions">
+                <view class="action">
+                    <image v-if="!selfAudioMuted" @tap="mute" class="action-img" src="/static/image/av/av_mute.png" />
+                    <image v-else @tap="mute" class="action-img" src="/static/image/av/av_mute_hover.png" />
+                    <text class="action-desc">静音</text>
+                </view>
+                <view v-if="!audioOnly" class="action">
+                    <image @tap="switchCamera" class="action-img" src="/static/image/av/av_camera.png" />
+                    <text class="action-desc">切换摄像头</text>
+                </view>
+                <view v-if="!audioOnly" class="action">
+                    <image v-if="!selfVideoMuted" @tap="muteVideo" class="action-img"
+                        src="/static/image/av/av_conference_video.png" />
+                    <image v-else @tap="muteVideo" class="action-img"
+                        src="/static/image/av/av_conference_video_mute.png" />
+                    <text class="action-desc">关闭摄像头</text>
+                </view>
+                <view class="action">
+                    <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
+                    <text class="action-desc">挂断</text>
+                </view>
+            </view>
+        </view>
+
+        <view class="voip-title-container">
+            <text class="duration-text" v-if="callState === 4">{{ duration }}</text>
+            <image @tap="minimize" class="minimize-img" src="/static/image/av/av_minimize.png" />
+            <image v-if="callState === 4" @tap="invite" class="invite-img" src="/static/image/av/add.png" />
+        </view>
+    </view>
+</template>
+
+<script lang="uts">
+import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
+import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
+import CallSession from "@/wfc/av/engine/callSession.uts";
+import CallState from "@/wfc/av/engine/callState.uts";
+import VideoType from "@/wfc/av/engine/videoType.uts";
+import ParticipantProfile from "@/wfc/av/engine/participantProfile.uts";
+import MultiCallOngoingMessageContent from "@/wfc/av/messages/multiCallOngoingMessageContent.uts";
+import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
+import { getUserInfo } from "@/wfc/client/userBrief.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { takePageOptions } from "@/common/nav.uts";
+import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+import store from "@/store.uts";
+import Config from "@/config.uts";
+
+export default {
+    name: "Multi",
+    data() {
+        return {
+            session: null as CallSession | null,
+            audioOnly: false,
+            callState: 0,
+            initiatorId: '',
+            participants: [] as ParticipantProfile[],
+            selfAudioMuted: false,
+            selfVideoMuted: false,
+            startTimestamp: 0,
+            currentTimestamp: 0,
+            timer: 0,
+            broadcastTimer: 0,
+            setupVideoViewsTimer: 0,
+        }
+    },
+
+    onLoad(_options: OnLoadOptions) {
+        const pageOptions = takePageOptions()
+        if (pageOptions != null && pageOptions instanceof CallSession) {
+            const session = pageOptions as CallSession
+            this.session = session
+            this.callState = session.state
+            this.audioOnly = session.audioOnly
+            this.initiatorId = session.initiator
+            if (session.connectedTime > 0) {
+                this.startTimestamp = session.connectedTime
+            }
+        }
+    },
+
+    mounted() {
+        const curSession = avEngineKit.currentCallSession()
+        if (curSession == null || curSession.state == CallState.STATUS_IDLE) {
+            uni.navigateBack({
+                delta: 1,
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+            return
+        }
+        this.session = curSession
+        this.callState = curSession.state
+        this.audioOnly = curSession.audioOnly
+        this.selfAudioMuted = curSession.audioMuted
+        this.selfVideoMuted = curSession.videoMuted
+        this.initiatorId = curSession.initiator
+
+        this.setupSessionCallback()
+
+        const profiles = avEngineKit.getParticipantProfiles(curSession.callId)
+        this.participants = profiles
+
+        if (this.callState == CallState.STATUS_CONNECTED) {
+            this.onVoipConnected()
+        }
+    },
+
+    onBackPress(event: OnBackPressOptions): boolean {
+        return event.from != 'navigateBack'
+    },
+
+    beforeUnmount() {
+        if (this.timer != 0) {
+            clearInterval(this.timer)
+            this.timer = 0
+        }
+        if (this.broadcastTimer != 0) {
+            clearInterval(this.broadcastTimer)
+            this.broadcastTimer = 0
+        }
+        if (this.setupVideoViewsTimer != 0) {
+            clearTimeout(this.setupVideoViewsTimer)
+            this.setupVideoViewsTimer = 0
+        }
+    },
+
+    methods: {
+        setupSessionCallback() {
+            const callback = new CallSessionCallback()
+            callback.didChangeState = (state: number): void => {
+                this.callState = state
+                if (state == CallState.STATUS_CONNECTED) {
+                    this.onVoipConnected()
+                    if (Config.ENABLE_MULTI_CALL_AUTO_JOIN && this.initiatorId == wfc.getUserId() && this.broadcastTimer == 0) {
+                        this.broadcastTimer = setInterval((): void => {
+                            this.broadcastMultiCallOngoing()
+                        }, 1000)
+                    }
+                } else if (state == CallState.STATUS_IDLE) {
+                    if (this.timer != 0) {
+                        clearInterval(this.timer)
+                        this.timer = 0
+                    }
+                }
+            }
+            callback.didChangeMode = (audioOnly: boolean): void => {
+                this.audioOnly = audioOnly
+            }
+            callback.didParticipantJoined = (userId: string, screenSharing: boolean): void => {
+                const session = this.session
+                if (session == null) {
+                    return
+                }
+                this.participants = this.participants.filter((p: ParticipantProfile): boolean => p.userId != userId)
+                const profile = avEngineKit.getParticipantProfile(session.callId, userId, screenSharing)
+                if (profile != null) {
+                    this.participants.push(profile)
+                }
+            }
+            callback.didParticipantLeft = (userId: string, _reason: number, _screenSharing: boolean): void => {
+                this.participants = this.participants.filter((p: ParticipantProfile): boolean => p.userId != userId)
+            }
+            callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
+                this.participants.forEach((p: ParticipantProfile): void => {
+                    if (p.userId == userId) {
+                        p.state = CallState.STATUS_CONNECTED
+                    }
+                })
+                if (this.callState == CallState.STATUS_CONNECTED) {
+                    this.setupVideoViews()
+                }
+            }
+            callback.didCallEndWithReason = (_reason: number): void => {
+                this.session = null
+            }
+            callback.didVideoMuted = (userId: string, muted: boolean): void => {
+                if (userId == wfc.getUserId()) {
+                    this.selfVideoMuted = muted
+                } else {
+                    this.participants.forEach((p: ParticipantProfile): void => {
+                        if (p.userId == userId) {
+                            p.videoMuted = muted
+                        }
+                    })
+                }
+                this.setupVideoViews()
+            }
+            callback.didChangeInitiator = (initiator: string): void => {
+                this.initiatorId = initiator
+                if (initiator == wfc.getUserId() && this.broadcastTimer == 0) {
+                    this.broadcastTimer = setInterval((): void => {
+                        this.broadcastMultiCallOngoing()
+                    }, 1000)
+                }
+            }
+            avEngineKit.setSessionCallback(callback)
+        },
+
+        userInfoOf(userId: string): UserInfo {
+            return getUserInfo(userId, false)
+        },
+
+        switchVideoType(userId: string) {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            avEngineKit.setParticipantVideoType(session.callId, userId, false, VideoType.BIG_STREAM)
+        },
+
+        answer() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            checkVoipPermissions(session.audioOnly).then((granted: boolean): void => {
+                if (!granted) {
+                    this.hangup()
+                    return
+                }
+                avEngineKit.answerCall(session.callId, false)
+            })
+        },
+
+        hangup() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            avEngineKit.endCall(session.callId)
+            this.session = null
+        },
+
+        switchCamera() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            avEngineKit.switchCamera(session.callId)
+        },
+
+        mute() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            this.selfAudioMuted = !this.selfAudioMuted
+            avEngineKit.muteAudio(session.callId, this.selfAudioMuted)
+        },
+
+        muteVideo() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            this.selfVideoMuted = !this.selfVideoMuted
+            avEngineKit.muteVideo(session.callId, this.selfVideoMuted)
+        },
+
+        invite() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            const groupMemberUserInfos = store.getGroupMemberUserInfos(session.conversation.target, false)
+            const excluded: UserInfo[] = [this.selfUserInfo]
+            this.participants.forEach((p: ParticipantProfile): void => {
+                excluded.push(this.userInfoOf(p.userId))
+            })
+            const options = new PickUsersOptions()
+            options.users = groupMemberUserInfos
+            options.initialCheckedUsers = excluded
+            options.uncheckableUsers = excluded
+            options.confirmTitle = '确定'
+            options.successCB = (users: UserInfo[]): void => {
+                const ids: string[] = []
+                for (let i = 0; i < users.length; i++) {
+                    ids.push(users[i].uid)
+                }
+                avEngineKit.inviteNewParticipant(session.callId, ids)
+            }
+            pickUsers(options)
+        },
+
+        setupVideoViews() {
+            if (this.audioOnly || this.session == null) {
+                return
+            }
+            this.$nextTick((): void => {
+                const session = this.session
+                if (session == null) {
+                    return
+                }
+                let allReady = true
+
+                if (!this.selfVideoMuted) {
+                    const localVideoRef = this.$refs['localVideo']
+                    if (localVideoRef != null) {
+                        const nativeView = (localVideoRef as ComponentPublicInstance).$callMethod('getNativeView')
+                        avEngineKit.setLocalVideoView(session.callId, nativeView!)
+                    } else {
+                        allReady = false
+                    }
+                }
+
+                this.participants.forEach((p: ParticipantProfile): void => {
+                    if (!p.videoMuted && p.state == CallState.STATUS_CONNECTED) {
+                        const remoteVideoRef = this.$refs['remoteVideo-' + p.userId]
+                        if (remoteVideoRef != null) {
+                            const nativeView = (remoteVideoRef as ComponentPublicInstance).$callMethod('getNativeView')
+                            avEngineKit.setRemoteVideoView(session.callId, p.userId, nativeView!)
+                        } else {
+                            allReady = false
+                        }
+                    }
+                })
+
+                if (this.setupVideoViewsTimer != 0) {
+                    clearTimeout(this.setupVideoViewsTimer)
+                    this.setupVideoViewsTimer = 0
+                }
+                if (!allReady && this.session != null) {
+                    this.setupVideoViewsTimer = setTimeout((): void => {
+                        this.setupVideoViews()
+                    }, 100)
+                }
+            })
+        },
+
+        broadcastMultiCallOngoing() {
+            const session = this.session
+            if (session == null || this.callState != CallState.STATUS_CONNECTED) {
+                return
+            }
+            const selfId = wfc.getUserId()
+            const targets: string[] = []
+            this.participants.forEach((p: ParticipantProfile): void => {
+                if (p.userId != selfId) {
+                    targets.push(p.userId)
+                }
+            })
+            const content = new MultiCallOngoingMessageContent()
+            content.callId = session.callId
+            content.initiator = session.initiator
+            content.audioOnly = session.audioOnly
+            content.targets = targets
+            wfc.sendConversationMessage(session.conversation, content)
+        },
+
+        onVoipConnected() {
+            if (this.timer == 0) {
+                if (this.startTimestamp == 0) {
+                    this.startTimestamp = new Date().getTime()
+                }
+                this.timer = setInterval((): void => {
+                    this.currentTimestamp = new Date().getTime()
+                }, 1000)
+            }
+            this.setupVideoViews()
+        },
+
+        minimize() {
+            const session = this.session
+            if (session == null) {
+                return
+            }
+            if (avEngineKit.checkOverlayPermission()) {
+                avEngineKit.minimize(session.callId)
+                uni.navigateBack({
+                    delta: 1,
+                    fail: (err) => {
+                        console.log('nav back err', err)
+                    }
+                } as NavigateBackOptions)
+            } else {
+                uni.showToast({
+                    title: '需要悬浮窗权限',
+                    icon: 'none',
+                } as ShowToastOptions)
+            }
+        },
+    },
+
+    computed: {
+        selfUserInfo(): UserInfo {
+            return getUserInfo(wfc.getUserId(), false)
+        },
+        manyParticipants(): boolean {
+            return this.participants.length >= 4
+        },
+        duration(): string {
+            if (this.currentTimestamp <= 0) {
+                return '00:00'
+            }
+            const elapsed = Math.floor((this.currentTimestamp - this.startTimestamp) / 1000)
+            const min = Math.floor(elapsed / 60)
+            const sec = elapsed % 60
+            const minStr = min < 10 ? ('0' + min) : ('' + min)
+            const secStr = sec < 10 ? ('0' + sec) : ('' + sec)
+            return minStr + ':' + secStr
+        },
+    },
+}
+</script>
+
+<style scoped>
+.voip-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    padding-top: 132rpx;
+    background-color: #292929;
+}
+
+.content-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.participant-container {
+    display: flex;
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.participant-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 2rpx;
+}
+
+.participant-large {
+    width: 375rpx;
+    height: 375rpx;
+}
+
+.participant-small {
+    width: 250rpx;
+    height: 250rpx;
+}
+
+.avatar {
+    border-radius: 4px;
+}
+
+.desc {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    background-color: rgba(211, 211, 211, 0.8);
+    color: #000000;
+    font-size: 13px;
+    padding: 4px 8px;
+}
+
+.video {
+    display: flex;
+}
+
+.localVideo {
+    transform: scaleX(-1);
+}
+
+.duration-action-container {
+    width: 750rpx;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding-bottom: 20px;
+}
+
+.duration-text {
+    color: #ffffff;
+    font-size: 15px;
+    padding: 5px 0;
+}
+
+.duration-action-container .actions {
+    width: 750rpx;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-around;
+}
+
+.action-container {
+    width: 750rpx;
+    position: absolute;
+    bottom: 40px;
+    left: 0;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+}
+
+.action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.action-img {
+    width: 60px;
+    height: 60px;
+}
+
+.action-desc {
+    color: #ffffff;
+    font-size: 12px;
+    padding-top: 5px;
+}
+
+.voip-title-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 750rpx;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 44rpx;
+    padding: 0 40rpx;
+    height: 88rpx;
+}
+
+.minimize-img {
+    width: 30px;
+    height: 30px;
+}
+
+.invite-img {
+    width: 30px;
+    height: 30px;
+}
+</style>

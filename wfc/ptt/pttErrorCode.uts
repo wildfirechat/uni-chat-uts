@@ -1,0 +1,26 @@
+export default class PttErrorCode {
+    static UNKNOWN = -1;
+    static OCCUPIED = -2;
+    static MAX_SPEAKER = -3;
+    static GROUP_MUTED = -4;
+    static GROUP_MEMBER_MUTED = -5;
+    static TALKING = -6;
+    static NOT_IN_GROUP = -7;
+    static PTT_DISABLED = -8;
+    // 没有录音权限等，会触发
+    static RECORDER_ERROR = -9;
+
+    static desc(code: number): string {
+        switch (code) {
+            case PttErrorCode.OCCUPIED: return '当前正被占用';
+            case PttErrorCode.MAX_SPEAKER: return '发言人数已达上限';
+            case PttErrorCode.GROUP_MUTED: return '群组已被全员禁言';
+            case PttErrorCode.GROUP_MEMBER_MUTED: return '您已被禁言';
+            case PttErrorCode.TALKING: return '正在讲话中';
+            case PttErrorCode.NOT_IN_GROUP: return '您不在该会话内';
+            case PttErrorCode.PTT_DISABLED: return '对讲功能未开启';
+            case PttErrorCode.RECORDER_ERROR: return '录音失败，请检查麦克风权限';
+            default: return '请求失败';
+        }
+    }
+}

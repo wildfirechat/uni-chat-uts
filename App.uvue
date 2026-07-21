@@ -3,6 +3,8 @@ import wfc from './wfc/client/wfc.uts'
 import store, { miscState } from './store.uts'
 import Config from './config.uts'
 import CustomMessageConfig from './wfc_custom_message/customMessageConfig.uts'
+import avEngineKit from './wfc/av/engine/avEngineKit.uts'
+import pttClient from './wfc/ptt/pttClient.uts'
 
 export default {
     onLaunch: function () {
@@ -44,6 +46,14 @@ export default {
         }
         CustomMessageConfig.registerCustomMessages();
         store.init();
+
+        // 音视频通话、对讲
+        if (Config.ENABLE_VOIP) {
+            avEngineKit.init();
+        }
+        if (Config.ENABLE_PTT) {
+            pttClient.init();
+        }
 
         // 推送
         uni.getPushClientId({

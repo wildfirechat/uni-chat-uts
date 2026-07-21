@@ -26,6 +26,8 @@ export default class MessageContentType {
     static Streaming_Text_Generating = 14;
     //流式文本消息
     static Streaming_Text_Generated = 15;
+    //对讲结束后保存的语音消息
+    static Ptt_Voice = 23;
     static Mark_Unread_Sync = 31;
 
     static StartSecretChat_Notification = 40;

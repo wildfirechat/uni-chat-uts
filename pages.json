@@ -177,6 +177,22 @@
             "style": {
                 "navigationBarTitleText": "API测试"
             }
+        },
+        {
+            "path": "pages/voip/Single",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/voip/Multi",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
         }
     ],
     "tabBar": {

@@ -1,0 +1,44 @@
+export default class CallEndReason {
+    static REASON_Unknown = 0;
+    static REASON_Busy = 1;
+    static REASON_SignalError = 2;
+    static REASON_Hangup = 3;
+    static REASON_MediaError = 4;
+    static REASON_RemoteHangup = 5;
+    static REASON_OpenCameraFailure = 6;
+    static REASON_Timeout = 7;
+    static REASON_AcceptByOtherClient = 8;
+    static REASON_AllLeft = 9;
+    static RemoteBusy = 10;
+    static RemoteTimeout = 11;
+    static RemoteNetworkError = 12;
+    static RoomDestroyed = 13;
+    static RoomNotExist = 14;
+    static RoomParticipantsFull = 15;
+    static Interrupted = 16;
+    static RemoteInterrupted = 17;
+    static Kicked = 18;
+
+    static desc(reason: number): string {
+        switch (reason) {
+            case CallEndReason.REASON_Busy: return '对方正忙';
+            case CallEndReason.REASON_SignalError: return '信令错误';
+            case CallEndReason.REASON_Hangup: return '已挂断';
+            case CallEndReason.REASON_MediaError: return '媒体错误';
+            case CallEndReason.REASON_RemoteHangup: return '对方已挂断';
+            case CallEndReason.REASON_OpenCameraFailure: return '摄像头开启失败';
+            case CallEndReason.REASON_Timeout: return '对方无应答';
+            case CallEndReason.REASON_AcceptByOtherClient: return '已在其他设备接听';
+            case CallEndReason.RemoteBusy: return '对方正忙';
+            case CallEndReason.RemoteTimeout: return '对方无应答';
+            case CallEndReason.RemoteNetworkError: return '对方网络错误';
+            case CallEndReason.RoomDestroyed: return '房间已销毁';
+            case CallEndReason.RoomNotExist: return '房间不存在';
+            case CallEndReason.RoomParticipantsFull: return '房间人数已满';
+            case CallEndReason.Interrupted: return '通话被打断';
+            case CallEndReason.RemoteInterrupted: return '对方通话被打断';
+            case CallEndReason.Kicked: return '已被移出通话';
+            default: return '';
+        }
+    }
+}

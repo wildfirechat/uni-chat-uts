@@ -1,0 +1,9 @@
+/**
+ * 单次 requestTalk 请求的回调，页面按需给需要的字段赋值（函数类型属性，理由同 callSessionCallback.uts）。
+ */
+export default class TalkingCallback {
+    onStartTalking: () => void = (): void => {}
+    onTalkingEnd: (reason: number) => void = (_reason: number): void => {}
+    onRequestFail: (errorCode: number) => void = (_errorCode: number): void => {}
+    onAmplitudeUpdate: (amplitude: number) => void = (_amplitude: number): void => {}
+}

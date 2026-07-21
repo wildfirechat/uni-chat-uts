@@ -1,0 +1,38 @@
+import MessageContent from '../../messages/messageContent.uts';
+import MessageContentType from '../../messages/messageContentType.uts';
+import MessagePayload from '../../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+
+export default class MuteVideoMessageContent extends MessageContent {
+    callId = '';
+    videoMuted = false;
+    existParticipants: string[] = [];
+
+    constructor() {
+        super(MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO);
+    }
+
+    override digest(message: any | null): string {
+        return '[视频状态变更]';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.callId;
+        const obj = { v: this.videoMuted ? 1 : 0, eps: this.existParticipants } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.callId = payload.content;
+        if (payload.binaryContent != '') {
+            const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+            if (obj != null) {
+                this.videoMuted = (obj.getNumber('v') ?? 0) == 1;
+                this.existParticipants = obj.getArray<string>('eps') ?? ([] as string[]);
+            }
+        }
+    }
+}

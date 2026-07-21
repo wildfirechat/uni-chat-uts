@@ -54,8 +54,18 @@ import LeaveChannelChatMessageContent from "../messages/leaveChannelChatMessageC
 import StreamingTextGeneratingMessageContent from "../messages/streamingTextGeneratingMessageContent.uts";
 import StreamingTextGeneratedMessageContent from "../messages/streamingTextGeneratedMessageContent.uts";
 import CallStartMessageContent from '../av/messages/callStartMessageContent.uts';
+import CallAnswerMessageContent from '../av/messages/callAnswerMessageContent.uts';
+import CallAnswerTMessageContent from '../av/messages/callAnswerTMessageContent.uts';
+import CallByeMessageContent from '../av/messages/callByeMessageContent.uts';
+import CallSignalMessageContent from '../av/messages/callSignalMessageContent.uts';
+import CallModifyMessageContent from '../av/messages/callModifyMessageContent.uts';
+import AddParticipantsMessageContent from '../av/messages/addParticipantsMessageContent.uts';
+import MuteVideoMessageContent from '../av/messages/muteVideoMessageContent.uts';
+import MultiCallOngoingMessageContent from '../av/messages/multiCallOngoingMessageContent.uts';
+import JoinCallRequestMessageContent from '../av/messages/joinCallRequestMessageContent.uts';
 import ConferenceInviteMessageContent from '../av/messages/conferenceInviteMessageContent.uts';
 import VoipStubMessageContent from '../av/messages/voipStubMessageContent.uts';
+import PttSoundMessageContent from '../ptt/pttSoundMessageContent.uts';
 
 export type MessageContentCreator = () => MessageContent
 
@@ -162,19 +172,20 @@ export default class MessageConfig {
         new MessageContentRegistry('delete', PersistFlag.No_Persist, MessageContentType.DeleteMessage_Notification, (): MessageContent => new DeleteMessageContent()),
         new MessageContentRegistry('streamingTextGenerating', PersistFlag.Transparent, MessageContentType.Streaming_Text_Generating, (): MessageContent => new StreamingTextGeneratingMessageContent()),
         new MessageContentRegistry('streamingTextGenerated', PersistFlag.Persist_And_Count, MessageContentType.Streaming_Text_Generated, (): MessageContent => new StreamingTextGeneratedMessageContent()),
+        new MessageContentRegistry('pttSoundMessageContent', PersistFlag.Persist_And_Count, MessageContentType.Ptt_Voice, (): MessageContent => new PttSoundMessageContent()),
         new MessageContentRegistry('callStartMessageContent', PersistFlag.Persist, MessageContentType.VOIP_CONTENT_TYPE_START, (): MessageContent => new CallStartMessageContent()),
-        new MessageContentRegistry('callAnswerMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_ACCEPT, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_ACCEPT)),
-        new MessageContentRegistry('callAnswerTMessageContent', PersistFlag.Transparent, MessageContentType.VOIP_CONTENT_TYPE_ACCEPT_T, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_ACCEPT_T)),
-        new MessageContentRegistry('callByeMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_END, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_END)),
-        new MessageContentRegistry('callSignalMessageContent', PersistFlag.Transparent, MessageContentType.VOIP_CONTENT_TYPE_SIGNAL, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_SIGNAL)),
-        new MessageContentRegistry('callModifyMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MODIFY, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_MODIFY)),
-        new MessageContentRegistry('callAddParticipant', PersistFlag.Persist, MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT)),
-        new MessageContentRegistry('callMuteVideo', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO)),
+        new MessageContentRegistry('callAnswerMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_ACCEPT, (): MessageContent => new CallAnswerMessageContent()),
+        new MessageContentRegistry('callAnswerTMessageContent', PersistFlag.Transparent, MessageContentType.VOIP_CONTENT_TYPE_ACCEPT_T, (): MessageContent => new CallAnswerTMessageContent()),
+        new MessageContentRegistry('callByeMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_END, (): MessageContent => new CallByeMessageContent()),
+        new MessageContentRegistry('callSignalMessageContent', PersistFlag.Transparent, MessageContentType.VOIP_CONTENT_TYPE_SIGNAL, (): MessageContent => new CallSignalMessageContent()),
+        new MessageContentRegistry('callModifyMessageContent', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MODIFY, (): MessageContent => new CallModifyMessageContent()),
+        new MessageContentRegistry('callAddParticipant', PersistFlag.Persist, MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT, (): MessageContent => new AddParticipantsMessageContent()),
+        new MessageContentRegistry('callMuteVideo', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO, (): MessageContent => new MuteVideoMessageContent()),
         new MessageContentRegistry('conferenceInvite', PersistFlag.Persist_And_Count, MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE, (): MessageContent => new ConferenceInviteMessageContent()),
         new MessageContentRegistry('conferenceChangeMode', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE)),
         new MessageContentRegistry('conferenceKickoffMember', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER)),
-        new MessageContentRegistry('multiCallOngoing', PersistFlag.Transparent, MessageContentType.VOIP_Multi_Call_Ongoing, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_Multi_Call_Ongoing)),
-        new MessageContentRegistry('joinCallRequest', PersistFlag.Transparent, MessageContentType.VOIP_Join_Call_Request, (): MessageContent => new VoipStubMessageContent(MessageContentType.VOIP_Join_Call_Request)),
+        new MessageContentRegistry('multiCallOngoing', PersistFlag.Transparent, MessageContentType.VOIP_Multi_Call_Ongoing, (): MessageContent => new MultiCallOngoingMessageContent()),
+        new MessageContentRegistry('joinCallRequest', PersistFlag.Transparent, MessageContentType.VOIP_Join_Call_Request, (): MessageContent => new JoinCallRequestMessageContent()),
         new MessageContentRegistry('markUnreadMessage', PersistFlag.No_Persist, MessageContentType.Mark_Unread_Sync, (): MessageContent => new MarkUnreadMessageContent()),
         new MessageContentRegistry('pcLoginRequest', PersistFlag.No_Persist, MessageContentType.PC_Login_Request, (): MessageContent => new PcLoginRequestMessageContent()),
         new MessageContentRegistry('startSecretChat', PersistFlag.Persist_And_Count, MessageContentType.StartSecretChat_Notification, (): MessageContent => new StartSecretChatNotification()),

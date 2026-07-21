@@ -1,0 +1,25 @@
+/**
+ * 音视频通话的视频渲染 uts 页面组件（Android）。
+ *
+ * 用 DCloud 的 "uts 页面组件" 写法：export default 一个带 NVLoad() 的对象，NVLoad() 返回的
+ * 原生 View 会被框架赋给组件实例的 this.$el。页面里用 <wf-av-video-view ref="xxx" /> 声明，
+ * 脚本里通过 ref 拿到组件实例，再调用 getNativeView() 得到 FrameLayout，传给
+ * wfc-av-client 插件的 setLocalVideoView/setRemoteVideoView。
+ *
+ * 这是本次实现里唯一没有实机验证过的写法，如果编译报错，请对照 uni-app x 官方
+ * "uts 组件开发" 文档核对 NVLoad/expose 的确切写法。
+ */
+import FrameLayout from 'android.widget.FrameLayout'
+
+export default {
+    name: "wf-av-video-view",
+    expose: ['getNativeView'],
+    NVLoad(): FrameLayout {
+        return new FrameLayout(this.$androidContext!)
+    },
+    methods: {
+        getNativeView(): FrameLayout {
+            return this.$el as FrameLayout
+        }
+    }
+}

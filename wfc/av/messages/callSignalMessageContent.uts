@@ -1,0 +1,39 @@
+import MessageContent from '../../messages/messageContent.uts';
+import MessageContentType from '../../messages/messageContentType.uts';
+import MessagePayload from '../../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+
+/**
+ * 通话信令透传消息（SDP/ICE candidate 等），内容原样透传给引擎，应用层不需要解析。
+ */
+export default class CallSignalMessageContent extends MessageContent {
+    callId = '';
+    payload = '';
+
+    constructor() {
+        super(MessageContentType.VOIP_CONTENT_TYPE_SIGNAL);
+    }
+
+    override digest(message: any | null): string {
+        return '[通话信令]';
+    }
+
+    override encode(): MessagePayload {
+        const p = super.encode();
+        p.content = this.callId;
+        const obj = { p: this.payload } as UTSJSONObject;
+        p.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return p;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.callId = payload.content;
+        if (payload.binaryContent != '') {
+            const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+            if (obj != null) {
+                this.payload = obj.getString('p') ?? '';
+            }
+        }
+    }
+}

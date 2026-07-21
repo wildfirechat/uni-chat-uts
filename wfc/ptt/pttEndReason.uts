@@ -1,0 +1,35 @@
+export default class PttEndReason {
+    // 用户主动释放
+    static User_Release = 0;
+    // 讲话超时
+    static Timeout = 1;
+    // 被抢占
+    static Take_Over = 2;
+    // 网络错误
+    static Network_Error = 3;
+    // 群禁言，只有群主能讲话
+    static Group_Muted = 4;
+    // 成员被禁言
+    static Member_Muted = 5;
+    // 音频服务错误
+    static Media_Error = 6;
+    // 不在会话内
+    static Not_InGroup = 7;
+    // 用户被封禁
+    static User_Disabled = 8;
+
+    static desc(reason: number): string {
+        switch (reason) {
+            case PttEndReason.User_Release: return '已结束讲话';
+            case PttEndReason.Timeout: return '讲话超时';
+            case PttEndReason.Take_Over: return '被其他成员抢占';
+            case PttEndReason.Network_Error: return '网络错误';
+            case PttEndReason.Group_Muted: return '群组已被全员禁言';
+            case PttEndReason.Member_Muted: return '您已被禁言';
+            case PttEndReason.Media_Error: return '音频服务错误';
+            case PttEndReason.Not_InGroup: return '您不在该会话内';
+            case PttEndReason.User_Disabled: return '账号已被封禁';
+            default: return '';
+        }
+    }
+}

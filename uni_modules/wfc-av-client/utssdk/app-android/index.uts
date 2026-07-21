@@ -1,0 +1,472 @@
+/**
+ * 音视频通话 UTS 插件（Android）。
+ *
+ * 直接封装 avenginekit.aar 里的 cn.wildfirechat.avenginekit.AVEngineKit（引擎单例）与
+ * AVEngineKit.CallSession（每次通话的会话对象），不经过旧版 nativeplugin 的
+ * AVEngineKitModule.java/@UniJSMethod JS bridge 层——uts 直接调用 Kotlin/Java 方法即可，
+ * 不需要走 JS bridge。方法签名已通过 javap 反编译 avenginekit.aar 核对，
+ * 事件回调的分发方式参照 uni_modules/wfc-client 里 ClientModule.setEventListener 的写法
+ * （模块级监听器 + setXxxEventListener 订阅入口），而不是旧插件依赖 UniModule 生命周期的
+ * fireGlobalEventCallback 机制。
+ *
+ * 方法签名已用 javap 反编译 avenginekit.aar 逐一核对（见下方注意事项），HBuilderX 云打包
+ * 实测通过。嵌套类型导入写法 `cn.wildfirechat.avenginekit.AVEngineKit.CallSession` 等
+ * Outer.Inner 语法编译正常。
+ *
+ * 踩过的坑，改动这个文件时注意：
+ * 1. 接口里 `int`/`Int` 类型的参数、返回值，uts 侧必须显式声明成 `Int`（大写，Kotlin 原生类型），
+ *    不能用 `number`——用 `number` 会导致 Kotlin 认为签名不匹配，报 "xxx overrides nothing"。
+ *    这个坑只存在于 `class X implements Y { override ... }` 这种直接实现 Java 接口的地方；
+ *    普通的 uts 导出函数、纯 uts 闭包参数用 number 没问题（编译器在 JS bridge 层会自动做数值转换）。
+ * 2. `Xxx.ordinal` 是属性不是方法，写 `.ordinal()` 会报 "Int cannot be invoked as a function"。
+ * 3. uts 内建的 `Array<T>`/`List<T>` 不等于 Kotlin 原生的 `kotlin.Array<T>`/`kotlin.collections.List<T>`
+ *    ——uts 的 Array 是跨端封装类型（见 Array.d.ts 的 fromNative 说明，参数类型里 kotlin.Array 和
+ *    uts Array 是并列的两种不同类型）。所以直接 implements 的接口方法里如果原生签名是对象数组
+ *    （如 `StatsReport[]`），必须写成 `kotlin.Array<StatsReport>`（完整限定名，绕开同名冲突），
+ *    写 `Array<StatsReport>` 会被当成 uts 自己的 Array 类型，导致 "overrides nothing"。
+ *    而 `java.util.List<T>` 场景反而应该直接写 Kotlin 原生写法 `MutableList<String>`（大写 String，
+ *    不带包名前缀，参照 HBuilderX 自带的 UTSActivityCallback.d.ts 里 onRequestPermissionsResult
+ *    的 `permissions: MutableList<String>` 写法）——`kotlin.collections.*` 在 app-android 平台
+ *    uts 文件里同样是全局可用的，无需 import。传参给 JSONArray(collection) 构造方法不需要
+ *    额外转换，直接传即可。
+ * 4. 重载方法找不到 signature 时，用 javap -p 反编译 aar 里的 .class 拿真实签名，比瞎猜靠谱。
+ * 5. 每个 uts 插件（uni_module）编译 Kotlin 时只能看到自己 utssdk/app-android/libs/ 下的
+ *    aar/jar，看不到其他 uni_module（如 wfc-client）libs 下的东西。avenginekit.aar 里的
+ *    AVEngineKit 类本身引用了 cn.wildfirechat.model.Conversation、
+ *    cn.wildfirechat.remote.OnReceiveMessageListener 等 wfc-client 核心 SDK（client-release.aar）
+ *    里的类型（父类/方法参数），所以即使本插件代码不直接 import 它们，Kotlin 编译期做完整性检查时
+ *    也会报 "Unresolved reference" / "Cannot access class ... Check your module classpath"。
+ *    弯路记录：一开始把 client-release.aar（后来换成解压出的 classes.jar）直接复制进本插件 libs/，
+ *    Kotlin 是编过了，但云打包把每个插件的 libs 都汇总进 app 主模块打包时，client-release 出现了
+ *    多份（wfc-client 一份 + 本插件一份 + wfc-ptt-client 一份），先后报 "Duplicate resources"
+ *    （aar 带 res/）和 mergeReleaseJniLibFolders 的 "Duplicate resources"（同名 jar 冲突）。
+ *    正确解法（compileOnly）：本插件只需要这些类型做 Kotlin 编译期解析，运行期这些类由 wfc-client
+ *    打进 app 里已经有了，所以本插件不该再打包一份。DCloud 的插件机制里，插件自己 libs/ 下的库会
+ *    被同时加到「插件模块(compileOnly)」和「app 主模块(implementation，负责实际打包)」两处，没法
+ *    单独关掉后者；因此这里改为：libs/ 里不放 client-release，改用 config.json 的 dependencies.source
+ *    注入原生 gradle 的 `compileOnly fileTree(...)`，只编译不打包地引用 wfc-client 那一份
+ *    client-release.aar / mars-core-release.aar。
+ *    踩坑：云打包里每个插件是独立 gradle 子工程（报错 task 为
+ *    `:uni_modules:wfc-av-client:compileReleaseKotlin`），fileTree 的相对 dir 相对各子工程 projectDir
+ *    解析，而 projectDir 的确切层级从外部猜不准——先后试过 '../app/libs'、'../uniappx/libs'、
+ *    '../../../wfc-client/utssdk/app-android/libs' 等一堆写死路径全落空。
+ *    最终改成「不猜层级、直接全树 glob」：`fileTree(dir: rootProject.projectDir,
+ *    include: ['/wfc-client/client-release.aar', ...])`——从 gradle 根目录递归匹配 wfc-client
+ *    目录下的 aar，与 projectDir 深度无关；另加一条用 project(':uni_modules:wfc-client').projectDir
+ *    兜底。glob 匹配不到就是空集、不报错，所以两条并存安全。编译期能解析类型、打包期 client-release
+ *    只有 wfc-client 一份，不会 Duplicate。
+ *    注意：config.json 的 source 只在云打包/自定义基座的 gradle 阶段生效，标准基座真机热运行
+ *    （uts→dex 直编、只扫 libs/）看不到它，所以本插件原生能力需云打包/自定义基座验证。
+ *    若云打包仍报和之前一模一样的 client-release Unresolved reference（说明连 glob 都没让 source 生效），
+ *    那基本可判定 config.json 的 source 注入在当前云打包版本里对本地 aar 的 compileOnly 不起作用，
+ *    应改走「把 av/ptt 的原生代码与 aar 合并进 wfc-client 插件（同一 gradle 模块、client-release 只一份）」
+ *    这个确定可行的方案。
+ */
+
+import { NativeEventListener } from '../interface.uts'
+
+import AVEngineKit from 'cn.wildfirechat.avenginekit.AVEngineKit'
+import AVEngineCallback from 'cn.wildfirechat.avenginekit.AVEngineKit.AVEngineCallback'
+import CallSession from 'cn.wildfirechat.avenginekit.AVEngineKit.CallSession'
+import CallSessionCallback from 'cn.wildfirechat.avenginekit.AVEngineKit.CallSessionCallback'
+import CallState from 'cn.wildfirechat.avenginekit.AVEngineKit.CallState'
+import CallEndReason from 'cn.wildfirechat.avenginekit.AVEngineKit.CallEndReason'
+import ParticipantProfile from 'cn.wildfirechat.avenginekit.AVEngineKit.ParticipantProfile'
+import VideoType from 'cn.wildfirechat.avenginekit.AVEngineKit.VideoType'
+import GeneralCallback from 'cn.wildfirechat.avenginekit.AVEngineKit.GeneralCallback'
+import AVAudioManager from 'cn.wildfirechat.avenginekit.AVAudioManager'
+import AudioDevice from 'cn.wildfirechat.avenginekit.AVAudioManager.AudioDevice'
+import VideoProfile from 'cn.wildfirechat.avenginekit.VideoProfile'
+import Conversation from 'cn.wildfirechat.model.Conversation'
+import ConversationType from 'cn.wildfirechat.model.Conversation.ConversationType'
+
+import JSONObject from 'org.json.JSONObject'
+import JSONArray from 'org.json.JSONArray'
+import FrameLayout from 'android.widget.FrameLayout'
+import ViewGroup from 'android.view.ViewGroup'
+import ScalingType from 'org.webrtc.RendererCommon.ScalingType'
+import StatsReport from 'org.webrtc.StatsReport'
+import Settings from 'android.provider.Settings'
+
+let avEngineEventListener: NativeEventListener | null = null
+let callSessionEventListener: NativeEventListener | null = null
+let initialized = false
+
+function toConversation(type: number, target: string, line: number): Conversation {
+    const conv = new Conversation()
+    conv.type = ConversationType.values()[type.toInt()]
+    conv.target = target
+    conv.line = line.toInt()
+    return conv
+}
+
+function conversationToJson(conv: Conversation): JSONObject {
+    const obj = new JSONObject()
+    obj.put("type", conv.type.ordinal)
+    obj.put("target", conv.target)
+    obj.put("line", conv.line)
+    return obj
+}
+
+function callSessionToJson(session: CallSession): string {
+    const obj = new JSONObject()
+    obj.put("callId", session.getCallId())
+    obj.put("initiator", session.getInitiator() ?? "")
+    obj.put("inviter", session.getInviter() ?? "")
+    obj.put("state", session.getState().ordinal)
+    obj.put("startTime", session.getStartTime())
+    obj.put("connectedTime", session.getConnectedTime())
+    obj.put("endTime", session.getEndTime())
+    obj.put("conversation", conversationToJson(session.getConversation()))
+    obj.put("audioOnly", session.isAudioOnly())
+    const endReason = session.getEndReason()
+    obj.put("endReason", endReason == null ? 0 : endReason.ordinal)
+    obj.put("conference", session.isConference())
+    obj.put("audience", session.isAudience())
+    obj.put("advanced", session.isAdvanced())
+    obj.put("audioMuted", session.audioMuted)
+    obj.put("videoMuted", session.videoMuted)
+    obj.put("title", session.getTitle() ?? "")
+    obj.put("desc", session.getDesc() ?? "")
+    obj.put("pin", session.getPin() ?? "")
+    obj.put("host", session.getHost() ?? "")
+    obj.put("multiCall", session.getParticipantIds().size > 1)
+    return obj.toString()
+}
+
+function participantProfileToJson(p: ParticipantProfile): JSONObject {
+    const obj = new JSONObject()
+    obj.put("userId", p.getUserId())
+    obj.put("startTime", p.getStartTime())
+    obj.put("state", p.getState().ordinal)
+    obj.put("videoMuted", p.isVideoMuted())
+    obj.put("audioMuted", p.isAudioMuted())
+    obj.put("audience", p.isAudience())
+    obj.put("screenSharing", p.isScreenSharing())
+    return obj
+}
+
+function currentSessionOrNull(): CallSession | null {
+    try {
+        return AVEngineKit.Instance().getCurrentSession()
+    } catch (e) {
+        return null
+    }
+}
+
+function fireAVEngineEvent(event: string, args: any[]): void {
+    avEngineEventListener?.(event, JSONArray(args.toKotlinList()).toString())
+}
+
+function fireCallSessionEvent(event: string, args: any[]): void {
+    callSessionEventListener?.(event, JSONArray(args.toKotlinList()).toString())
+}
+
+class NativeAVEngineCallback implements AVEngineCallback {
+    override onReceiveCall(session: CallSession): void {
+        session.setCallback(nativeCallSessionCallback)
+        fireAVEngineEvent("onReceiveCall", [callSessionToJson(session)])
+    }
+
+    override shouldStartRing(isIncoming: boolean): void {
+        fireAVEngineEvent("shouldStartRing", [isIncoming])
+    }
+
+    override shouldStopRing(): void {
+        fireAVEngineEvent("shouldStopRing", [])
+    }
+
+    override didCallEnded(reason: CallEndReason, duration: Int): void {
+        fireAVEngineEvent("didCallEnded", [reason.ordinal, duration])
+    }
+}
+
+class NativeCallSessionCallback implements CallSessionCallback {
+    override didCallEndWithReason(reason: CallEndReason): void {
+        fireCallSessionEvent("didCallEndWithReason", [reason.ordinal])
+    }
+
+    override didChangeState(state: CallState): void {
+        fireCallSessionEvent("didChangeState", [state.ordinal])
+    }
+
+    override didParticipantJoined(userId: string, screenSharing: boolean): void {
+        fireCallSessionEvent("didParticipantJoined", [userId, screenSharing])
+    }
+
+    override didParticipantConnected(userId: string, screenSharing: boolean): void {
+        fireCallSessionEvent("didParticipantConnected", [userId, screenSharing])
+    }
+
+    override didParticipantLeft(userId: string, reason: CallEndReason, screenSharing: boolean): void {
+        fireCallSessionEvent("didParticipantLeft", [userId, reason.ordinal, screenSharing])
+    }
+
+    override didChangeMode(audioOnly: boolean): void {
+        fireCallSessionEvent("didChangeMode", [audioOnly])
+    }
+
+    override didChangeInitiator(initiator: string | null): void {
+        fireCallSessionEvent("didChangeInitiator", [initiator ?? ""])
+    }
+
+    override didCreateLocalVideoTrack(): void {
+        fireCallSessionEvent("didCreateLocalVideoTrack", [])
+    }
+
+    override didReceiveRemoteVideoTrack(userId: string, screenSharing: boolean): void {
+        fireCallSessionEvent("didReceiveRemoteVideoTrack", [userId, screenSharing])
+    }
+
+    override didRemoveRemoteVideoTrack(userId: string): void {
+        fireCallSessionEvent("didRemoveRemoteVideoTrack", [userId])
+    }
+
+    override didError(error: string): void {
+        fireCallSessionEvent("didError", [error])
+    }
+
+    override didGetStats(reports: kotlin.Array<StatsReport>): void {
+        // StatsReport[] 内容复杂，暂不转发详细数据，仅通知有更新
+    }
+
+    override didVideoMuted(userId: string, muted: boolean): void {
+        fireCallSessionEvent("didVideoMuted", [userId, muted])
+    }
+
+    override didReportAudioVolume(userId: string, volume: Int): void {
+        fireCallSessionEvent("didReportAudioVolume", [userId, volume])
+    }
+
+    override didAudioDeviceChanged(device: AudioDevice): void {
+        fireCallSessionEvent("didAudioDeviceChanged", [device.ordinal])
+    }
+
+    override didChangeType(userId: string, audience: boolean, screenSharing: boolean): void {
+        fireCallSessionEvent("didChangeType", [userId, audience, screenSharing])
+    }
+
+    override didMuteStateChanged(participants: MutableList<String>): void {
+        // args[0] 统一约定为字符串（JSON 数组文本），和 iOS 侧保持一致，应用层需要再 JSON.parseArray 一次
+        fireCallSessionEvent("didMuteStateChanged", [JSONArray(participants).toString()])
+    }
+
+    override didMediaLostPacket(media: string, lostPacket: Int, screenSharing: boolean): void {
+        fireCallSessionEvent("didMediaLostPacket", [media, lostPacket, screenSharing])
+    }
+}
+
+const nativeAVEngineCallback = new NativeAVEngineCallback()
+const nativeCallSessionCallback = new NativeCallSessionCallback()
+
+export function onAVEngineEvent(listener: NativeEventListener): void {
+    avEngineEventListener = listener
+}
+
+export function onCallSessionEvent(listener: NativeEventListener): void {
+    callSessionEventListener = listener
+}
+
+export function initAVEngineKit(): void {
+    if (initialized) {
+        return
+    }
+    initialized = true
+    AVEngineKit.DISABLE_SURFACE_VIEW_AUTO_OVERLAY = true
+    AVEngineKit.init(UTSAndroid.getAppContext()!, nativeAVEngineCallback)
+}
+
+export function addICEServer(url: string, name: string, password: string): void {
+    AVEngineKit.Instance().addIceServer(url, name, password)
+}
+
+export function isSupportMultiCall(): boolean {
+    return AVEngineKit.isSupportMultiCall()
+}
+
+export function setVideoProfile(profile: number, swapWidthHeight: boolean): void {
+    AVEngineKit.Instance().setVideoProfile(profile.toInt(), swapWidthHeight)
+}
+
+export function startSingleCall(userId: string, audioOnly: boolean): string | null {
+    const conv = toConversation(0 /* Single */, userId, 0)
+    const session = AVEngineKit.Instance().startCall(conv, [userId].toKotlinList(), audioOnly, nativeCallSessionCallback)
+    return session == null ? null : callSessionToJson(session)
+}
+
+export function startMultiCall(groupId: string, participants: string[], audioOnly: boolean): string | null {
+    const conv = toConversation(1 /* Group */, groupId, 0)
+    const session = AVEngineKit.Instance().startCall(conv, participants.toKotlinList(), audioOnly, nativeCallSessionCallback)
+    return session == null ? null : callSessionToJson(session)
+}
+
+export function currentCallSession(): string | null {
+    const session = currentSessionOrNull()
+    return session == null ? null : callSessionToJson(session)
+}
+
+export function answerCall(callId: string, audioOnly: boolean): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        session.answerCall(audioOnly)
+    }
+}
+
+export function endCall(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId && session.getState() != CallState.Idle) {
+        session.endCall()
+    }
+}
+
+export function muteAudio(callId: string, mute: boolean): boolean {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        return session.muteAudio(mute)
+    }
+    return false
+}
+
+export function muteVideo(callId: string, mute: boolean): boolean {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        return session.muteVideo(mute)
+    }
+    return false
+}
+
+export function downgrade2Voice(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        session.setAudioOnly(true)
+    }
+}
+
+export function switchCamera(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        session.switchCamera()
+    }
+}
+
+export function setSpeakerOn(callId: string, speakerOn: boolean): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return
+    }
+    const audioManager: AVAudioManager = AVEngineKit.Instance().getAVAudioManager()
+    audioManager.selectAudioDevice(speakerOn ? AudioDevice.SPEAKER_PHONE : AudioDevice.EARPIECE)
+}
+
+export function inviteNewParticipant(callId: string, userIds: string[]): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        session.inviteNewParticipants(userIds.toKotlinList())
+    }
+}
+
+export function kickoffParticipant(callId: string, userId: string, successCB: () => void, failCB: (error: number) => void): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        failCB(-1)
+        return
+    }
+    session.kickoffParticipant(userId, ((): GeneralCallback => {
+        class Cb implements GeneralCallback {
+            override onSuccess(): void {
+                successCB()
+            }
+            override onFailure(code: Int): void {
+                failCB(code)
+            }
+        }
+        return new Cb()
+    })())
+}
+
+export function getParticipantProfiles(callId: string): string {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return "[]"
+    }
+    const arr = new JSONArray()
+    session.getParticipantProfiles().forEach((p: ParticipantProfile): void => {
+        arr.put(participantProfileToJson(p))
+    })
+    return arr.toString()
+}
+
+export function getParticipantProfile(callId: string, userId: string, screenSharing: boolean): string | null {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return null
+    }
+    const p = session.getParticipantProfile(userId, screenSharing)
+    return p == null ? null : participantProfileToJson(p).toString()
+}
+
+export function getMyProfile(callId: string): string | null {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return null
+    }
+    const p = session.getMyProfile()
+    return p == null ? null : participantProfileToJson(p).toString()
+}
+
+// 用 UTSAndroid.requestSystemPermission 申请摄像头/麦克风权限（uts 插件内可用，应用层代码不可直接用）
+export function requestVoipPermissions(audioOnly: boolean, successCB: () => void, failCB: () => void): void {
+    const permissions: string[] = audioOnly
+        ? ["android.permission.RECORD_AUDIO"]
+        : ["android.permission.RECORD_AUDIO", "android.permission.CAMERA"]
+    UTSAndroid.requestSystemPermission(UTSAndroid.getUniActivity()!, permissions, (allSuccess: boolean, grantedPermissions: string[]) => {
+        if (allSuccess) {
+            successCB()
+        } else {
+            failCB()
+        }
+    }, (doNotAskAgain: boolean, grantedList: string[]) => {
+        failCB()
+    })
+}
+
+export function checkOverlayPermission(): boolean {
+    const context = UTSAndroid.getAppContext()!
+    if (Settings.canDrawOverlays(context)) {
+        return true
+    }
+    return false
+}
+
+// 未实现系统级悬浮窗挂起 UI（需要额外的 WindowManager 悬浮控件开发），当前 minimize 仅退回会话列表，
+// 通话仍在原生层继续进行，可通过 resumeVoipPage（应用层 onReceiveCall/currentCallSession 兜底）重新进入。
+export function minimize(callId: string): void {
+    // no-op：具体的“返回上一页”交给调用方（uts 应用层 uni.navigateBack）处理
+}
+
+export function setLocalVideoView(callId: string, view: any): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return
+    }
+    session.setupLocalVideoView(view as ViewGroup, ScalingType.SCALE_ASPECT_FILL)
+}
+
+export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, view: any): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return
+    }
+    session.setupRemoteVideoView(userId, screenSharing, view as ViewGroup, ScalingType.SCALE_ASPECT_FILL)
+}
+
+export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return
+    }
+    if (videoType < 0 || videoType > 2) {
+        return
+    }
+    session.setParticipantVideoType(userId, screenSharing, VideoType.values()[videoType.toInt()])
+}

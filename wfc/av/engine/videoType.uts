@@ -1,0 +1,5 @@
+export default class VideoType {
+    static NONE = 0;
+    static BIG_STREAM = 1;
+    static SMALL_STREAM = 2;
+}

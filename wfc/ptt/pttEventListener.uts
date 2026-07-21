@@ -1,0 +1,12 @@
+import Conversation from '../model/conversation.uts'
+
+/**
+ * 会话内对讲事件的全局监听（不仅仅是本端 requestTalk 触发的事件），
+ * 用于驱动会话页面/输入栏展示"谁正在讲话"等 UI 状态。函数类型属性，理由同 callSessionCallback.uts。
+ */
+export default class PttEventListener {
+    didUserStartTalking: (conversation: Conversation, userId: string) => void = (_conversation: Conversation, _userId: string): void => {}
+    didUserEndTalking: (conversation: Conversation, userId: string) => void = (_conversation: Conversation, _userId: string): void => {}
+    didReceiveData: (conversation: Conversation, userId: string, data: string) => void = (_conversation: Conversation, _userId: string, _data: string): void => {}
+    didUserAmplitudeUpdate: (conversation: Conversation, userId: string, amplitude: number) => void = (_conversation: Conversation, _userId: string, _amplitude: number): void => {}
+}

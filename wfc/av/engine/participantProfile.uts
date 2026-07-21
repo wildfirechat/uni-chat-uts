@@ -1,0 +1,24 @@
+export default class ParticipantProfile {
+    userId = '';
+    startTime = 0;
+    state = 0;
+    videoMuted = false;
+    audioMuted = false;
+    audience = false;
+    screenSharing = false;
+
+    static fromJsonObject(obj: UTSJSONObject | null): ParticipantProfile | null {
+        if (obj == null) {
+            return null;
+        }
+        const p = new ParticipantProfile();
+        p.userId = obj.getString('userId') ?? '';
+        p.startTime = obj.getNumber('startTime') ?? 0;
+        p.state = obj.getNumber('state') ?? 0;
+        p.videoMuted = obj.getBoolean('videoMuted') ?? false;
+        p.audioMuted = obj.getBoolean('audioMuted') ?? false;
+        p.audience = obj.getBoolean('audience') ?? false;
+        p.screenSharing = obj.getBoolean('screenSharing') ?? false;
+        return p;
+    }
+}

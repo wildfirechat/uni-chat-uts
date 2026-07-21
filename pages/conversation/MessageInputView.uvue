@@ -3,8 +3,12 @@
         <view class="wf-message-input-container" :style="{ paddingBottom: safeAreaBottomHeight + 'px' }">
             <view class="wf-message-input-toolbar">
                 <text class="wf-input-button-icon customicons" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
+                <text v-if="isPttEnable" class="wf-input-button-icon customicons" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
                 <view class="wf-input-voice-container" v-if="showVoice">
                     <AudioInputView :conversation-info="conversationInfo"></AudioInputView>
+                </view>
+                <view class="wf-input-voice-container" v-else-if="showPtt">
+                    <PttAudioInputView :conversation-info="conversationInfo"></PttAudioInputView>
                 </view>
                 <view v-else class="wf-input-middle">
                     <view class="wf-input-text-container">
@@ -69,8 +73,14 @@ import StickerMessageContent from "../../wfc/messages/stickerMessageContent.uts"
 import Config from "../../config.uts";
 import QuoteInfo from "../../wfc/model/quoteInfo.uts";
 import AudioInputView from "./message/AudioInputView.uvue";
+import PttAudioInputView from "./message/PttAudioInputView.uvue";
 import Draft from "../util/draft.uts";
 import { pickUser, PickUserOptions, pickUsers, PickUsersOptions } from "../../common/picker.uts";
+import avEngineKit from "../../wfc/av/engine/avEngineKit.uts";
+import CallState from "../../wfc/av/engine/callState.uts";
+import checkVoipPermissions from "../../wfc/av/voipUtil.uts";
+import pttClient from "../../wfc/ptt/pttClient.uts";
+import { navigateToPage } from "../../common/nav.uts";
 
 class ExtItem {
     title = ''
@@ -88,6 +98,7 @@ export default {
     name: "MessageInputView",
     components: {
         AudioInputView,
+        PttAudioInputView,
     },
     props: {
         conversationInfo: {
@@ -101,6 +112,8 @@ export default {
             currentEmojiStickerIndex: 0,
             hideSendButton: (Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8) as boolean,
             showVoice: false,
+            showPtt: false,
+            isPttEnable: Config.ENABLE_PTT && pttClient.isEnable(),
             extList: [
                 new ExtItem('相册', 'image', ''),
                 new ExtItem('语音通话', 'voip_a', ''),
@@ -246,6 +259,14 @@ export default {
 
         toggleVoice() {
             this.showVoice = !this.showVoice;
+            this.showPtt = false;
+            this.showEmoji = false;
+            this.showExt = false;
+        },
+
+        togglePtt() {
+            this.showPtt = !this.showPtt;
+            this.showVoice = false;
             this.showEmoji = false;
             this.showExt = false;
         },
@@ -254,12 +275,14 @@ export default {
             this.showEmoji = !this.showEmoji;
             this.showExt = false;
             this.showVoice = false;
+            this.showPtt = false;
         },
 
         toggleExt() {
             this.showExt = !this.showExt;
             this.showEmoji = false;
             this.showVoice = false;
+            this.showPtt = false;
         },
 
         onClickExt(ext: ExtItem) {
@@ -278,11 +301,10 @@ export default {
                     this.chooseFile();
                     break;
                 case 'voip_a':
+                    this.voip(true);
+                    break;
                 case 'voip_v':
-                    uni.showToast({
-                        title: '当前版本暂不支持音视频通话',
-                        icon: 'none'
-                    } as ShowToastOptions)
+                    this.voip(false);
                     break;
                 default:
                     uni.showToast({
@@ -291,6 +313,58 @@ export default {
                     } as ShowToastOptions)
                     break;
             }
+        },
+
+        voip(audioOnly: boolean) {
+            if (!Config.ENABLE_VOIP) {
+                uni.showToast({
+                    title: '当前版本暂不支持音视频通话',
+                    icon: 'none',
+                } as ShowToastOptions)
+                return
+            }
+            checkVoipPermissions(audioOnly).then((granted: boolean): void => {
+                if (!granted) {
+                    return
+                }
+                const curSession = avEngineKit.currentCallSession()
+                if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
+                    uni.showToast({
+                        title: '音视频通话正在进行中...',
+                        icon: 'none',
+                    } as ShowToastOptions)
+                    return
+                }
+                if (this.conversationInfo.conversation.type == ConversationType.Single) {
+                    const callSession = avEngineKit.startSingleCall(this.conversationInfo.conversation.target, audioOnly)
+                    if (callSession != null) {
+                        navigateToPage('/pages/voip/Single', callSession)
+                    }
+                } else if (this.conversationInfo.conversation.type == ConversationType.Group) {
+                    this.showPickGroupMemberToVoipModal(audioOnly)
+                }
+            })
+        },
+
+        showPickGroupMemberToVoipModal(audioOnly: boolean) {
+            const options = new PickUsersOptions()
+            options.users = this.groupMemberUserInfos
+            options.confirmTitle = '确定'
+            options.showCategoryLabel = false
+            options.successCB = (users: UserInfo[]): void => {
+                const ids: string[] = []
+                for (let i = 0; i < users.length; i++) {
+                    ids.push(users[i].uid)
+                }
+                const callSession = avEngineKit.startMultiCall(this.conversationInfo.conversation.target, ids, audioOnly)
+                // 不加延时的话，选人弹窗关闭动画和跳转会互相干扰
+                setTimeout((): void => {
+                    if (callSession != null) {
+                        navigateToPage('/pages/voip/Multi', callSession)
+                    }
+                }, 50)
+            }
+            pickUsers(options)
         },
 
         onCategoryClick(i: number) {

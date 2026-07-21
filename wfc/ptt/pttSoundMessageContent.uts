@@ -1,0 +1,24 @@
+import SoundMessageContent from '../messages/soundMessageContent.uts'
+import MessageContentType from '../messages/messageContentType.uts'
+import MessagePayload from '../messages/messagePayload.uts'
+
+/**
+ * 对讲结束后保存下来的语音消息，内容结构和普通语音消息一致，仅 type 不同，
+ * 用于消息列表区分"对讲语音"和普通按住说话的语音消息。
+ */
+export default class PttSoundMessageContent extends SoundMessageContent {
+    constructor(fileOrLocalPath: string = '', remotePath: string = '', duration: number = 0) {
+        super(fileOrLocalPath, remotePath, duration);
+        this.type = MessageContentType.Ptt_Voice;
+    }
+
+    override digest(message: any | null): string {
+        return '[对讲语音]';
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = '[对讲语音]';
+        return payload;
+    }
+}

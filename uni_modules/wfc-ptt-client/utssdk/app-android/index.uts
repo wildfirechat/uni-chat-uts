@@ -1,0 +1,213 @@
+/**
+ * 对讲（PTT）UTS 插件（Android）。
+ *
+ * 直接封装 pttclient-release.aar 里的 cn.wildfirechat.ptt.PTTClient 单例，方法签名已通过
+ * javap 反编译核对。不经过旧版 nativeplugin 的 PttClientModule.java，原因和写法都参照
+ * wfc-av-client/utssdk/app-android/index.uts 顶部注释。
+ *
+ * 方法签名已用 javap 反编译 pttclient-release.aar 逐一核对，HBuilderX 云打包实测通过。
+ * 接口实现里数字类型参数/返回值必须用 `Int`（不能用 number），详见
+ * wfc-av-client/utssdk/app-android/index.uts 顶部注释里踩坑记录。
+ *
+ * 本文件 import 的 cn.wildfirechat.model.Conversation、cn.wildfirechat.remote.GeneralCallback
+ * 等类型定义在 wfc-client 的 client-release.aar 里。每个 uts 插件编译 Kotlin 时只能看到自己
+ * libs/ 下的库，所以本插件编译期需要 client-release。但这些类运行期已由 wfc-client 打进 app，
+ * 本插件不能再打包一份，否则云打包会 Duplicate resources / Duplicate class。
+ * 解法（compileOnly）：libs/ 里不放 client-release，改用 config.json 的 dependencies.source 注入
+ * `compileOnly fileTree(dir: rootProject.projectDir, include:
+ * ['/wfc-client/client-release.aar','/wfc-client//mars-core-release.aar'])`，从 gradle
+ * 根目录全树 glob 匹配 wfc-client 下的 aar（不依赖各子工程 projectDir 层级，之前写死相对路径全落空），
+ * 只编译不打包地引用 wfc-client 那一份。详见 wfc-av-client/utssdk/app-android/index.uts 顶部注释第 5 条
+ * （含踩坑经过、路径推导、以及标准基座真机热运行看不到 config.json source 的说明）。
+ */
+
+import { PttEventListener } from '../interface.uts'
+
+import PTTClient from 'cn.wildfirechat.ptt.PTTClient'
+import PttCallback from 'cn.wildfirechat.ptt.PttCallback'
+import TalkingCallback from 'cn.wildfirechat.ptt.TalkingCallback'
+import Conversation from 'cn.wildfirechat.model.Conversation'
+import ConversationType from 'cn.wildfirechat.model.Conversation.ConversationType'
+import GeneralCallback from 'cn.wildfirechat.remote.GeneralCallback'
+import JSONObject from 'org.json.JSONObject'
+import JSONArray from 'org.json.JSONArray'
+
+let pttEventListener: PttEventListener | null = null
+let initialized = false
+
+function toConversation(type: number, target: string, line: number): Conversation {
+    const conv = new Conversation()
+    conv.type = ConversationType.values()[type.toInt()]
+    conv.target = target
+    conv.line = line.toInt()
+    return conv
+}
+
+function conversationToJson(conv: Conversation): string {
+    const obj = new JSONObject()
+    obj.put("type", conv.type.ordinal)
+    obj.put("target", conv.target)
+    obj.put("line", conv.line)
+    return obj.toString()
+}
+
+function generalCallback(successCB: () => void, failCB: (error: number) => void): GeneralCallback {
+    class Cb implements GeneralCallback {
+        override onSuccess(): void {
+            successCB()
+        }
+        override onFail(code: Int): void {
+            failCB(code)
+        }
+    }
+    return new Cb()
+}
+
+class NativePttCallback implements PttCallback {
+    override didUserStartTalking(conversation: Conversation, userId: string): void {
+        pttEventListener?.("userStartTalking", conversationToJson(conversation), JSONArray([userId].toKotlinList()).toString())
+    }
+
+    override didUserEndTalking(conversation: Conversation, userId: string): void {
+        pttEventListener?.("userEndTalking", conversationToJson(conversation), JSONArray([userId].toKotlinList()).toString())
+    }
+
+    override didReceiveData(conversation: Conversation, userId: string, data: string): void {
+        pttEventListener?.("receiveData", conversationToJson(conversation), JSONArray([userId, data].toKotlinList()).toString())
+    }
+
+    override didUserAmplitudeUpdate(conversation: Conversation, userId: string, amplitude: Int): void {
+        pttEventListener?.("userAmplitudeUpdate", conversationToJson(conversation), JSONArray([userId, amplitude].toKotlinList()).toString())
+    }
+}
+
+const nativePttCallback = new NativePttCallback()
+
+export function onPttEvent(listener: PttEventListener): void {
+    pttEventListener = listener
+}
+
+export function isPttClientEnable(): boolean {
+    return true
+}
+
+// options 字段：enableFullDuplex/enableGlobalPtt/enablePriorityMode/groupChatMaxSpeakTime(秒)/
+// groupChatMaxSpeakerCount/groupChatSaveVoiceMessage/singleChatMaxSpeakTime(秒)/singleChatMaxSpeakerCount/singleChatSaveVoiceMessage
+export function initClient(options: UTSJSONObject): void {
+    if (options.getBoolean("enableFullDuplex") != null) {
+        PTTClient.ENABLE_FULL_DUPLEX = options.getBoolean("enableFullDuplex")!
+    }
+    if (options.getBoolean("enableGlobalPtt") != null) {
+        PTTClient.ENABLE_GLOBAL_PTT = options.getBoolean("enableGlobalPtt")!
+    }
+    if (options.getBoolean("enablePriorityMode") != null) {
+        PTTClient.ENABLE_PRIORITY_MODE = options.getBoolean("enablePriorityMode")!
+    }
+    if (options.getNumber("groupChatMaxSpeakTime") != null) {
+        PTTClient.GROUP_CHAT_MAX_SPEAK_TIME = (options.getNumber("groupChatMaxSpeakTime")!).toInt()
+    }
+    if (options.getNumber("groupChatMaxSpeakerCount") != null) {
+        PTTClient.GROUP_CHAT_MAX_SPEAKER_COUNT = (options.getNumber("groupChatMaxSpeakerCount")!).toInt()
+    }
+    if (options.getBoolean("groupChatSaveVoiceMessage") != null) {
+        PTTClient.GROUP_CHAT_SAVE_VOICE_MESSAGE = options.getBoolean("groupChatSaveVoiceMessage")!
+    }
+    if (options.getNumber("singleChatMaxSpeakTime") != null) {
+        PTTClient.SINGLE_CHAT_MAX_SPEAK_TIME = (options.getNumber("singleChatMaxSpeakTime")!).toInt()
+    }
+    if (options.getNumber("singleChatMaxSpeakerCount") != null) {
+        PTTClient.SINGLE_CHAT_MAX_SPEAKER_COUNT = (options.getNumber("singleChatMaxSpeakerCount")!).toInt()
+    }
+    if (options.getBoolean("singleChatSaveVoiceMessage") != null) {
+        PTTClient.SINGLE_CHAT_SAVE_VOICE_MESSAGE = options.getBoolean("singleChatSaveVoiceMessage")!
+    }
+    if (initialized) {
+        return
+    }
+    initialized = true
+    PTTClient.getInstance().init(UTSAndroid.getAppContext()!)
+    PTTClient.getInstance().setPttCallback(nativePttCallback)
+}
+
+export function requestTalk(type: number, target: string, line: number, priority: number, onStartTalking: () => void, onTalkingEnd: (reason: number) => void, onRequestFail: (errorCode: number) => void, onAmplitudeUpdate: (amplitude: number) => void): void {
+    const conv = toConversation(type, target, line)
+    class Cb implements TalkingCallback {
+        override talkingPriority(conversation: Conversation): Int {
+            return priority.toInt()
+        }
+        override onStartTalking(conversation: Conversation): void {
+            onStartTalking()
+        }
+        override onTalkingEnd(conversation: Conversation, reason: Int): void {
+            onTalkingEnd(reason)
+        }
+        override onRequestFail(conversation: Conversation, errorCode: Int): void {
+            onRequestFail(errorCode)
+        }
+        override onAmplitudeUpdate(amplitude: Int): void {
+            onAmplitudeUpdate(amplitude)
+        }
+    }
+    PTTClient.getInstance().requestTalk(conv, new Cb())
+}
+
+export function releaseTalking(type: number, target: string, line: number): void {
+    PTTClient.getInstance().releaseTalking(toConversation(type, target, line))
+}
+
+export function getMaxSpeakCount(type: number, target: string, line: number): number {
+    return PTTClient.getInstance().getMaxSpeakCount(toConversation(type, target, line))
+}
+
+export function getMaxSpeakTime(type: number, target: string, line: number): number {
+    return PTTClient.getInstance().getMaxSpeakTime(toConversation(type, target, line))
+}
+
+export function isSaveVoiceMessage(type: number, target: string, line: number): boolean {
+    return PTTClient.getInstance().isSaveVoiceMessage(toConversation(type, target, line))
+}
+
+export function setSaveVoiceMessage(type: number, target: string, line: number, save: boolean, successCB: () => void, failCB: (error: number) => void): void {
+    PTTClient.getInstance().setSaveVoiceMessage(toConversation(type, target, line), save, generalCallback(successCB, failCB))
+}
+
+export function setConversationMaxSpeakTime(type: number, target: string, line: number, duration: number, successCB: () => void, failCB: (error: number) => void): void {
+    PTTClient.getInstance().setConversationMaxSpeakTime(toConversation(type, target, line), duration.toInt(), generalCallback(successCB, failCB))
+}
+
+export function setConversationMaxSpeakerCount(type: number, target: string, line: number, count: number, successCB: () => void, failCB: (error: number) => void): void {
+    PTTClient.getInstance().setConversationMaxSpeakerCount(toConversation(type, target, line), count.toInt(), generalCallback(successCB, failCB))
+}
+
+export function setConversationPttSilent(type: number, target: string, line: number, silent: boolean, successCB: () => void, failCB: (error: number) => void): void {
+    PTTClient.getInstance().setConversationPttSilent(toConversation(type, target, line), silent, generalCallback(successCB, failCB))
+}
+
+export function isConversationPttSilent(type: number, target: string, line: number): boolean {
+    return PTTClient.getInstance().isConversationPttSilent(toConversation(type, target, line))
+}
+
+export function getTalkingStartTime(): number {
+    return PTTClient.getInstance().getTalkingStartTime()
+}
+
+export function getTalkingMembers(type: number, target: string, line: number): string {
+    const members = PTTClient.getInstance().getTalkingMembers(toConversation(type, target, line))
+    return JSONArray(members).toString()
+}
+
+export function getTalkingMemberCount(type: number, target: string, line: number): number {
+    return PTTClient.getInstance().getTalkingMemberCount(toConversation(type, target, line))
+}
+
+export function setEnablePtt(type: number, target: string, line: number, enable: boolean): void {
+    PTTClient.getInstance().setEnablePtt(toConversation(type, target, line), enable)
+}
+
+export function isSpeakerEnable(): boolean {
+    return PTTClient.getInstance().isSpeakerEnable()
+}
+
+export function enableSpeaker(): void {
+    PTTClient.getInstance().enableSpeaker()
+}

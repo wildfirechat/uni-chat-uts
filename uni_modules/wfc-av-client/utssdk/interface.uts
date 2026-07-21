@@ -1,0 +1,9 @@
+/**
+ * interface.uts
+ * uts插件接口定义文件，按规范定义接口文件可以在HBuilderX中更好的做到语法提示
+ */
+
+export type VoidCallback = () => void
+export type FailCallback = (error: number) => void
+// event: 事件名；argsJson: 事件参数的 JSON 数组字符串，具体字段由各事件约定，应用层用 JSON.parseArray 解析
+export type NativeEventListener = (event: string, argsJson: string) => void

@@ -1,0 +1,168 @@
+/*
+ * 对讲（PTT）客户端门面，包一层 uni_modules/wfc-ptt-client（本项目自建的 UTS 插件）。
+ * 对外 API 尽量对齐迁移前 wfc/ptt/pttClient.js 的方法名，方便对照旧实现。
+ */
+import * as native from '@/uni_modules/wfc-ptt-client'
+import Conversation from '../model/conversation.uts'
+import PttEventListener from './pttEventListener.uts'
+import TalkingCallback from './talkingCallback.uts'
+import Config from '../../config.uts'
+
+function parseArgs(argsJson: string): Array<any | null> {
+    const arr = JSON.parseArray(argsJson)
+    return arr == null ? [] : arr as Array<any | null>
+}
+
+function argString(args: Array<any | null>, i: number): string {
+    if (i >= args.length || args[i] == null) return ''
+    return args[i] as string
+}
+
+function argNumber(args: Array<any | null>, i: number): number {
+    if (i >= args.length || args[i] == null) return 0
+    return args[i] as number
+}
+
+class PttClient {
+    private initialized = false;
+    private eventListener: PttEventListener | null = null;
+
+    init(): void {
+        if (this.initialized) {
+            return
+        }
+        this.initialized = true
+        const options = {
+            enableFullDuplex: Config.PTT_ENABLE_FULL_DUPLEX,
+            enableGlobalPtt: Config.PTT_ENABLE_GLOBAL_PTT,
+            enablePriorityMode: Config.PTT_ENABLE_PRIORITY_MODE,
+            singleChatMaxSpeakerCount: Config.PTT_SINGLE_CHAT_MAX_SPEAKER_COUNT,
+            groupChatMaxSpeakerCount: Config.PTT_GROUP_CHAT_MAX_SPEAKER_COUNT,
+            singleChatSaveVoiceMessage: Config.PTT_SINGLE_CHAT_SAVE_VOICE_MESSAGE,
+            groupChatSaveVoiceMessage: Config.PTT_GROUP_CHAT_SAVE_VOICE_MESSAGE,
+            singleChatMaxSpeakTime: Config.PTT_SINGLE_CHAT_MAX_SPEAK_TIME,
+            groupChatMaxSpeakTime: Config.PTT_GROUP_CHAT_MAX_SPEAK_TIME,
+        } as UTSJSONObject
+        native.initClient(options)
+        native.onPttEvent((event: string, conversationJson: string, argsJson: string) => {
+            this._handlePttEvent(event, conversationJson, argsJson)
+        })
+    }
+
+    setEventListener(listener: PttEventListener | null): void {
+        this.eventListener = listener
+    }
+
+    isEnable(): boolean {
+        return native.isPttClientEnable()
+    }
+
+    requestTalk(conversation: Conversation, priority: number, callback: TalkingCallback): void {
+        native.requestTalk(
+            conversation.type, conversation.target, conversation.line, priority,
+            (): void => callback.onStartTalking(),
+            (reason: number): void => callback.onTalkingEnd(reason),
+            (errorCode: number): void => callback.onRequestFail(errorCode),
+            (amplitude: number): void => callback.onAmplitudeUpdate(amplitude),
+        )
+    }
+
+    releaseTalking(conversation: Conversation): void {
+        native.releaseTalking(conversation.type, conversation.target, conversation.line)
+    }
+
+    getMaxSpeakCount(conversation: Conversation): number {
+        return native.getMaxSpeakCount(conversation.type, conversation.target, conversation.line)
+    }
+
+    getMaxSpeakTime(conversation: Conversation): number {
+        return native.getMaxSpeakTime(conversation.type, conversation.target, conversation.line)
+    }
+
+    isSaveVoiceMessage(conversation: Conversation): boolean {
+        return native.isSaveVoiceMessage(conversation.type, conversation.target, conversation.line)
+    }
+
+    setSaveVoiceMessage(conversation: Conversation, save: boolean, successCB: () => void, failCB: (error: number) => void): void {
+        native.setSaveVoiceMessage(conversation.type, conversation.target, conversation.line, save, successCB, failCB)
+    }
+
+    setConversationMaxSpeakTime(conversation: Conversation, duration: number, successCB: () => void, failCB: (error: number) => void): void {
+        native.setConversationMaxSpeakTime(conversation.type, conversation.target, conversation.line, duration, successCB, failCB)
+    }
+
+    setConversationMaxSpeakerCount(conversation: Conversation, count: number, successCB: () => void, failCB: (error: number) => void): void {
+        native.setConversationMaxSpeakerCount(conversation.type, conversation.target, conversation.line, count, successCB, failCB)
+    }
+
+    setConversationPttSilent(conversation: Conversation, silent: boolean, successCB: () => void, failCB: (error: number) => void): void {
+        native.setConversationPttSilent(conversation.type, conversation.target, conversation.line, silent, successCB, failCB)
+    }
+
+    isConversationPttSilent(conversation: Conversation): boolean {
+        return native.isConversationPttSilent(conversation.type, conversation.target, conversation.line)
+    }
+
+    getTalkingStartTime(): number {
+        return native.getTalkingStartTime()
+    }
+
+    getTalkingMembers(conversation: Conversation): string[] {
+        const str = native.getTalkingMembers(conversation.type, conversation.target, conversation.line)
+        const arr = JSON.parseArray(str)
+        const list: string[] = []
+        if (arr != null) {
+            for (let i = 0; i < arr.length; i++) {
+                list.push(arr[i] as string)
+            }
+        }
+        return list
+    }
+
+    getTalkingMemberCount(conversation: Conversation): number {
+        return native.getTalkingMemberCount(conversation.type, conversation.target, conversation.line)
+    }
+
+    setEnablePtt(conversation: Conversation, enable: boolean): void {
+        native.setEnablePtt(conversation.type, conversation.target, conversation.line, enable)
+    }
+
+    isSpeakerEnable(): boolean {
+        return native.isSpeakerEnable()
+    }
+
+    enableSpeaker(): void {
+        native.enableSpeaker()
+    }
+
+    private _handlePttEvent(event: string, conversationJson: string, argsJson: string): void {
+        const listener = this.eventListener
+        if (listener == null) {
+            return
+        }
+        const conversation = Conversation.fromJsonObject(JSON.parseObject(conversationJson))
+        if (conversation == null) {
+            return
+        }
+        const args = parseArgs(argsJson)
+        switch (event) {
+            case 'userStartTalking':
+                listener.didUserStartTalking(conversation, argString(args, 0))
+                break
+            case 'userEndTalking':
+                listener.didUserEndTalking(conversation, argString(args, 0))
+                break
+            case 'receiveData':
+                listener.didReceiveData(conversation, argString(args, 0), argString(args, 1))
+                break
+            case 'userAmplitudeUpdate':
+                listener.didUserAmplitudeUpdate(conversation, argString(args, 0), argNumber(args, 1))
+                break
+            default:
+                break
+        }
+    }
+}
+
+const pttClient = new PttClient()
+export default pttClient

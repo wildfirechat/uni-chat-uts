@@ -1,0 +1,164 @@
+/**
+ * 对讲（PTT）UTS 插件（iOS）。直接封装 PttClient.xcframework 的 WFPttClient 单例，
+ * 方法/属性签名已对照 WFPttClient.h 头文件核对。
+ *
+ * 与 Android 的差异：
+ * 1. iOS 的 requestTalk 没有 priority 参数（该 SDK 版本没有优先级模式），这里保留 priority
+ *    形参只是为了和 Android 侧签名对称，实际不会用到。
+ * 2. WFPttDelegate 没有 receiveData 对应的回调，iOS 侧不会触发 "receiveData" 事件。
+ */
+
+import { PttEventListener } from '../interface.uts'
+
+import { WFPttClient, WFPttDelegate, PttEndReason } from 'PttClient'
+import { WFCCConversation } from 'WFChatClient'
+
+let pttEventListener: PttEventListener | null = null
+let initialized = false
+
+function conversationJson(conv: WFCCConversation): string {
+    return "{\"type\":" + conv.type.rawValue + ",\"target\":\"" + conv.target + "\",\"line\":" + conv.line + "}"
+}
+
+function toConversation(type: number, target: string, line: number): WFCCConversation {
+    return WFCCConversation.conversationWithType(type as WFCCConversationType, target = target, line = line as Int32)
+}
+
+class NativePttDelegate implements WFPttDelegate {
+    didConversation(conversation: WFCCConversation, startTalkingUser: string): void {
+        pttEventListener?.("userStartTalking", conversationJson(conversation), "[\"" + startTalkingUser + "\"]")
+    }
+
+    didConversation(conversation: WFCCConversation, endTalkingUser: string): void {
+        pttEventListener?.("userEndTalking", conversationJson(conversation), "[\"" + endTalkingUser + "\"]")
+    }
+
+    didConversation(conversation: WFCCConversation, amplitudeUpdate: number, ofUser: string): void {
+        pttEventListener?.("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + amplitudeUpdate + "]")
+    }
+}
+
+const nativePttDelegate = new NativePttDelegate()
+
+export function onPttEvent(listener: PttEventListener): void {
+    pttEventListener = listener
+}
+
+export function isPttClientEnable(): boolean {
+    return true
+}
+
+export function initClient(options: UTSJSONObject): void {
+    const client = WFPttClient.sharedClient()
+    if (options.getBoolean("enableGlobalPtt") != null) {
+        client.enablePtt = options.getBoolean("enableGlobalPtt")!
+    }
+    if (options.getNumber("singleChatMaxSpeakerCount") != null) {
+        client.singleChatMaxSpeakerNumber = (options.getNumber("singleChatMaxSpeakerCount")!) as Int32
+    }
+    if (options.getBoolean("singleChatSaveVoiceMessage") != null) {
+        client.singleChatSaveVoiceMessage = options.getBoolean("singleChatSaveVoiceMessage")!
+    }
+    if (options.getNumber("singleChatMaxSpeakTime") != null) {
+        client.singleChatMaxSpeakerTime = (options.getNumber("singleChatMaxSpeakTime")!) as Int32
+    }
+    if (initialized) {
+        return
+    }
+    initialized = true
+    client.delegate = nativePttDelegate
+}
+
+export function requestTalk(type: number, target: string, line: number, priority: number, onStartTalking: () => void, onTalkingEnd: (reason: number) => void, onRequestFail: (errorCode: number) => void, onAmplitudeUpdate: (amplitude: number) => void): void {
+    const conv = toConversation(type, target, line)
+    WFPttClient.sharedClient().requestTalk(conv, startTalking = (): void => {
+        onStartTalking()
+    }, onAmplitude = (amplitude: number): void => {
+        onAmplitudeUpdate(amplitude)
+    }, requestFailure = (errorCode: number): void => {
+        onRequestFail(errorCode)
+    }, talkingEnd = (reason: PttEndReason): void => {
+        onTalkingEnd(reason.rawValue)
+    })
+}
+
+export function releaseTalking(type: number, target: string, line: number): void {
+    WFPttClient.sharedClient().releaseTalking(toConversation(type, target, line))
+}
+
+export function getMaxSpeakCount(type: number, target: string, line: number): number {
+    return WFPttClient.sharedClient().getMaxSpeakerNumber(toConversation(type, target, line))
+}
+
+export function getMaxSpeakTime(type: number, target: string, line: number): number {
+    return WFPttClient.sharedClient().getMaxSpeakerTime(toConversation(type, target, line))
+}
+
+export function isSaveVoiceMessage(type: number, target: string, line: number): boolean {
+    return WFPttClient.sharedClient().isSaveVoiceMessage(toConversation(type, target, line))
+}
+
+export function setSaveVoiceMessage(type: number, target: string, line: number, save: boolean, successCB: () => void, failCB: (error: number) => void): void {
+    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), saveVoiceMessage = save, success = (): void => {
+        successCB()
+    }, error = (code: number): void => {
+        failCB(code)
+    })
+}
+
+export function setConversationMaxSpeakTime(type: number, target: string, line: number, duration: number, successCB: () => void, failCB: (error: number) => void): void {
+    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), maxSpeakerTime = duration as Int32, success = (): void => {
+        successCB()
+    }, error = (code: number): void => {
+        failCB(code)
+    })
+}
+
+export function setConversationMaxSpeakerCount(type: number, target: string, line: number, count: number, successCB: () => void, failCB: (error: number) => void): void {
+    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), maxSpeakerNumber = count as Int32, success = (): void => {
+        successCB()
+    }, error = (code: number): void => {
+        failCB(code)
+    })
+}
+
+export function setConversationPttSilent(type: number, target: string, line: number, silent: boolean, successCB: () => void, failCB: (error: number) => void): void {
+    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), pttSilent = silent, success = (): void => {
+        successCB()
+    }, error = (code: number): void => {
+        failCB(code)
+    })
+}
+
+export function isConversationPttSilent(type: number, target: string, line: number): boolean {
+    return WFPttClient.sharedClient().isConversationPttSilent(toConversation(type, target, line))
+}
+
+export function getTalkingStartTime(): number {
+    return WFPttClient.sharedClient().getTalkingStartTime()
+}
+
+export function getTalkingMembers(type: number, target: string, line: number): string {
+    const dict = WFPttClient.sharedClient().getTalkingMember(toConversation(type, target, line))
+    const keys = dict.allKeys as string[]
+    const items = keys.map((k: string): string => "\"" + k + "\"")
+    return "[" + items.join(",") + "]"
+}
+
+export function getTalkingMemberCount(type: number, target: string, line: number): number {
+    const dict = WFPttClient.sharedClient().getTalkingMember(toConversation(type, target, line))
+    return dict.count
+}
+
+export function setEnablePtt(type: number, target: string, line: number, enable: boolean): void {
+    // WFPttClient 的 enablePtt 是全局属性，没有按会话开关的接口，这里只更新全局开关
+    WFPttClient.sharedClient().enablePtt = enable
+}
+
+export function isSpeakerEnable(): boolean {
+    return WFPttClient.sharedClient().enableSpeaker
+}
+
+export function enableSpeaker(): void {
+    WFPttClient.sharedClient().enableSpeaker = true
+}

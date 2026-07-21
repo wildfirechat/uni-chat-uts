@@ -1,0 +1,23 @@
+/**
+ * 单次通话 Session 的事件回调，页面按需给需要的字段赋值（函数类型属性，而非可 override 的方法——
+ * UTS 编译到 Kotlin/Swift 后，实例方法无法像 JS 那样被逐实例替换，只有函数类型的属性才可以）。
+ * 参数顺序、含义与原生事件保持一致，详见 avEngineKit.uts 里 _handleCallSessionEvent 的分发。
+ */
+export default class CallSessionCallback {
+    didCallEndWithReason: (reason: number) => void = (_reason: number): void => {}
+    didChangeState: (state: number) => void = (_state: number): void => {}
+    didParticipantJoined: (userId: string, screenSharing: boolean) => void = (_userId: string, _screenSharing: boolean): void => {}
+    didParticipantConnected: (userId: string, screenSharing: boolean) => void = (_userId: string, _screenSharing: boolean): void => {}
+    didParticipantLeft: (userId: string, reason: number, screenSharing: boolean) => void = (_userId: string, _reason: number, _screenSharing: boolean): void => {}
+    didChangeMode: (audioOnly: boolean) => void = (_audioOnly: boolean): void => {}
+    didChangeInitiator: (initiator: string) => void = (_initiator: string): void => {}
+    didCreateLocalVideoTrack: () => void = (): void => {}
+    didReceiveRemoteVideoTrack: (userId: string, screenSharing: boolean) => void = (_userId: string, _screenSharing: boolean): void => {}
+    didRemoveRemoteVideoTrack: (userId: string) => void = (_userId: string): void => {}
+    didError: (error: string) => void = (_error: string): void => {}
+    didVideoMuted: (userId: string, muted: boolean) => void = (_userId: string, _muted: boolean): void => {}
+    didReportAudioVolume: (userId: string, volume: number) => void = (_userId: string, _volume: number): void => {}
+    didAudioDeviceChanged: (device: number) => void = (_device: number): void => {}
+    didChangeType: (userId: string, audience: boolean, screenSharing: boolean) => void = (_userId: string, _audience: boolean, _screenSharing: boolean): void => {}
+    didMuteStateChanged: (participants: string[]) => void = (_participants: string[]): void => {}
+}

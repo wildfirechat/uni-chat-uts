@@ -1,0 +1,15 @@
+/**
+ * 音视频通话的视频渲染 uts 页面组件（iOS）。见 wfAvVideoView.android.uts 顶部注释说明整体机制。
+ */
+export default {
+    name: "wf-av-video-view",
+    expose: ['getNativeView'],
+    NVLoad(): UIView {
+        return new UIView()
+    },
+    methods: {
+        getNativeView(): UIView {
+            return this.$el as UIView
+        }
+    }
+}
