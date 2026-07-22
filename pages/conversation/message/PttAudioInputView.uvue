@@ -47,6 +47,21 @@ export default {
     },
     methods: {
         handleLongPress(e: UniTouchEvent) {
+            // 权限弹窗会打断长按手势，所以未授权时只申请权限，让用户授权后重新按住
+            if (!pttClient.isRecordPermissionGranted()) {
+                pttClient.requestRecordPermission((): void => {
+                    uni.showToast({
+                        title: '已获得录音权限，请重新按住对讲',
+                        icon: 'none',
+                    } as ShowToastOptions)
+                }, (): void => {
+                    uni.showToast({
+                        title: '需要录音权限才能对讲',
+                        icon: 'none',
+                    } as ShowToastOptions)
+                })
+                return
+            }
             if (e.changedTouches.length > 0) {
                 this.longPressClientY = e.changedTouches[e.changedTouches.length - 1].clientY
             }

@@ -129,6 +129,9 @@ export function initClient(options: UTSJSONObject): void {
     PTTClient.getInstance().setPttCallback(nativePttCallback)
 }
 
+// onAmplitudeUpdate 等回调会被多次触发，iOS 下回调默认触发一次即回收，需 keepAlive；
+// 官方要求 app-android/app-ios 双端同时标注
+@UTSJS.keepAlive
 export function requestTalk(type: number, target: string, line: number, priority: number, onStartTalking: () => void, onTalkingEnd: (reason: number) => void, onRequestFail: (errorCode: number) => void, onAmplitudeUpdate: (amplitude: number) => void): void {
     const conv = toConversation(type, target, line)
     class Cb implements TalkingCallback {
@@ -202,6 +205,22 @@ export function getTalkingMemberCount(type: number, target: string, line: number
 
 export function setEnablePtt(type: number, target: string, line: number, enable: boolean): void {
     PTTClient.getInstance().setEnablePtt(toConversation(type, target, line), enable)
+}
+
+export function isRecordPermissionGranted(): boolean {
+    return UTSAndroid.checkSystemPermissionGranted(UTSAndroid.getUniActivity()!, ["android.permission.RECORD_AUDIO"])
+}
+
+export function requestRecordPermission(successCB: () => void, failCB: () => void): void {
+    UTSAndroid.requestSystemPermission(UTSAndroid.getUniActivity()!, ["android.permission.RECORD_AUDIO"], (allSuccess: boolean, _grantedPermissions: string[]) => {
+        if (allSuccess) {
+            successCB()
+        } else {
+            failCB()
+        }
+    }, (_doNotAskAgain: boolean, _grantedList: string[]) => {
+        failCB()
+    })
 }
 
 export function isSpeakerEnable(): boolean {

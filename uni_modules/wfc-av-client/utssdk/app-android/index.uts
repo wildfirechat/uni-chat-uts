@@ -83,7 +83,6 @@ import ConversationType from 'cn.wildfirechat.model.Conversation.ConversationTyp
 import JSONObject from 'org.json.JSONObject'
 import JSONArray from 'org.json.JSONArray'
 import FrameLayout from 'android.widget.FrameLayout'
-import ViewGroup from 'android.view.ViewGroup'
 import ScalingType from 'org.webrtc.RendererCommon.ScalingType'
 import StatsReport from 'org.webrtc.StatsReport'
 import Settings from 'android.provider.Settings'
@@ -91,6 +90,20 @@ import Settings from 'android.provider.Settings'
 let avEngineEventListener: NativeEventListener | null = null
 let callSessionEventListener: NativeEventListener | null = null
 let initialized = false
+
+// 页面 <native-view> 元素 -> 绑定到其上的视频容器。engine 的 setupXxxVideoView 会往容器里塞
+// SurfaceViewRenderer，重复对同一元素 setup 时必须复用同一个容器（bindAndroidView 只能绑一次）
+const videoContainers = new Map<UniNativeViewElement, FrameLayout>()
+
+function videoContainerOf(element: UniNativeViewElement): FrameLayout {
+    let container = videoContainers.get(element)
+    if (container == null) {
+        container = new FrameLayout(element.getAndroidActivity()!)
+        element.bindAndroidView(container)
+        videoContainers.set(element, container)
+    }
+    return container
+}
 
 function toConversation(type: number, target: string, line: number): Conversation {
     const conv = new Conversation()
@@ -177,6 +190,7 @@ class NativeAVEngineCallback implements AVEngineCallback {
     }
 
     override didCallEnded(reason: CallEndReason, duration: Int): void {
+        videoContainers.clear()
         fireAVEngineEvent("didCallEnded", [reason.ordinal, duration])
     }
 }
@@ -444,20 +458,20 @@ export function minimize(callId: string): void {
     // no-op：具体的“返回上一页”交给调用方（uts 应用层 uni.navigateBack）处理
 }
 
-export function setLocalVideoView(callId: string, view: any): void {
+export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {
     const session = currentSessionOrNull()
     if (session == null || session.getCallId() != callId) {
         return
     }
-    session.setupLocalVideoView(view as ViewGroup, ScalingType.SCALE_ASPECT_FILL)
+    session.setupLocalVideoView(videoContainerOf(element), ScalingType.SCALE_ASPECT_FILL)
 }
 
-export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, view: any): void {
+export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, element: UniNativeViewElement): void {
     const session = currentSessionOrNull()
     if (session == null || session.getCallId() != callId) {
         return
     }
-    session.setupRemoteVideoView(userId, screenSharing, view as ViewGroup, ScalingType.SCALE_ASPECT_FILL)
+    session.setupRemoteVideoView(userId, screenSharing, videoContainerOf(element), ScalingType.SCALE_ASPECT_FILL)
 }
 
 export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {

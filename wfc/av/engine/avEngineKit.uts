@@ -70,6 +70,7 @@ class AVEngineKit {
             return
         }
         this.initialized = true
+        console.log('avEngineKit init')
         native.initAVEngineKit()
         Config.ICE_SERVERS.forEach(s => native.addICEServer(s.uri, s.userName, s.password))
         native.onAVEngineEvent((event: string, argsJson: string) => {
@@ -93,11 +94,20 @@ class AVEngineKit {
     }
 
     startSingleCall(userId: string, audioOnly: boolean): CallSession | null {
-        return CallSession.fromJsonStr(native.startSingleCall(userId, audioOnly))
+        const str = native.startSingleCall(userId, audioOnly)
+        if (str == null) {
+            // 原生 startCall 内部异常只会 printStackTrace 后返回 null，具体原因需查 logcat 中 avenginekit/PCRTCClient 相关日志
+            console.error('startSingleCall 失败：原生 startCall 返回 null')
+        }
+        return CallSession.fromJsonStr(str)
     }
 
     startMultiCall(groupId: string, participants: string[], audioOnly: boolean): CallSession | null {
-        return CallSession.fromJsonStr(native.startMultiCall(groupId, participants, audioOnly))
+        const str = native.startMultiCall(groupId, participants, audioOnly)
+        if (str == null) {
+            console.error('startMultiCall 失败：原生 startCall 返回 null')
+        }
+        return CallSession.fromJsonStr(str)
     }
 
     currentCallSession(): CallSession | null {
@@ -182,12 +192,12 @@ class AVEngineKit {
         native.minimize(callId)
     }
 
-    setLocalVideoView(callId: string, view: any): void {
-        native.setLocalVideoView(callId, view)
+    setLocalVideoView(callId: string, element: UniNativeViewElement): void {
+        native.setLocalVideoView(callId, element)
     }
 
-    setRemoteVideoView(callId: string, userId: string, view: any, screenSharing: boolean = false): void {
-        native.setRemoteVideoView(callId, userId, screenSharing, view)
+    setRemoteVideoView(callId: string, userId: string, element: UniNativeViewElement, screenSharing: boolean = false): void {
+        native.setRemoteVideoView(callId, userId, screenSharing, element)
     }
 
     setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {
@@ -195,6 +205,7 @@ class AVEngineKit {
     }
 
     private _handleAVEngineEvent(event: string, args: Array<any | null>): void {
+        console.log('av engine event', event)
         switch (event) {
             case 'onReceiveCall': {
                 const session = CallSession.fromJsonStr(argString(args, 0))

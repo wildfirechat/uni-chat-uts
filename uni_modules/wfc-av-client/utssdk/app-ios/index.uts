@@ -29,12 +29,27 @@
 
 import { NativeEventListener } from '../interface.uts'
 
-import { WFAVEngineKit, WFAVEngineDelegate, WFAVCallSession, WFAVCallSessionDelegate, WFAVEngineState, WFAVCallEndReason, WFAVVideoType, WFAVParticipantProfile, WFAVVideoScalingType } from 'WFAVEngineKit'
+import { WFAVEngineKit, WFAVEngineDelegate, WFAVCallSession, WFAVCallSessionDelegate, WFAVEngineState, WFAVCallEndReason, WFAVVideoType, WFAVVideoProfile, WFAVParticipantProfile, WFAVVideoScalingType } from 'WFAVEngineKit'
 import { WFCCConversation, WFCCConversationType } from 'WFChatClient'
+import { UIView } from 'UIKit'
 
 let avEngineEventListener: NativeEventListener | null = null
 let callSessionEventListener: NativeEventListener | null = null
 let initialized = false
+
+// 页面 <native-view> 元素 -> 绑定到其上的视频容器。重复对同一元素 setup 时复用同一个容器
+// （bindIOSView 只能绑一次）
+const videoContainers = new Map<UniNativeViewElement, UIView>()
+
+function videoContainerOf(element: UniNativeViewElement): UIView {
+    let container = videoContainers.get(element)
+    if (container == null) {
+        container = new UIView()
+        element.bindIOSView(container!)
+        videoContainers.set(element, container!)
+    }
+    return container!
+}
 
 function jsonArrayString(args: any[]): string {
     // uts 侧没有现成的 JSONSerialization 包装，这里手工拼装数组的 JSON 字符串。
@@ -47,8 +62,14 @@ function jsonArrayString(args: any[]): string {
             return "null"
         }
         if (typeof a == "string") {
-            const s = a as string
-            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+            // 注意 replace(string, string) 只替换第一处，必须用 split/join 做全局替换
+            let s = a as string
+            s = s.split("\\").join("\\\\")
+            s = s.split("\"").join("\\\"")
+            s = s.split("\n").join("\\n")
+            s = s.split("\r").join("\\r")
+            s = s.split("\t").join("\\t")
+            return "\"" + s + "\""
         }
         if (typeof a == "boolean") {
             return (a as boolean) ? "true" : "false"
@@ -113,6 +134,7 @@ class NativeAVEngineDelegate implements WFAVEngineDelegate {
     }
 
     didCallEnded(reason: WFAVCallEndReason, duration: number): void {
+        videoContainers.clear()
         avEngineEventListener?.("didCallEnded", jsonArrayString([reason.rawValue, duration]))
     }
 }
@@ -345,20 +367,20 @@ export function minimize(callId: string): void {
     // no-op：iOS 下由调用方（uts 应用层）自行处理返回上一页
 }
 
-export function setLocalVideoView(callId: string, view: any): void {
+export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {
     const session = currentSessionOrNull()
     if (session == null || session!.callId != callId) {
         return
     }
-    session!.setupLocalVideoView(view, scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill)
+    session!.setupLocalVideoView(videoContainerOf(element), scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill)
 }
 
-export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, view: any): void {
+export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, element: UniNativeViewElement): void {
     const session = currentSessionOrNull()
     if (session == null || session!.callId != callId) {
         return
     }
-    session!.setupRemoteVideoView(view, scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill, forUser = userId, screenSharing = screenSharing)
+    session!.setupRemoteVideoView(videoContainerOf(element), scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill, forUser = userId, screenSharing = screenSharing)
 }
 
 export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {

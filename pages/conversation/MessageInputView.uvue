@@ -339,6 +339,11 @@ export default {
                     const callSession = avEngineKit.startSingleCall(this.conversationInfo.conversation.target, audioOnly)
                     if (callSession != null) {
                         navigateToPage('/pages/voip/Single', callSession)
+                    } else {
+                        uni.showToast({
+                            title: '发起通话失败',
+                            icon: 'none',
+                        } as ShowToastOptions)
                     }
                 } else if (this.conversationInfo.conversation.type == ConversationType.Group) {
                     this.showPickGroupMemberToVoipModal(audioOnly)
@@ -361,6 +366,11 @@ export default {
                 setTimeout((): void => {
                     if (callSession != null) {
                         navigateToPage('/pages/voip/Multi', callSession)
+                    } else {
+                        uni.showToast({
+                            title: '发起通话失败',
+                            icon: 'none',
+                        } as ShowToastOptions)
                     }
                 }, 50)
             }

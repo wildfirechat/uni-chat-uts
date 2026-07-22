@@ -9,8 +9,9 @@
                         :src="selfUserInfo.portrait" />
                     <text class="desc">我</text>
                 </view>
-                <wf-av-video-view v-else ref="localVideo" class="video localVideo"
-                    :class="manyParticipants ? 'participant-small' : 'participant-large'" />
+                <native-view v-else class="video localVideo"
+                    :class="manyParticipants ? 'participant-small' : 'participant-large'"
+                    @init="onLocalVideoViewInit"></native-view>
             </view>
 
             <!--participants-->
@@ -22,9 +23,9 @@
                         :src="userInfoOf(p.userId).portrait" />
                     <text class="desc">{{ userInfoOf(p.userId).displayName }}</text>
                 </view>
-                <wf-av-video-view v-else :ref="'remoteVideo-' + p.userId" class="video"
+                <native-view v-else class="video"
                     :class="manyParticipants ? 'participant-small' : 'participant-large'"
-                    @tap="switchVideoType(p.userId)" />
+                    @init="onRemoteVideoViewInit($event as UniNativeViewInitEvent, p.userId)" @tap="switchVideoType(p.userId)"></native-view>
             </view>
         </view>
 
@@ -115,7 +116,8 @@ export default {
             currentTimestamp: 0,
             timer: 0,
             broadcastTimer: 0,
-            setupVideoViewsTimer: 0,
+            localVideoElement: null as UniNativeViewElement | null,
+            remoteVideoElements: new Map<string, UniNativeViewElement>(),
         }
     },
 
@@ -174,10 +176,6 @@ export default {
             clearInterval(this.broadcastTimer)
             this.broadcastTimer = 0
         }
-        if (this.setupVideoViewsTimer != 0) {
-            clearTimeout(this.setupVideoViewsTimer)
-            this.setupVideoViewsTimer = 0
-        }
     },
 
     methods: {
@@ -215,6 +213,7 @@ export default {
             }
             callback.didParticipantLeft = (userId: string, _reason: number, _screenSharing: boolean): void => {
                 this.participants = this.participants.filter((p: ParticipantProfile): boolean => p.userId != userId)
+                this.remoteVideoElements.delete(userId)
             }
             callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
                 this.participants.forEach((p: ParticipantProfile): void => {
@@ -338,6 +337,18 @@ export default {
             pickUsers(options)
         },
 
+        // native-view 创建后（v-if/v-else 首次满足或重新满足时）触发；视图尚未创建时 setupVideoViews
+        // 里对应的 element 为 null 会跳过，等 @init 触发后再补挂载，不再需要轮询重试
+        onLocalVideoViewInit(e: UniNativeViewInitEvent) {
+            this.localVideoElement = e.detail.element
+            this.setupVideoViews()
+        },
+
+        onRemoteVideoViewInit(e: UniNativeViewInitEvent, userId: string) {
+            this.remoteVideoElements.set(userId, e.detail.element)
+            this.setupVideoViews()
+        },
+
         setupVideoViews() {
             if (this.audioOnly || this.session == null) {
                 return
@@ -347,39 +358,20 @@ export default {
                 if (session == null) {
                     return
                 }
-                let allReady = true
-
                 if (!this.selfVideoMuted) {
-                    const localVideoRef = this.$refs['localVideo']
-                    if (localVideoRef != null) {
-                        const nativeView = (localVideoRef as ComponentPublicInstance).$callMethod('getNativeView')
-                        avEngineKit.setLocalVideoView(session.callId, nativeView!)
-                    } else {
-                        allReady = false
+                    const element = this.localVideoElement
+                    if (element != null) {
+                        avEngineKit.setLocalVideoView(session.callId, element)
                     }
                 }
-
                 this.participants.forEach((p: ParticipantProfile): void => {
                     if (!p.videoMuted && p.state == CallState.STATUS_CONNECTED) {
-                        const remoteVideoRef = this.$refs['remoteVideo-' + p.userId]
-                        if (remoteVideoRef != null) {
-                            const nativeView = (remoteVideoRef as ComponentPublicInstance).$callMethod('getNativeView')
-                            avEngineKit.setRemoteVideoView(session.callId, p.userId, nativeView!)
-                        } else {
-                            allReady = false
+                        const element = this.remoteVideoElements.get(p.userId)
+                        if (element != null) {
+                            avEngineKit.setRemoteVideoView(session.callId, p.userId, element)
                         }
                     }
                 })
-
-                if (this.setupVideoViewsTimer != 0) {
-                    clearTimeout(this.setupVideoViewsTimer)
-                    this.setupVideoViewsTimer = 0
-                }
-                if (!allReady && this.session != null) {
-                    this.setupVideoViewsTimer = setTimeout((): void => {
-                        this.setupVideoViews()
-                    }, 100)
-                }
             })
         },
 

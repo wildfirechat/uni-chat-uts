@@ -57,6 +57,17 @@ class PttClient {
         return native.isPttClientEnable()
     }
 
+    /**
+     * 是否已获得录音权限。iOS 恒为 true（由系统在首次使用麦克风时自动弹授权框）
+     */
+    isRecordPermissionGranted(): boolean {
+        return native.isRecordPermissionGranted()
+    }
+
+    requestRecordPermission(successCB: () => void, failCB: () => void): void {
+        native.requestRecordPermission(successCB, failCB)
+    }
+
     requestTalk(conversation: Conversation, priority: number, callback: TalkingCallback): void {
         native.requestTalk(
             conversation.type, conversation.target, conversation.line, priority,

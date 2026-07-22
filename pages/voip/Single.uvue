@@ -17,7 +17,8 @@
         <!--video-->
         <view v-else class="content-container">
             <view class="remote-media-container">
-                <wf-av-video-view v-if="callState === 4" ref="remoteVideo" class="video" @tap="switchVideoType" />
+                <native-view v-if="callState === 4" class="video" @init="onRemoteVideoViewInit"
+                    @tap="switchVideoType"></native-view>
                 <view v-if="callState !== 4" class="remote-placeholder">
                     <image class="avatar avatar-large" :src="participantUserInfo.portrait" />
                     <text class="desc">{{ participantUserInfo.displayName }}</text>
@@ -27,7 +28,8 @@
                 </view>
             </view>
             <view class="local-media-container" :class="callState === 4 ? 'local-corner-connected' : 'local-corner'">
-                <wf-av-video-view v-if="callState === 4 && !videoMuted" ref="localVideo" class="localVideo" />
+                <native-view v-if="callState === 4 && !videoMuted" class="localVideo"
+                    @init="onLocalVideoViewInit"></native-view>
                 <image v-else class="avatar" :class="callState === 4 ? 'avatar-muted' : 'avatar-small'"
                     :src="selfUserInfo.portrait" />
             </view>
@@ -101,6 +103,8 @@ export default {
             startTimestamp: 0,
             currentTimestamp: 0,
             timer: 0,
+            localVideoElement: null as UniNativeViewElement | null,
+            remoteVideoElement: null as UniNativeViewElement | null,
         }
     },
 
@@ -197,24 +201,33 @@ export default {
             avEngineKit.setSessionCallback(callback)
         },
 
+        // native-view 创建后（v-if 首次满足或重新满足时）触发，元素随即用于挂载视频画面
+        onLocalVideoViewInit(e: UniNativeViewInitEvent) {
+            this.localVideoElement = e.detail.element
+            this.setupLocalVideoView()
+        },
+
+        onRemoteVideoViewInit(e: UniNativeViewInitEvent) {
+            this.remoteVideoElement = e.detail.element
+            this.setupRemoteVideoView()
+        },
+
         setupLocalVideoView() {
             const session = this.session
-            const localVideoRef = this.$refs['localVideo']
-            if (session == null || localVideoRef == null) {
+            const element = this.localVideoElement
+            if (session == null || element == null) {
                 return
             }
-            const nativeView = (localVideoRef as ComponentPublicInstance).$callMethod('getNativeView')
-            avEngineKit.setLocalVideoView(session.callId, nativeView!)
+            avEngineKit.setLocalVideoView(session.callId, element)
         },
 
         setupRemoteVideoView() {
             const session = this.session
-            const remoteVideoRef = this.$refs['remoteVideo']
-            if (session == null || remoteVideoRef == null) {
+            const element = this.remoteVideoElement
+            if (session == null || element == null) {
                 return
             }
-            const nativeView = (remoteVideoRef as ComponentPublicInstance).$callMethod('getNativeView')
-            avEngineKit.setRemoteVideoView(session.callId, session.conversation.target, nativeView!)
+            avEngineKit.setRemoteVideoView(session.callId, session.conversation.target, element)
         },
 
         switchVideoType() {

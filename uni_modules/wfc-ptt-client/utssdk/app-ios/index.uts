@@ -69,6 +69,8 @@ export function initClient(options: UTSJSONObject): void {
     client.delegate = nativePttDelegate
 }
 
+// onAmplitudeUpdate 等回调会被多次触发，iOS 下回调默认触发一次即回收，必须 keepAlive
+@UTSJS.keepAlive
 export function requestTalk(type: number, target: string, line: number, priority: number, onStartTalking: () => void, onTalkingEnd: (reason: number) => void, onRequestFail: (errorCode: number) => void, onAmplitudeUpdate: (amplitude: number) => void): void {
     const conv = toConversation(type, target, line)
     WFPttClient.sharedClient().requestTalk(conv, startTalking = (): void => {
@@ -153,6 +155,16 @@ export function getTalkingMemberCount(type: number, target: string, line: number
 export function setEnablePtt(type: number, target: string, line: number, enable: boolean): void {
     // WFPttClient 的 enablePtt 是全局属性，没有按会话开关的接口，这里只更新全局开关
     WFPttClient.sharedClient().enablePtt = enable
+}
+
+// iOS 由系统在首次实际使用麦克风时自动弹出授权对话框，这里直接放行，与 wfc-av-client 的
+// requestVoipPermissions 处理方式一致
+export function isRecordPermissionGranted(): boolean {
+    return true
+}
+
+export function requestRecordPermission(successCB: () => void, failCB: () => void): void {
+    successCB()
 }
 
 export function isSpeakerEnable(): boolean {
