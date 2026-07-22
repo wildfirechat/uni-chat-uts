@@ -86,6 +86,9 @@ import FrameLayout from 'android.widget.FrameLayout'
 import ScalingType from 'org.webrtc.RendererCommon.ScalingType'
 import StatsReport from 'org.webrtc.StatsReport'
 import Settings from 'android.provider.Settings'
+import Looper from 'android.os.Looper'
+import Handler from 'android.os.Handler'
+import Runnable from 'java.lang.Runnable'
 
 let avEngineEventListener: NativeEventListener | null = null
 let callSessionEventListener: NativeEventListener | null = null
@@ -167,12 +170,43 @@ function currentSessionOrNull(): CallSession | null {
     }
 }
 
+// AVEngineKit 的回调是在 SDK 内部的线程池（如 startCall 提交给 wf executor 的 pool-x-thread-y）里
+// 触发的，而这些事件的应用层处理会调用 uni.createInnerAudioContext()（铃声，底层 ExoPlayer）、
+// navigateBack/showToast、以及更新 uvue 响应式状态——都必须在主线程执行，否则会抛
+// "Player is accessed on the wrong thread"（被 startCall 吞掉后返回 null，表现为"发起通话失败"）。
+// 因此统一把 JS 监听回调切回主线程再触发；已在主线程时直接执行以保持时序。
+class MainThreadRunnable implements Runnable {
+    private action: () => void
+    constructor(action: () => void) {
+        this.action = action
+    }
+    override run(): void {
+        this.action()
+    }
+}
+
+const mainHandler = new Handler(Looper.getMainLooper())
+
+function runOnMainThread(action: () => void): void {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        action()
+    } else {
+        mainHandler.post(new MainThreadRunnable(action))
+    }
+}
+
 function fireAVEngineEvent(event: string, args: any[]): void {
-    avEngineEventListener?.(event, JSONArray(args.toKotlinList()).toString())
+    const payload = JSONArray(args.toKotlinList()).toString()
+    runOnMainThread((): void => {
+        avEngineEventListener?.(event, payload)
+    })
 }
 
 function fireCallSessionEvent(event: string, args: any[]): void {
-    callSessionEventListener?.(event, JSONArray(args.toKotlinList()).toString())
+    const payload = JSONArray(args.toKotlinList()).toString()
+    runOnMainThread((): void => {
+        callSessionEventListener?.(event, payload)
+    })
 }
 
 class NativeAVEngineCallback implements AVEngineCallback {

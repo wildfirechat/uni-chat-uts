@@ -33,19 +33,19 @@ let clientModule: ClientModule = ClientModule.getInstance();
 let wfcEventListener: null | ((value: object) => void) = null
 
 export function initProto(): void {
-    UTSAndroid.getDispatcher("main").async(function(_){
-        console.log("当前任务执行在",Thread.currentThread().getName())
-        clientModule.initProto(UTSAndroid.getUniActivity())
+    // 必须同步初始化：调用方(wfc.uts init)在 initProto 返回后会立即调用
+    // getConnectionStatus/registerMessageFlag 等接口，若放到 main dispatcher 异步执行，
+    // ChatManager 尚未 init，会抛 NotInitializedExecption: Not init!!!。
+    // init 由 App onLaunch 触发，本就运行在主线程，直接同步调用即可。
+    clientModule.initProto(UTSAndroid.getUniActivity())
 
-        clientModule.setEventListener((channel: string, value: object) => {
-            if (channel === 'wfc-event') {
-                wfcEventListener?.(value)
-            } else {
+    clientModule.setEventListener((channel: string, value: object) => {
+        if (channel === 'wfc-event') {
+            wfcEventListener?.(value)
+        } else {
 
-            }
-        })
-
-    },null)
+        }
+    })
 }
 
 @UTSJS.keepAlive

@@ -26,6 +26,8 @@ import { PttEventListener } from '../interface.uts'
 import PTTClient from 'cn.wildfirechat.ptt.PTTClient'
 import PttCallback from 'cn.wildfirechat.ptt.PttCallback'
 import TalkingCallback from 'cn.wildfirechat.ptt.TalkingCallback'
+import SoundMessageContent from 'cn.wildfirechat.message.SoundMessageContent'
+import PTTSoundMessageContent from 'cn.wildfirechat.message.PTTSoundMessageContent'
 import Conversation from 'cn.wildfirechat.model.Conversation'
 import ConversationType from 'cn.wildfirechat.model.Conversation.ConversationType'
 import GeneralCallback from 'cn.wildfirechat.remote.GeneralCallback'
@@ -149,6 +151,12 @@ export function requestTalk(type: number, target: string, line: number, priority
         }
         override onAmplitudeUpdate(amplitude: Int): void {
             onAmplitudeUpdate(amplitude)
+        }
+        // TalkingCallback.onCreateSoundMessageContent 是 Java default 方法（默认 return new
+        // PTTSoundMessageContent(path)）。UTS->Kotlin 不会自动继承未显式重写的 Java default 方法，
+        // 保存语音消息时 PTTClient$case 会回调本对象，未重写就会抛 AbstractMethodError，故显式重写。
+        override onCreateSoundMessageContent(path: string): SoundMessageContent {
+            return new PTTSoundMessageContent(path)
         }
     }
     PTTClient.getInstance().requestTalk(conv, new Cb())
