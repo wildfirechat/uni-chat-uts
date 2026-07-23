@@ -98,21 +98,28 @@ export default {
             scrollTop: 0,
             triggered: false,
             freshing: false,
+
+            // onUnload 时会清空 store 里的当前会话，而此时页面关闭动画才刚开始，页面仍在渲染，
+            // 直接渲染 store 数据会导致整个页面瞬间变白(白屏动画滑出后才看到会话列表)。
+            // 所以关闭时冻结渲染，用关闭前的数据副本，保证动画期间页面内容不变。
+            closing: false,
+            closingConversationInfo: null as ConversationInfo | null,
+            closingMessageList: [] as Message[],
         };
     },
 
     computed: {
         conversationInfo(): ConversationInfo | null {
-            return conversationState.currentConversationInfo
+            return this.closing ? this.closingConversationInfo : conversationState.currentConversationInfo
         },
         messageList(): Message[] {
-            return conversationState.currentConversationMessageList
+            return this.closing ? this.closingMessageList : conversationState.currentConversationMessageList
         },
         enableMessageMultiSelection(): boolean {
             return conversationState.enableMessageMultiSelection
         },
         conversationTitle(): string {
-            const info = conversationState.currentConversationInfo;
+            const info = this.conversationInfo;
             if (info == null) {
                 return ''
             }
@@ -120,7 +127,7 @@ export default {
             return target != null ? target._displayName : '';
         },
         targetUserOnlineStateDesc(): string {
-            const info = conversationState.currentConversationInfo;
+            const info = this.conversationInfo;
             return info != null ? info.conversation._targetOnlineStateDesc : '';
         },
         navTitle(): string {
@@ -166,6 +173,11 @@ export default {
     },
 
     onUnload() {
+        // 先冻结渲染，再清空 store，避免关闭动画期间页面变白
+        this.closingConversationInfo = conversationState.currentConversationInfo;
+        this.closingMessageList = conversationState.currentConversationMessageList;
+        this.closing = true;
+
         store.setCurrentConversationInfo(null);
         eventBus.$off('openMessageContextMenu', this.onOpenMessageContextMenu)
         eventBus.$off('reeditMessage', this.onReeditMessage)

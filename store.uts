@@ -5,7 +5,13 @@
  * - action 方法在默认导出的 store 对象上，方法名与原 store.js 保持一致；
  * - 页面通过 computed 引用状态字段。
  */
-import { reactive } from 'vue'
+// 注意：uni-app x(Android) 下 reactive(new SomeClass()) 是无效的——UTS class 编译成普通
+// Kotlin 类，字段是裸 field，Kotlin 没有 Proxy 无法拦截读写；运行时只对 UTSJSONObject/
+// UTSArray/Map/Set 以及 UTSReactiveObject 子类做响应式包装（见 createReactiveObject 的
+// 泛型约束），其它类型 reactive() 原样返回（所以 `as XxxState` 强转才不会抛异常）。
+// 结果就是：computed 读不到依赖、store 写了也不触发重渲染，值对但视图不更新。
+// 因此模板会绑定到的字段一律用 ref 支撑 + getter/setter 代理，保持调用方写法不变。
+import { reactive, ref } from 'vue'
 
 import ConnectionStatus from "./wfc/client/connectionStatus.uts";
 import wfc from "./wfc/client/wfc.uts";
@@ -85,34 +91,85 @@ export class MediaProgress {
 }
 
 export class ConversationState {
-    currentConversationInfo: ConversationInfo | null = null;
-    conversationInfoList: ConversationInfo[] = [];
-    currentConversationMessageList: Message[] = [];
-    currentConversationOldestMessageId = 0;
-    currentConversationOldestMessageUid = '0';
+    private _currentConversationInfo = ref<ConversationInfo | null>(null);
+    get currentConversationInfo(): ConversationInfo | null { return this._currentConversationInfo.value }
+    set currentConversationInfo(value: ConversationInfo | null) { this._currentConversationInfo.value = value }
 
-    currentConversationRead: Map<string, number> | null = null;
+    private _conversationInfoList = ref<ConversationInfo[]>([]);
+    get conversationInfoList(): ConversationInfo[] { return this._conversationInfoList.value }
+    set conversationInfoList(value: ConversationInfo[]) { this._conversationInfoList.value = value }
 
-    isMessageReceiptEnable = false;
+    private _currentConversationMessageList = ref<Message[]>([]);
+    get currentConversationMessageList(): Message[] { return this._currentConversationMessageList.value }
+    set currentConversationMessageList(value: Message[]) { this._currentConversationMessageList.value = value }
 
-    inputtingUser: UserInfo | null = null;
-    inputClearTimer = 0;
+    private _currentConversationOldestMessageId = ref<number>(0);
+    get currentConversationOldestMessageId(): number { return this._currentConversationOldestMessageId.value }
+    set currentConversationOldestMessageId(value: number) { this._currentConversationOldestMessageId.value = value }
 
-    shouldAutoScrollToBottom = true;
+    private _currentConversationOldestMessageUid = ref<string>('0');
+    get currentConversationOldestMessageUid(): string { return this._currentConversationOldestMessageUid.value }
+    set currentConversationOldestMessageUid(value: string) { this._currentConversationOldestMessageUid.value = value }
 
-    previewMediaItems: PreviewMediaItem[] = [];
-    previewMediaIndex = 0;
+    private _currentConversationRead = ref<Map<string, number> | null>(null);
+    get currentConversationRead(): Map<string, number> | null { return this._currentConversationRead.value }
+    set currentConversationRead(value: Map<string, number> | null) { this._currentConversationRead.value = value }
 
-    enableMessageMultiSelection = false;
-    showChannelMenu = false;
-    quotedMessage: Message | null = null;
+    private _isMessageReceiptEnable = ref<boolean>(false);
+    get isMessageReceiptEnable(): boolean { return this._isMessageReceiptEnable.value }
+    set isMessageReceiptEnable(value: boolean) { this._isMessageReceiptEnable.value = value }
 
-    downloadingMessages: MediaProgress[] = [];
-    sendingMessages: MediaProgress[] = [];
-    floatingConversations: Conversation[] = [];
+    private _inputtingUser = ref<UserInfo | null>(null);
+    get inputtingUser(): UserInfo | null { return this._inputtingUser.value }
+    set inputtingUser(value: UserInfo | null) { this._inputtingUser.value = value }
 
-    currentVoiceMessage: Message | null = null;
-    contextMenuConversationInfo: ConversationInfo | null = null;
+    private _inputClearTimer = ref<number>(0);
+    get inputClearTimer(): number { return this._inputClearTimer.value }
+    set inputClearTimer(value: number) { this._inputClearTimer.value = value }
+
+    private _shouldAutoScrollToBottom = ref<boolean>(true);
+    get shouldAutoScrollToBottom(): boolean { return this._shouldAutoScrollToBottom.value }
+    set shouldAutoScrollToBottom(value: boolean) { this._shouldAutoScrollToBottom.value = value }
+
+    private _previewMediaItems = ref<PreviewMediaItem[]>([]);
+    get previewMediaItems(): PreviewMediaItem[] { return this._previewMediaItems.value }
+    set previewMediaItems(value: PreviewMediaItem[]) { this._previewMediaItems.value = value }
+
+    private _previewMediaIndex = ref<number>(0);
+    get previewMediaIndex(): number { return this._previewMediaIndex.value }
+    set previewMediaIndex(value: number) { this._previewMediaIndex.value = value }
+
+    private _enableMessageMultiSelection = ref<boolean>(false);
+    get enableMessageMultiSelection(): boolean { return this._enableMessageMultiSelection.value }
+    set enableMessageMultiSelection(value: boolean) { this._enableMessageMultiSelection.value = value }
+
+    private _showChannelMenu = ref<boolean>(false);
+    get showChannelMenu(): boolean { return this._showChannelMenu.value }
+    set showChannelMenu(value: boolean) { this._showChannelMenu.value = value }
+
+    private _quotedMessage = ref<Message | null>(null);
+    get quotedMessage(): Message | null { return this._quotedMessage.value }
+    set quotedMessage(value: Message | null) { this._quotedMessage.value = value }
+
+    private _downloadingMessages = ref<MediaProgress[]>([]);
+    get downloadingMessages(): MediaProgress[] { return this._downloadingMessages.value }
+    set downloadingMessages(value: MediaProgress[]) { this._downloadingMessages.value = value }
+
+    private _sendingMessages = ref<MediaProgress[]>([]);
+    get sendingMessages(): MediaProgress[] { return this._sendingMessages.value }
+    set sendingMessages(value: MediaProgress[]) { this._sendingMessages.value = value }
+
+    private _floatingConversations = ref<Conversation[]>([]);
+    get floatingConversations(): Conversation[] { return this._floatingConversations.value }
+    set floatingConversations(value: Conversation[]) { this._floatingConversations.value = value }
+
+    private _currentVoiceMessage = ref<Message | null>(null);
+    get currentVoiceMessage(): Message | null { return this._currentVoiceMessage.value }
+    set currentVoiceMessage(value: Message | null) { this._currentVoiceMessage.value = value }
+
+    private _contextMenuConversationInfo = ref<ConversationInfo | null>(null);
+    get contextMenuConversationInfo(): ConversationInfo | null { return this._contextMenuConversationInfo.value }
+    set contextMenuConversationInfo(value: ConversationInfo | null) { this._contextMenuConversationInfo.value = value }
 
     _reset(): void {
         this.currentConversationInfo = null;
@@ -139,30 +196,89 @@ export class ConversationState {
 }
 
 export class ContactState {
-    currentFriendRequest: FriendRequest | null = null;
-    currentGroup: GroupInfo | null = null;
-    currentChannel: ChannelInfo | null = null;
-    currentFriend: UserInfo | null = null;
-    currentOrganization: UTSJSONObject | null = null;
-    currentChatroom: UTSJSONObject | null = null;
-    currentUser: UserInfo | null = null;
+    private _currentFriendRequest = ref<FriendRequest | null>(null);
+    get currentFriendRequest(): FriendRequest | null { return this._currentFriendRequest.value }
+    set currentFriendRequest(value: FriendRequest | null) { this._currentFriendRequest.value = value }
 
-    expandFriendRequestList = false;
-    expandFriendList = true;
-    expandGroup = false;
-    expandChanel = false;
-    expandOrganization = false;
-    expandChatroom = false;
+    private _currentGroup = ref<GroupInfo | null>(null);
+    get currentGroup(): GroupInfo | null { return this._currentGroup.value }
+    set currentGroup(value: GroupInfo | null) { this._currentGroup.value = value }
 
-    unreadFriendRequestCount = 0;
-    friendList: UserInfo[] = [];
-    friendRequestList: FriendRequest[] = [];
-    favGroupList: GroupInfo[] = [];
-    channelList: ChannelInfo[] = [];
-    favContactList: UserInfo[] = [];
+    private _currentChannel = ref<ChannelInfo | null>(null);
+    get currentChannel(): ChannelInfo | null { return this._currentChannel.value }
+    set currentChannel(value: ChannelInfo | null) { this._currentChannel.value = value }
 
-    selfUserInfo: UserInfo | null = null;
-    contextMenuUserInfo: UserInfo | null = null;
+    private _currentFriend = ref<UserInfo | null>(null);
+    get currentFriend(): UserInfo | null { return this._currentFriend.value }
+    set currentFriend(value: UserInfo | null) { this._currentFriend.value = value }
+
+    private _currentOrganization = ref<UTSJSONObject | null>(null);
+    get currentOrganization(): UTSJSONObject | null { return this._currentOrganization.value }
+    set currentOrganization(value: UTSJSONObject | null) { this._currentOrganization.value = value }
+
+    private _currentChatroom = ref<UTSJSONObject | null>(null);
+    get currentChatroom(): UTSJSONObject | null { return this._currentChatroom.value }
+    set currentChatroom(value: UTSJSONObject | null) { this._currentChatroom.value = value }
+
+    private _currentUser = ref<UserInfo | null>(null);
+    get currentUser(): UserInfo | null { return this._currentUser.value }
+    set currentUser(value: UserInfo | null) { this._currentUser.value = value }
+
+    private _expandFriendRequestList = ref<boolean>(false);
+    get expandFriendRequestList(): boolean { return this._expandFriendRequestList.value }
+    set expandFriendRequestList(value: boolean) { this._expandFriendRequestList.value = value }
+
+    private _expandFriendList = ref<boolean>(true);
+    get expandFriendList(): boolean { return this._expandFriendList.value }
+    set expandFriendList(value: boolean) { this._expandFriendList.value = value }
+
+    private _expandGroup = ref<boolean>(false);
+    get expandGroup(): boolean { return this._expandGroup.value }
+    set expandGroup(value: boolean) { this._expandGroup.value = value }
+
+    private _expandChanel = ref<boolean>(false);
+    get expandChanel(): boolean { return this._expandChanel.value }
+    set expandChanel(value: boolean) { this._expandChanel.value = value }
+
+    private _expandOrganization = ref<boolean>(false);
+    get expandOrganization(): boolean { return this._expandOrganization.value }
+    set expandOrganization(value: boolean) { this._expandOrganization.value = value }
+
+    private _expandChatroom = ref<boolean>(false);
+    get expandChatroom(): boolean { return this._expandChatroom.value }
+    set expandChatroom(value: boolean) { this._expandChatroom.value = value }
+
+    private _unreadFriendRequestCount = ref<number>(0);
+    get unreadFriendRequestCount(): number { return this._unreadFriendRequestCount.value }
+    set unreadFriendRequestCount(value: number) { this._unreadFriendRequestCount.value = value }
+
+    private _friendList = ref<UserInfo[]>([]);
+    get friendList(): UserInfo[] { return this._friendList.value }
+    set friendList(value: UserInfo[]) { this._friendList.value = value }
+
+    private _friendRequestList = ref<FriendRequest[]>([]);
+    get friendRequestList(): FriendRequest[] { return this._friendRequestList.value }
+    set friendRequestList(value: FriendRequest[]) { this._friendRequestList.value = value }
+
+    private _favGroupList = ref<GroupInfo[]>([]);
+    get favGroupList(): GroupInfo[] { return this._favGroupList.value }
+    set favGroupList(value: GroupInfo[]) { this._favGroupList.value = value }
+
+    private _channelList = ref<ChannelInfo[]>([]);
+    get channelList(): ChannelInfo[] { return this._channelList.value }
+    set channelList(value: ChannelInfo[]) { this._channelList.value = value }
+
+    private _favContactList = ref<UserInfo[]>([]);
+    get favContactList(): UserInfo[] { return this._favContactList.value }
+    set favContactList(value: UserInfo[]) { this._favContactList.value = value }
+
+    private _selfUserInfo = ref<UserInfo | null>(null);
+    get selfUserInfo(): UserInfo | null { return this._selfUserInfo.value }
+    set selfUserInfo(value: UserInfo | null) { this._selfUserInfo.value = value }
+
+    private _contextMenuUserInfo = ref<UserInfo | null>(null);
+    get contextMenuUserInfo(): UserInfo | null { return this._contextMenuUserInfo.value }
+    set contextMenuUserInfo(value: UserInfo | null) { this._contextMenuUserInfo.value = value }
 
     _reset(): void {
         this.currentFriendRequest = null;
@@ -191,15 +307,38 @@ export class ContactState {
 }
 
 export class SearchState {
-    query = '';
+    private _query = ref<string>('');
+    get query(): string { return this._query.value }
+    set query(value: string) { this._query.value = value }
+
     // 进入会话消息搜索页时使用
-    conversation: Conversation | null = null;
-    userSearchResult: UserInfo[] = [];
-    channelSearchResult: ChannelInfo[] = [];
-    contactSearchResult: UserInfo[] = [];
-    groupSearchResult: GroupInfo[] = [];
-    conversationSearchResult: ConversationSearchResult[] = [];
-    messageSearchResult: Message[] = [];
+    private _conversation = ref<Conversation | null>(null);
+    get conversation(): Conversation | null { return this._conversation.value }
+    set conversation(value: Conversation | null) { this._conversation.value = value }
+
+    private _userSearchResult = ref<UserInfo[]>([]);
+    get userSearchResult(): UserInfo[] { return this._userSearchResult.value }
+    set userSearchResult(value: UserInfo[]) { this._userSearchResult.value = value }
+
+    private _channelSearchResult = ref<ChannelInfo[]>([]);
+    get channelSearchResult(): ChannelInfo[] { return this._channelSearchResult.value }
+    set channelSearchResult(value: ChannelInfo[]) { this._channelSearchResult.value = value }
+
+    private _contactSearchResult = ref<UserInfo[]>([]);
+    get contactSearchResult(): UserInfo[] { return this._contactSearchResult.value }
+    set contactSearchResult(value: UserInfo[]) { this._contactSearchResult.value = value }
+
+    private _groupSearchResult = ref<GroupInfo[]>([]);
+    get groupSearchResult(): GroupInfo[] { return this._groupSearchResult.value }
+    set groupSearchResult(value: GroupInfo[]) { this._groupSearchResult.value = value }
+
+    private _conversationSearchResult = ref<ConversationSearchResult[]>([]);
+    get conversationSearchResult(): ConversationSearchResult[] { return this._conversationSearchResult.value }
+    set conversationSearchResult(value: ConversationSearchResult[]) { this._conversationSearchResult.value = value }
+
+    private _messageSearchResult = ref<Message[]>([]);
+    get messageSearchResult(): Message[] { return this._messageSearchResult.value }
+    set messageSearchResult(value: Message[]) { this._messageSearchResult.value = value }
 
     _reset(): void {
         this.query = '';
@@ -214,10 +353,21 @@ export class SearchState {
 }
 
 export class PickState {
-    users: UserInfo[] = [];
-    organizations: UTSJSONObject[] = [];
-    conversations: Conversation[] = [];
-    messages: Message[] = [];
+    private _users = ref<UserInfo[]>([]);
+    get users(): UserInfo[] { return this._users.value }
+    set users(value: UserInfo[]) { this._users.value = value }
+
+    private _organizations = ref<UTSJSONObject[]>([]);
+    get organizations(): UTSJSONObject[] { return this._organizations.value }
+    set organizations(value: UTSJSONObject[]) { this._organizations.value = value }
+
+    private _conversations = ref<Conversation[]>([]);
+    get conversations(): Conversation[] { return this._conversations.value }
+    set conversations(value: Conversation[]) { this._conversations.value = value }
+
+    private _messages = ref<Message[]>([]);
+    get messages(): Message[] { return this._messages.value }
+    set messages(value: Message[]) { this._messages.value = value }
 
     _reset(): void {
         this.users = [];
@@ -228,16 +378,45 @@ export class PickState {
 }
 
 export class MiscState {
-    connectionStatus: number = ConnectionStatus.ConnectionStatusUnconnected;
-    enableNotification = true;
-    enableNotificationMessageDetail = true;
-    enableAutoLogin = false;
-    isMainWindow = false;
-    isCommercialServer = false;
-    isDisableSyncDraft = false;
-    isVoipOngoing = false;
-    isAppHidden = false;
-    userOnlineStateMap: Map<string, UserOnlineState> = new Map<string, UserOnlineState>();
+    private _connectionStatus = ref<number>(ConnectionStatus.ConnectionStatusUnconnected);
+    get connectionStatus(): number { return this._connectionStatus.value }
+    set connectionStatus(value: number) { this._connectionStatus.value = value }
+
+    private _enableNotification = ref<boolean>(true);
+    get enableNotification(): boolean { return this._enableNotification.value }
+    set enableNotification(value: boolean) { this._enableNotification.value = value }
+
+    private _enableNotificationMessageDetail = ref<boolean>(true);
+    get enableNotificationMessageDetail(): boolean { return this._enableNotificationMessageDetail.value }
+    set enableNotificationMessageDetail(value: boolean) { this._enableNotificationMessageDetail.value = value }
+
+    private _enableAutoLogin = ref<boolean>(false);
+    get enableAutoLogin(): boolean { return this._enableAutoLogin.value }
+    set enableAutoLogin(value: boolean) { this._enableAutoLogin.value = value }
+
+    private _isMainWindow = ref<boolean>(false);
+    get isMainWindow(): boolean { return this._isMainWindow.value }
+    set isMainWindow(value: boolean) { this._isMainWindow.value = value }
+
+    private _isCommercialServer = ref<boolean>(false);
+    get isCommercialServer(): boolean { return this._isCommercialServer.value }
+    set isCommercialServer(value: boolean) { this._isCommercialServer.value = value }
+
+    private _isDisableSyncDraft = ref<boolean>(false);
+    get isDisableSyncDraft(): boolean { return this._isDisableSyncDraft.value }
+    set isDisableSyncDraft(value: boolean) { this._isDisableSyncDraft.value = value }
+
+    private _isVoipOngoing = ref<boolean>(false);
+    get isVoipOngoing(): boolean { return this._isVoipOngoing.value }
+    set isVoipOngoing(value: boolean) { this._isVoipOngoing.value = value }
+
+    private _isAppHidden = ref<boolean>(false);
+    get isAppHidden(): boolean { return this._isAppHidden.value }
+    set isAppHidden(value: boolean) { this._isAppHidden.value = value }
+
+    private _userOnlineStateMap = ref<Map<string, UserOnlineState>>(new Map<string, UserOnlineState>());
+    get userOnlineStateMap(): Map<string, UserOnlineState> { return this._userOnlineStateMap.value }
+    set userOnlineStateMap(value: Map<string, UserOnlineState>) { this._userOnlineStateMap.value = value }
 
     _reset(): void {
         this.connectionStatus = ConnectionStatus.ConnectionStatusUnconnected;
@@ -420,12 +599,16 @@ class Store {
                         }
                         return false
                     })
+                    // 整体赋值新数组触发刷新，勿原地 splice/push
+                    const newMsgList = conversationState.currentConversationMessageList.slice(0);
                     if (msgIndex > -1) {
-                        conversationState.currentConversationMessageList.splice(msgIndex, 1, msg);
+                        newMsgList.splice(msgIndex, 1, msg);
+                        conversationState.currentConversationMessageList = newMsgList;
                         console.log('msg duplicate', msg.messageId, msg.messageUid)
                         return;
                     }
-                    conversationState.currentConversationMessageList.push(msg);
+                    newMsgList.push(msg);
+                    conversationState.currentConversationMessageList = newMsgList;
                 }
 
                 // 通知
@@ -517,7 +700,10 @@ class Store {
             }
             this._patchMessage(message, lastTimestamp)
 
-            conversationState.currentConversationMessageList.push(message);
+            // 整体赋值新数组触发刷新，勿原地 push
+            const newMsgList = conversationState.currentConversationMessageList.slice(0);
+            newMsgList.push(message);
+            conversationState.currentConversationMessageList = newMsgList;
         });
 
         wfc.eventEmitter.on(EventType.MessageStatusUpdate, (args: Array<any | null>) => {
@@ -535,7 +721,10 @@ class Store {
                 return;
             }
             this._patchMessage(message, 0);
-            conversationState.currentConversationMessageList.splice(index, 1, message);
+            // 整体赋值新数组触发刷新，勿原地 splice
+            const newMsgList = conversationState.currentConversationMessageList.slice(0);
+            newMsgList.splice(index, 1, message);
+            conversationState.currentConversationMessageList = newMsgList;
 
             const lastMessage = currentConversationInfo.lastMessage
             if (lastMessage != null && lastMessage.messageId == message.messageId) {
@@ -646,12 +835,15 @@ class Store {
         const conversationInfo = wfc.getConversationInfo(conversation);
         this._patchConversationInfo(conversationInfo, true, null, null);
 
-        const index = conversationState.conversationInfoList.findIndex((info: ConversationInfo): boolean => info.conversation.equal(conversation));
+        // 先在副本上改，最后整体赋值一次，靠 setter 触发重渲染。
+        // 不要原地 splice/push/sort：实测原地修改不会刷新会话列表(lastMessage 不更新)。
+        const newList = conversationState.conversationInfoList.slice(0);
+        const index = newList.findIndex((info: ConversationInfo): boolean => info.conversation.equal(conversation));
         if (index >= 0) {
-            conversationState.conversationInfoList.splice(index, 1, conversationInfo);
+            newList.splice(index, 1, conversationInfo);
         } else {
             if (insertIfNoExist && gt(conversationInfo.timestamp, 0) && conversation.type != ConversationType.ChatRoom) {
-                conversationState.conversationInfoList.push(conversationInfo);
+                newList.push(conversationInfo);
             } else {
                 return conversationInfo;
             }
@@ -663,7 +855,7 @@ class Store {
         }
 
         // sort
-        conversationState.conversationInfoList.sort((a: ConversationInfo, b: ConversationInfo): number => {
+        newList.sort((a: ConversationInfo, b: ConversationInfo): number => {
             if ((a.top > 0 && b.top > 0) || (a.top == 0 && b.top == 0)) {
                 return gt(a.timestamp, b.timestamp) ? -1 : 1;
             } else {
@@ -674,6 +866,7 @@ class Store {
                 }
             }
         })
+        conversationState.conversationInfoList = newList;
         return conversationInfo;
     }
 
@@ -863,9 +1056,10 @@ class Store {
 
     toggleMessageMultiSelection(message: Message | null): void {
         conversationState.enableMessageMultiSelection = !conversationState.enableMessageMultiSelection;
-        pickState.messages = [];
         if (conversationState.enableMessageMultiSelection && message != null) {
-            pickState.messages.push(message);
+            pickState.messages = [message];
+        } else {
+            pickState.messages = [];
         }
     }
 
@@ -874,12 +1068,14 @@ class Store {
     }
 
     selectOrDeselectMessage(message: Message): void {
-        const index = pickState.messages.findIndex((m: Message): boolean => m.messageId == message.messageId);
+        const newMessages = pickState.messages.slice(0);
+        const index = newMessages.findIndex((m: Message): boolean => m.messageId == message.messageId);
         if (index >= 0) {
-            pickState.messages.splice(index, 1);
+            newMessages.splice(index, 1);
         } else {
-            pickState.messages.push(message);
+            newMessages.push(message);
         }
+        pickState.messages = newMessages;
     }
 
     deleteSelectedMessages(): void {
@@ -887,9 +1083,10 @@ class Store {
         if (pickState.messages.length < 1) {
             return;
         }
-        pickState.messages.sort((m1: Message, m2: Message): number => m1.messageId - m2.messageId);
-        for (let i = 0; i < pickState.messages.length; i++) {
-            wfc.deleteMessage(pickState.messages[i].messageId);
+        const toDelete = pickState.messages.slice(0);
+        toDelete.sort((m1: Message, m2: Message): number => m1.messageId - m2.messageId);
+        for (let i = 0; i < toDelete.length; i++) {
+            wfc.deleteMessage(toDelete[i].messageId);
         }
         pickState.messages = [];
     }
@@ -963,8 +1160,7 @@ class Store {
      * @param thumb base64格式的缩略图，但不包含'data:image/png;base64,'
      */
     previewMedia(src: string, thumbUrl: string, thumb: string, autoplay: boolean = true): void {
-        conversationState.previewMediaItems = [];
-        conversationState.previewMediaItems.push(new PreviewMediaItem(src, thumbUrl != '' ? thumbUrl : 'data:image/png;base64,' + thumb, autoplay));
+        conversationState.previewMediaItems = [new PreviewMediaItem(src, thumbUrl != '' ? thumbUrl : 'data:image/png;base64,' + thumb, autoplay)];
         conversationState.previewMediaIndex = 0;
     }
 
@@ -988,21 +1184,22 @@ class Store {
      * @param continuous true，预览周围的媒体消息；false，只预览传入的那条媒体消息
      */
     previewMessage(message: Message, continuous: boolean): void {
-        conversationState.previewMediaItems = [];
-        conversationState.previewMediaIndex = 0;
+        const items: PreviewMediaItem[] = [];
+        let index = 0;
         if (continuous && conversationState.currentConversationMessageList.length > 0) {
             const mediaMsgs = conversationState.currentConversationMessageList.filter((m: Message): boolean => m.messageContent.type == MessageContentType.Image || m.messageContent.type == MessageContentType.Video)
             for (let i = 0; i < mediaMsgs.length; i++) {
                 const msg = mediaMsgs[i];
                 if (msg.messageId == message.messageId) {
-                    conversationState.previewMediaIndex = i;
+                    index = i;
                 }
-                conversationState.previewMediaItems.push(this._mediaItemOfMessage(msg));
+                items.push(this._mediaItemOfMessage(msg));
             }
         } else {
-            conversationState.previewMediaIndex = 0;
-            conversationState.previewMediaItems.push(this._mediaItemOfMessage(message));
+            items.push(this._mediaItemOfMessage(message));
         }
+        conversationState.previewMediaItems = items;
+        conversationState.previewMediaIndex = index;
     }
 
     private _mediaItemOfMessage(msg: Message): PreviewMediaItem {
@@ -1029,13 +1226,17 @@ class Store {
         }
         const messages = (content as CompositeMessageContent).messages
         const mediaMsgs = messages.filter((m: Message): boolean => m.messageContent.type == MessageContentType.Image || m.messageContent.type == MessageContentType.Video)
+        const items: PreviewMediaItem[] = [];
+        let index = 0;
         for (let i = 0; i < mediaMsgs.length; i++) {
             const msg = mediaMsgs[i];
             if (eq(msg.messageUid, focusMessageUid)) {
-                conversationState.previewMediaIndex = i;
+                index = i;
             }
-            conversationState.previewMediaItems.push(this._mediaItemOfMessage(msg));
+            items.push(this._mediaItemOfMessage(msg));
         }
+        conversationState.previewMediaItems = items;
+        conversationState.previewMediaIndex = index;
     }
 
     /**
@@ -1076,13 +1277,10 @@ class Store {
                 console.log('sf, pr', messageId)
             },
             (progress: number, total: number) => {
-                const sm = conversationState.sendingMessages.find((e: MediaProgress): boolean => e.messageId == msg.messageId);
-                if (sm != null) {
-                    sm.progress = progress;
-                    sm.total = total;
-                } else {
-                    conversationState.sendingMessages.push(new MediaProgress(msg.messageId, progress, total));
-                }
+                // MediaProgress 是普通 class，改字段不触发刷新，统一整体赋值新数组
+                const newSending = conversationState.sendingMessages.filter((e: MediaProgress): boolean => e.messageId != msg.messageId);
+                newSending.push(new MediaProgress(msg.messageId, progress, total));
+                conversationState.sendingMessages = newSending;
             },
             (messageUid: string, timestamp: number) => {
                 console.log('sf s', messageUid)
@@ -1378,7 +1576,7 @@ class Store {
     }
 
     addDownloadingMessage(messageId: number): void {
-        conversationState.downloadingMessages.push(new MediaProgress(messageId, 0, Number.MAX_SAFE_INTEGER));
+        conversationState.downloadingMessages = conversationState.downloadingMessages.concat([new MediaProgress(messageId, 0, Number.MAX_SAFE_INTEGER)]);
     }
 
     removeDownloadingMessage(messageId: number): void {
@@ -1398,7 +1596,7 @@ class Store {
     }
 
     addFloatingConversation(conversation: Conversation): void {
-        conversationState.floatingConversations.push(conversation);
+        conversationState.floatingConversations = conversationState.floatingConversations.concat([conversation]);
     }
 
     removeFloatingConversation(conversation: Conversation): void {
@@ -1718,7 +1916,7 @@ class Store {
         if (index >= 0) {
             pickState.users = pickState.users.filter((u: UserInfo): boolean => user.uid != u.uid)
         } else {
-            pickState.users.push(user);
+            pickState.users = pickState.users.concat([user]);
         }
     }
 
@@ -1733,7 +1931,7 @@ class Store {
         if (index >= 0) {
             pickState.organizations = pickState.organizations.filter((o: UTSJSONObject): boolean => (o.getNumber('id') ?? 0) != orgId)
         } else {
-            pickState.organizations.push(org);
+            pickState.organizations = pickState.organizations.concat([org]);
         }
     }
 
@@ -1748,7 +1946,7 @@ class Store {
         if (index >= 0) {
             pickState.conversations = pickState.conversations.filter((c: Conversation): boolean => !conversation.equal(c))
         } else {
-            pickState.conversations.push(conversation);
+            pickState.conversations = pickState.conversations.concat([conversation]);
         }
     }
 
@@ -1938,10 +2136,14 @@ class Store {
 
     clearAllUnreadStatus(): void {
         wfc.clearAllUnreadStatus();
-        for (let i = 0; i < conversationState.conversationInfoList.length; i++) {
-            conversationState.conversationInfoList[i].unreadCount = new UnreadCount();
-            conversationState.conversationInfoList[i]._unread = 0;
+        // ConversationInfo 本身是普通 class，改它的字段不会触发刷新，
+        // 所以改完之后整体赋值一次数组。
+        const newList = conversationState.conversationInfoList.slice(0);
+        for (let i = 0; i < newList.length; i++) {
+            newList[i].unreadCount = new UnreadCount();
+            newList[i]._unread = 0;
         }
+        conversationState.conversationInfoList = newList;
     }
 
     notify(msg: Message): void {
