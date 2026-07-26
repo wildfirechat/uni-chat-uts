@@ -12,6 +12,9 @@ import {StringCallback, VoidCallback, FailCallback, SuccessCallback} from '../in
 import ClientModule from 'cn.wildfirechat.uni.client.ClientModule';
 
 import Int from "kotlin.Int";
+import Looper from 'android.os.Looper';
+import Handler from 'android.os.Handler';
+import Runnable from 'java.lang.Runnable';
 
 /**
  * 引入三方库
@@ -32,6 +35,31 @@ import Int from "kotlin.Int";
 let clientModule: ClientModule = ClientModule.getInstance();
 let wfcEventListener: null | ((value: object) => void) = null
 
+// ClientModule 的事件回调（连接状态、收消息等）来自 SDK 的网络/后台线程。
+// 这些回调最终会转发给 JS 层并更新 uvue 响应式状态（miscState/conversationState 等），
+// 而更新响应式状态、触发页面重渲染必须在主线程执行，否则值虽然被写入、已挂载的页面
+// （如首个 tab 会话列表页）却不会重渲染，表现为"一直显示连接中/会话列表不刷新"。
+// 与 wfc-av-client 中的 runOnMainThread 保持一致，统一切回主线程再触发 JS 回调。
+class MainThreadRunnable implements Runnable {
+    private action: () => void
+    constructor(action: () => void) {
+        this.action = action
+    }
+    override run(): void {
+        this.action()
+    }
+}
+
+const mainHandler = new Handler(Looper.getMainLooper())
+
+function runOnMainThread(action: () => void): void {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        action()
+    } else {
+        mainHandler.post(new MainThreadRunnable(action))
+    }
+}
+
 export function initProto(): void {
     // 必须同步初始化：调用方(wfc.uts init)在 initProto 返回后会立即调用
     // getConnectionStatus/registerMessageFlag 等接口，若放到 main dispatcher 异步执行，
@@ -41,7 +69,9 @@ export function initProto(): void {
 
     clientModule.setEventListener((channel: string, value: object) => {
         if (channel === 'wfc-event') {
-            wfcEventListener?.(value)
+            runOnMainThread((): void => {
+                wfcEventListener?.(value)
+            })
         } else {
 
         }
