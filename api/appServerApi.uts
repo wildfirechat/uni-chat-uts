@@ -12,6 +12,38 @@ export class LoginResult {
     register = false
 }
 
+/**
+ * 从响应头里取 app server 的 authToken。
+ *
+ * 注意：鸿蒙端 res.header 只是个普通对象，并不是 UTSJSONObject 实例，调用 getString 会直接抛
+ * “undefined is not callable”（Android/iOS 上则正常），所以这里一律用下标取值。
+ * 另外各端返回的 header 名大小写不一致，逐个兼容。
+ */
+function getAuthTokenFromHeader(header: UTSJSONObject | null): string | null {
+    if (header == null) {
+        return null
+    }
+    let value = header['authtoken']
+    if (value == null) {
+        value = header['authToken']
+    }
+    if (value == null) {
+        value = header['Authtoken']
+    }
+    if (value == null) {
+        value = header['AuthToken']
+    }
+    if (value == null) {
+        console.log('no authToken in response header', header)
+        return null
+    }
+    if (typeof value == 'string') {
+        return value as string
+    }
+    console.log('unexpected authToken type in response header', value)
+    return null
+}
+
 export class AppServerApi {
 
     requestAuthCode(mobile: string): Promise<UTSJSONObject | null> {
@@ -74,10 +106,7 @@ export class AppServerApi {
                         const code = body.getNumber('code') ?? -1
                         if (code == 0) {
                             const header = res.header as UTSJSONObject | null
-                            let appAuthToken = header?.getString('authtoken')
-                            if (appAuthToken == null) {
-                                appAuthToken = header?.getString('authToken')
-                            }
+                            const appAuthToken = getAuthTokenFromHeader(header)
                             if (appAuthToken != null) {
                                 setItem('authToken-app', appAuthToken);
                             }

@@ -1,7 +1,7 @@
 /**
  * 全局状态管理，替代原 store.js + pstore.js（去 pinia）。
  *
- * - 每个子 store 是 UTS class，实例经 reactive() 导出，字段全部显式声明；
+ * - 每个子 store 是 UTS class，字段全部显式声明，直接 new 出来导出；
  * - action 方法在默认导出的 store 对象上，方法名与原 store.js 保持一致；
  * - 页面通过 computed 引用状态字段。
  */
@@ -11,7 +11,12 @@
 // 泛型约束），其它类型 reactive() 原样返回（所以 `as XxxState` 强转才不会抛异常）。
 // 结果就是：computed 读不到依赖、store 写了也不触发重渲染，值对但视图不更新。
 // 因此模板会绑定到的字段一律用 ref 支撑 + getter/setter 代理，保持调用方写法不变。
-import { reactive, ref } from 'vue'
+//
+// 另外这些 state 一律不能再套 reactive()：鸿蒙端 UTS 编译成普通 JS，reactive() 会真的建
+// Proxy，setter 里的 this 变成 Proxy，`this._xxx` 会被 Vue 的 ref 自动解包成裸值，于是
+// getter 恒为 undefined、setter 报 “Receiver is not a JSObject”。响应式由内部的 ref 提供，
+// Proxy 是多余的。
+import { ref } from 'vue'
 
 import ConnectionStatus from "./wfc/client/connectionStatus.uts";
 import wfc from "./wfc/client/wfc.uts";
@@ -429,11 +434,11 @@ export class MiscState {
     }
 }
 
-export const conversationState = reactive(new ConversationState()) as ConversationState
-export const contactState = reactive(new ContactState()) as ContactState
-export const searchState = reactive(new SearchState()) as SearchState
-export const pickState = reactive(new PickState()) as PickState
-export const miscState = reactive(new MiscState()) as MiscState
+export const conversationState = new ConversationState()
+export const contactState = new ContactState()
+export const searchState = new SearchState()
+export const pickState = new PickState()
+export const miscState = new MiscState()
 
 export class StoreState {
     conversation: ConversationState = conversationState
