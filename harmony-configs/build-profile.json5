@@ -1,12 +1,25 @@
 {
   "app": {
     "signingConfigs": [
+		{
+		  "name": "default",
+		  "type": "HarmonyOS",
+		  "material": {
+		    "certpath": "/Users/jiangecho/.ohos/config/default_app-harmony_Z4NJWUSfFpSEK1gP1Yd50Z7aI97IeNyakAZTRFBFEwU=.cer",
+		    "keyAlias": "debugKey",
+		    "keyPassword": "0000001A4663060682E959CED0789C0C8F02C4C12BBE467E4A031ECC70AE37C4C3A774283C7C47F700F2",
+		    "profile": "/Users/jiangecho/.ohos/config/default_app-harmony_Z4NJWUSfFpSEK1gP1Yd50Z7aI97IeNyakAZTRFBFEwU=.p7b",
+		    "signAlg": "SHA256withECDSA",
+		    "storeFile": "/Users/jiangecho/.ohos/config/default_app-harmony_Z4NJWUSfFpSEK1gP1Yd50Z7aI97IeNyakAZTRFBFEwU=.p12",
+		    "storePassword": "0000001A3588A3BFAA8F3B7D3280984B64616B6164819FB8B66108C7B8A844EDC0EF86100BE9FFF06466"
+		  }
+		}
     ],
     "products": [
       {
         "name": "default",
         "signingConfig": "default",
-        "compatibleSdkVersion": "5.0.0(12)",
+        "compatibleSdkVersion": "5.0.1(13)",
         "runtimeOS": "HarmonyOS",
         "compatibleSdkVersionStage": "beta6",
         "buildOption": {
@@ -19,7 +32,7 @@
       {
         "name": "release",
         "signingConfig": "default",
-        "compatibleSdkVersion": "5.0.0(12)",
+        "compatibleSdkVersion": "5.0.1(13)",
         "runtimeOS": "HarmonyOS",
         "compatibleSdkVersionStage": "beta6",
         "buildOption": {

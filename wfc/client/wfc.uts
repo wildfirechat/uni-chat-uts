@@ -2128,6 +2128,10 @@ export class WfcManager {
             this.firstSync = false;
         }
 
+        // 鸿蒙端的音视频引擎跑在 ArkTS 侧，需要自己解码原始 proto 消息拿 voip 信令，
+        // 所以这里把未解码的原文也抛一份出去（其他端没有订阅者，开销可忽略）
+        this.emit(EventType.ReceiveProtoMessages, [messagesStr, hasMore]);
+
         const msgs: Message[] = []
         const arr = JSON.parseArray(messagesStr);
         if (arr != null) {

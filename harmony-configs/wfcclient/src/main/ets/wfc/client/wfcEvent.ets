@@ -3,61 +3,57 @@
  */
 
 export default class EventType {
-    // args: [message]
+    // function (message) {}
     static SendMessage = 'sendMsg';
-    /**
-     * @deprecated 请使用 ReceiveMessages
-     */
-    static ReceiveMessage = 'receiveMsg';
-    // args: [Message[], hasMore]
-    static ReceiveMessages = 'receiveMsgs';
-    // args: [原始 proto 消息的 JSON 数组字符串, hasMore]
-    // 供需要自行解码原始消息的模块使用（当前只有鸿蒙端的音视频引擎，见 wfc/av/engine/avEngineKit.uts）
-    static ReceiveProtoMessages = 'receiveProtoMsgs';
-    // args: [Map<userId, receiveTime>]
+    // function ([message], hasMore)
+    static ReceiveMessage = 'receiveMsgs';
+    // function (Map(userId, receiveTime)) {}
     static MessageReceived = 'msgReceived';
-    // args: [ReadEntry[]]
+    // function ([readEntry]) {}
     static MessageRead = 'msgRead';
     // 主动调用recallMessage时，也会触发
-    // args: [operator, messageUid]
+    // function (operator, messageUid) {}
     static RecallMessage = 'recallMsg';
     // 远程删除消息时触发
-    // args: [messageUid]
+    // function (messageUid) {}
     static MessageDeleted = 'msgDeleted'
+    // function (messageId) {}
     // 本地主动删除消息时触发
-    // args: [messageId]
     static DeleteMessage = 'deleteMsg';
-    // args: [message]
+    // function (message) {}
     static MessageStatusUpdate = 'msgStatusUpdate';
-    // args: [connectionStatus]
+    // function (connectionStatus) {}
     static ConnectionStatusChanged = 'connectionStatusChanged';
-    // args: [host]
-    static ConnectToServer = 'connectToServer';
-    // args: [UserInfo[]]
+    // function (host/ip/port/mainNw) {}
+    static ConnectedToServer = 'connectedToServer';
+    // function (userInfos) {}
     static UserInfosUpdate = 'userInfosUpdate';
-    // args: [ChannelInfo[]]
+    // function (channelInfos) {}
     static ChannelInfosUpdate = 'channelInfosUpdate';
-    // args: [GroupInfo[]]
+    // function (groupInfos) {}
     static GroupInfosUpdate = 'groupInfosUpdate';
-    // args: [updatedFriendIds]
+    // function (updatedFriendIds) {}
     static FriendListUpdate = 'friendListUpdate';
-    // args: [newFriendRequests]
+    // function ([newFriendRequests]) {}
     static FriendRequestUpdate = 'friendRequestUpdate';
-    // args: [conversationInfo]
+    // function (conversationInfo) {}
     static ConversationInfoUpdate = 'conversationInfoUpdate';
-    // args: []
+    // function () {}
     static SettingUpdate = 'settingUpdate';
-    // args: [groupId, GroupMember[]]
+    // function (groupId, GroupMember[]) {}
     static GroupMembersUpdate = 'groupMembersUpdate';
+    // function () {}
+    static GroupJoinRequestUpdate = 'groupJoinRequestUpdate';
 
-    // args: [event]
+    // function (event) {}
     static ConferenceEvent = 'conferenceEvent';
-    // args: [UserOnlineState[]]
+    // function (UserOnlineState[]) {}
     static UserOnlineEvent = 'onlineEvent';
-    // args: [targetId, playedMessageId]
+
+    // function (targetId, playedMessageId) {}
     static SecretChatStartBurn = 'secretChatStartBurn';
-    // args: [messageId[]]
+    // function ([messageId]) {}
     static SecretChatMessageBurned = 'secretChatMessageBurned';
-    // args: [targetId]
+    // function (targetId) {}
     static SecretChatStateChange = 'secretChatStateChange';
 }

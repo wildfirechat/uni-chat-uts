@@ -6,9 +6,11 @@
   "main": "",
   "author": "",
   "license": "",
+  // 注意：本文件会和编译器生成的 oh-package.json5 **合并**（不是覆盖），
+  // @uni_modules/*、@dcloudio/uni-app-x-runtime 这些由编译器自动写入，不用也不要在这里重复声明。
+  // 这里只放项目自己的原生依赖。
   "dependencies": {
     "@uni_modules/wfc-client": "./uni_modules/wfc-client",
-    "@dcloudio/uni-app-runtime": "./libs/UniAppRuntime.har",
      "@wfc/marswrapper": "file:./libs/marswrapper.har",
     "@ohos/pinyin4js": "^2.0.0"
   },

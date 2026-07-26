@@ -1,0 +1,650 @@
+/**
+ * 音视频通话 UTS 插件（鸿蒙）。
+ *
+ * 和 Android/iOS 完全不同的一点：鸿蒙版音视频 SDK（@wfc/avenginekit，即 libs/avenginekit.har，
+ * 取自原生鸿蒙工程 hm-chat）不是自包含的原生库，而是一份 **ArkTS 写的 WebRTC 信令实现**，它：
+ *   1. 通过 @ohos/webrtc 建 PeerConnection、收发媒体流；
+ *   2. 通过硬编码的 `@wfc/client` 包收发信令消息（getUserId/sendConversationMessage/…）。
+ * 本项目的 IM 层是 UTS 写的，不存在这个 ArkTS 包，因此提供了一份最小适配层
+ * （libs/wfcclient.har，包名就叫 @wfc/client，底层复用 @wfc/marswrapper 同一个
+ * libmarswrapper.so 实例）。源码在 harmony-configs/wfcclient/，改完要跑那里的
+ * build-har.sh 重新生成 har，详见该目录的 README.md。
+ * 三个依赖都在 utssdk/app-harmony/config.json 里声明。
+ *
+ * 三条链路：
+ *   - 出信令：引擎 → @wfc/client 适配层 → marswrapper.sendMessage
+ *   - 入信令：marswrapper → UTS 侧 wfc.uts → EventType.ReceiveProtoMessages
+ *             → avEngineKit.uts → 本插件 dispatchReceivedMessages()
+ *             → messageBridge.ets 解码后 emit 到 ability eventHub（引擎在此监听）
+ *   - 视频画面：页面 <native-view> → bindHarmonyWrappedBuilder(videoBuilder.ets)
+ *             → XComponent + WFCVideoRenderController.setVideoTrack()
+ *
+ * 对外导出的函数签名与 app-android/index.uts 一一对应，应用层
+ * （wfc/av/engine/avEngineKit.uts）不区分平台。
+ */
+
+import { NativeEventListener } from '../interface.uts'
+import { buildVideoView } from './videoBuilder.ets'
+import { dispatchProtoMessages } from './messageBridge.ets'
+
+import avengineKitImpl from '@wfc/avenginekit'
+import WfcAVEngineKit from '@wfc/avenginekit/src/main/ets/wfc/av/engine/avenginekit'
+import AVEngineCallback from '@wfc/avenginekit/src/main/ets/wfc/av/engine/avengineCallback'
+import CallSession from '@wfc/avenginekit/src/main/ets/wfc/av/engine/callSession'
+import CallSessionCallback from '@wfc/avenginekit/src/main/ets/wfc/av/engine/callSessionCallback'
+import CallState from '@wfc/avenginekit/src/main/ets/wfc/av/engine/callState'
+import ParticipantProfile from '@wfc/avenginekit/src/main/ets/wfc/av/engine/participantProfile'
+import WFCVideoRenderController, { ScalingMode } from '@wfc/avenginekit/src/main/ets/wfc/av/xcomponent/WFCVideoRenderController'
+
+import wfcShim from '@wfc/client'
+import Config from '@wfc/client/src/main/ets/config'
+import Conversation from '@wfc/client/src/main/ets/wfc/model/conversation'
+import ConversationType from '@wfc/client/src/main/ets/wfc/model/conversationType'
+
+import { VideoTrack } from '@ohos/webrtc/src/main/libohos_webrtc/webrtc'
+
+import { common, wantAgent, WantAgent } from '@kit.AbilityKit'
+import abilityAccessCtrl, { PermissionRequestResult, Permissions } from '@ohos.abilityAccessCtrl'
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit'
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit'
+import audio from '@ohos.multimedia.audio'
+import AVSessionManager from '@ohos.multimedia.avsession'
+import { window } from '@kit.ArkUI'
+
+const TAG = 'wfc-av-harmony'
+
+let avEngineEventListener: NativeEventListener | null = null
+let callSessionEventListener: NativeEventListener | null = null
+let initialized = false
+let iceServerReplaced = false
+let abilityContext: common.UIAbilityContext | null = null
+let avSession: AVSessionManager.AVSession | null = null
+
+// <native-view> 元素 -> 绑定在它上面的视频渲染信息。
+// 轨道可能在视图创建之后才产生（本地流是异步开的，远端流要等对方连上），
+// 所以这里记住每个视图“想显示谁”，等 didCreateLocalVideoTrack /
+// didReceiveRemoteVideoTrack 回调时再回填。
+class VideoViewHolder {
+    controller: WFCVideoRenderController
+    // 空字符串表示本地预览
+    userId: string
+    screenSharing: boolean
+
+    constructor(controller: WFCVideoRenderController, userId: string, screenSharing: boolean) {
+        this.controller = controller
+        this.userId = userId
+        this.screenSharing = screenSharing
+    }
+}
+
+const videoViews = new Map<UniNativeViewElement, VideoViewHolder>()
+
+// videoBuilder.ets 里 buildVideoView 的参数类型
+interface VideoViewParams {
+    id: string
+    controller: WFCVideoRenderController
+}
+
+const videoViewBuilder = wrapBuilder<[VideoViewParams]>(buildVideoView)
+
+function context(): common.UIAbilityContext {
+    if (abilityContext == null) {
+        abilityContext = getContext() as common.UIAbilityContext
+    }
+    return abilityContext!
+}
+
+function currentSessionOrNull(): CallSession | null {
+    const session = avengineKitImpl.getCurrentSession()
+    return session == undefined ? null : session!
+}
+
+function sessionOf(callId: string): CallSession | null {
+    const session = currentSessionOrNull()
+    if (session == null || session.callId != callId) {
+        return null
+    }
+    return session
+}
+
+function conversationToJson(conv: Conversation | null): UTSJSONObject {
+    if (conv == null) {
+        return {
+            type: ConversationType.Single,
+            target: '',
+            line: 0,
+        }
+    }
+    return {
+        type: conv.type,
+        target: conv.target,
+        line: conv.line,
+    }
+}
+
+function callSessionToJson(session: CallSession): string {
+    const obj = {
+        callId: session.callId,
+        // 鸿蒙 SDK 没有单独的 inviter 概念，发起人即邀请人
+        initiator: session.initiatorId,
+        inviter: session.initiatorId,
+        state: session.status,
+        startTime: session.startTime,
+        connectedTime: session.connectedTime,
+        endTime: session.endTime,
+        conversation: conversationToJson(session.conversation),
+        audioOnly: session.audioOnly,
+        // 鸿蒙 CallSession 上没有 endReason 字段，挂断原因只通过 didCallEndWithReason 回调给出
+        endReason: 0,
+        conference: session.conference,
+        audience: session.audience,
+        advanced: session.advance,
+        audioMuted: session.audioMuted,
+        videoMuted: session.videoMuted,
+        title: session.title,
+        desc: session.desc,
+        multiCall: session.getParticipantIds().length > 1,
+    }
+    return JSON.stringify(obj)
+}
+
+function participantProfileToJson(p: ParticipantProfile): UTSJSONObject {
+    return {
+        userId: p.userId,
+        // 应用层的 ParticipantProfile 用的是 Android/iOS 的字段名：state/startTime
+        state: p.status,
+        startTime: p.joinTime,
+        videoMuted: p.videoMuted,
+        audioMuted: p.audioMuted,
+        audience: p.audience,
+        screenSharing: p.screenSharing,
+    }
+}
+
+function fireAVEngineEvent(event: string, args: Array<any>): void {
+    avEngineEventListener?.(event, JSON.stringify(args))
+}
+
+function fireCallSessionEvent(event: string, args: Array<any>): void {
+    callSessionEventListener?.(event, JSON.stringify(args))
+}
+
+// ------------------------------------------------------------------
+// 视频画面
+// ------------------------------------------------------------------
+
+function trackOf(userId: string, screenSharing: boolean): VideoTrack | null {
+    const session = currentSessionOrNull()
+    if (session == null) {
+        return null
+    }
+    // getParticipantVideoTrack 传自己的 userId 时返回本地流
+    const uid = userId == '' ? wfcShim.getUserId() : userId
+    return session.getParticipantVideoTrack(uid, screenSharing)
+}
+
+function applyTrack(holder: VideoViewHolder): void {
+    const track = trackOf(holder.userId, holder.screenSharing)
+    if (track != null) {
+        holder.controller.setVideoTrack(track!)
+    }
+}
+
+/**
+ * 轨道变化（本地流创建、远端流到达）后，把相关视图的画面刷一遍。
+ * userId 传空字符串表示全刷一遍（本地流刚创建时用，顺带把还没拿到轨道的远端视图也补上）。
+ */
+function refreshVideoViews(userId: string): void {
+    videoViews.forEach((holder: VideoViewHolder, _element: UniNativeViewElement) => {
+        if (userId == '' || holder.userId == userId) {
+            applyTrack(holder)
+        }
+    })
+}
+
+/** 远端流结束时把对应视图的画面撤掉，否则会定格在最后一帧 */
+function clearVideoViewsOf(userId: string): void {
+    videoViews.forEach((holder: VideoViewHolder, _element: UniNativeViewElement) => {
+        if (holder.userId == userId) {
+            holder.controller.setVideoTrack()
+        }
+    })
+}
+
+function holderOf(element: UniNativeViewElement, userId: string, screenSharing: boolean): VideoViewHolder {
+    let holder = videoViews.get(element)
+    if (holder == null) {
+        // 一个 native-view 只能 bind 一次 builder，所以 controller 要跟着元素复用
+        const controller = new WFCVideoRenderController(userId == '' ? 'local' : userId)
+        const params: VideoViewParams = {
+            id: userId == '' ? 'wfc-local-video' : ('wfc-video-' + userId + (screenSharing ? '-ss' : '')),
+            controller: controller,
+        }
+        element.bindHarmonyWrappedBuilder(videoViewBuilder, params)
+        holder = new VideoViewHolder(controller, userId, screenSharing)
+        videoViews.set(element, holder!)
+    } else {
+        holder!.userId = userId
+        holder!.screenSharing = screenSharing
+    }
+    return holder!
+}
+
+function clearVideoViews(): void {
+    videoViews.forEach((holder: VideoViewHolder, _element: UniNativeViewElement) => {
+        holder.controller.setVideoTrack()
+    })
+    videoViews.clear()
+}
+
+// ------------------------------------------------------------------
+// 通话期间的系统能力：AVSession + 长时任务 + 常亮
+// ------------------------------------------------------------------
+
+function startContinuousTask(): void {
+    const ctx = context()
+    const wantAgentInfo: wantAgent.WantAgentInfo = {
+        wants: [
+            {
+                bundleName: ctx.abilityInfo.bundleName,
+                abilityName: ctx.abilityInfo.name,
+            }
+        ],
+        actionType: wantAgent.OperationType.START_ABILITY,
+        requestCode: 0,
+        wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+    }
+    wantAgent.getWantAgent(wantAgentInfo).then((wantAgentObj: WantAgent) => {
+        // VOIP 后台模式 API 13 才有，低版本退回录音模式
+        let bgMode: backgroundTaskManager.BackgroundMode = deviceInfo.sdkApiVersion >= 13
+            ? backgroundTaskManager.BackgroundMode.VOIP
+            : backgroundTaskManager.BackgroundMode.AUDIO_RECORDING
+        backgroundTaskManager.startBackgroundRunning(ctx, bgMode, wantAgentObj)
+            .catch((err: BusinessError) => {
+                console.error(TAG, 'startBackgroundRunning failed', err.code, err.message)
+            })
+    }).catch((err: BusinessError) => {
+        console.error(TAG, 'getWantAgent failed', err.code, err.message)
+    })
+}
+
+function stopContinuousTask(): void {
+    backgroundTaskManager.stopBackgroundRunning(context())
+        .catch((err: BusinessError) => {
+            console.error(TAG, 'stopBackgroundRunning failed', err.code, err.message)
+        })
+}
+
+function setKeepScreenOn(on: boolean): void {
+    window.getLastWindow(context()).then((win: window.Window) => {
+        win.setWindowKeepScreenOn(on)
+    }).catch((err: BusinessError) => {
+        console.error(TAG, 'setWindowKeepScreenOn failed', err.code, err.message)
+    })
+}
+
+function onCallStarted(session: CallSession): void {
+    const type: AVSessionManager.AVSessionType = session.audioOnly ? 'voice_call' : 'video_call'
+    AVSessionManager.createAVSession(context(), 'voip', type).then((s: AVSessionManager.AVSession) => {
+        avSession = s
+        s.activate()
+    }).catch((err: BusinessError) => {
+        console.error(TAG, 'createAVSession failed', err.code, err.message)
+    })
+    startContinuousTask()
+    setKeepScreenOn(true)
+}
+
+function onCallStopped(): void {
+    if (avSession != null) {
+        avSession!.deactivate()
+        avSession!.destroy()
+        avSession = null
+    }
+    stopContinuousTask()
+    setKeepScreenOn(false)
+}
+
+// ------------------------------------------------------------------
+// 引擎回调
+// ------------------------------------------------------------------
+
+class NativeAVEngineCallback extends AVEngineCallback {
+
+    constructor(ctx: common.UIAbilityContext) {
+        super(ctx)
+    }
+
+    // 注意：鸿蒙版引擎自己不会调 shouldStartRing（对比 Android 原生 SDK 会调），
+    // 铃声由回调实现方在收到来电/发起通话时主动触发，这点和 hm-chat 的
+    // AVEngineCallbackImpl 保持一致。
+    override async onReceiveCall(session: CallSession): Promise<void> {
+        onCallStarted(session)
+        fireAVEngineEvent('onReceiveCall', [callSessionToJson(session)])
+        fireAVEngineEvent('shouldStartRing', [true])
+    }
+
+    override onStartCall(session: CallSession): void {
+        onCallStarted(session)
+        fireAVEngineEvent('shouldStartRing', [false])
+    }
+
+    override onJoinConference(session: CallSession): void {
+        // 会议功能未在 uni-app x 侧实现，仅保持后台任务与 Android/iOS 行为一致
+        onCallStarted(session)
+    }
+
+    override shouldStartRing(isIncoming: boolean): void {
+        fireAVEngineEvent('shouldStartRing', [isIncoming])
+    }
+
+    override shouldStopRing(): void {
+        fireAVEngineEvent('shouldStopRing', [])
+    }
+
+    override didCallEnded(reason: number, duration: number = 0): void {
+        clearVideoViews()
+        onCallStopped()
+        fireAVEngineEvent('didCallEnded', [reason, duration])
+    }
+}
+
+function createCallSessionCallback(): CallSessionCallback {
+    const cb = new CallSessionCallback()
+    cb.didCallEndWithReason = (reason: number) => {
+        fireCallSessionEvent('didCallEndWithReason', [reason])
+    }
+    cb.didChangeState = (state: number) => {
+        fireCallSessionEvent('didChangeState', [state])
+    }
+    cb.didParticipantJoined = (userId: string, screenSharing: boolean = false) => {
+        fireCallSessionEvent('didParticipantJoined', [userId, screenSharing])
+    }
+    cb.didParticipantConnected = (userId: string, screenSharing: boolean = false) => {
+        fireCallSessionEvent('didParticipantConnected', [userId, screenSharing])
+    }
+    cb.didParticipantLeft = (userId: string, callEndReason: number, screenSharing: boolean = false) => {
+        fireCallSessionEvent('didParticipantLeft', [userId, callEndReason, screenSharing])
+    }
+    cb.didChangeMode = (audioOnly: boolean) => {
+        fireCallSessionEvent('didChangeMode', [audioOnly])
+    }
+    cb.didChangeInitiator = (initiator: string) => {
+        fireCallSessionEvent('didChangeInitiator', [initiator])
+    }
+    cb.didCreateLocalVideoTrack = (_videoTrack: VideoTrack, _screenSharing: boolean) => {
+        refreshVideoViews('')
+        fireCallSessionEvent('didCreateLocalVideoTrack', [])
+    }
+    cb.didReceiveRemoteVideoTrack = (userId: string, _track: VideoTrack, screenSharing: boolean) => {
+        refreshVideoViews(userId)
+        fireCallSessionEvent('didReceiveRemoteVideoTrack', [userId, screenSharing])
+    }
+    cb.didRemoveRemoteVideoTrack = (userId: string) => {
+        clearVideoViewsOf(userId)
+        fireCallSessionEvent('didRemoveRemoteVideoTrack', [userId])
+    }
+    cb.didVideoMuted = (userId: string, muted: boolean) => {
+        fireCallSessionEvent('didVideoMuted', [userId, muted])
+    }
+    cb.didReportAudioVolume = (userId: string, volume: number) => {
+        fireCallSessionEvent('didReportAudioVolume', [userId, volume])
+    }
+    cb.didChangeType = (userId: string, audience: boolean, screenSharing: boolean = false) => {
+        fireCallSessionEvent('didChangeType', [userId, audience, screenSharing])
+    }
+    cb.didMuteStateChanged = (participants: string[]) => {
+        // args[0] 统一约定为字符串（JSON 数组文本），与 Android/iOS 一致，应用层再 parse 一次
+        fireCallSessionEvent('didMuteStateChanged', [JSON.stringify(participants)])
+    }
+    return cb
+}
+
+// ------------------------------------------------------------------
+// 对外 API
+// ------------------------------------------------------------------
+
+export function onAVEngineEvent(listener: NativeEventListener): void {
+    avEngineEventListener = listener
+}
+
+export function onCallSessionEvent(listener: NativeEventListener): void {
+    callSessionEventListener = listener
+}
+
+export function initAVEngineKit(): void {
+    if (initialized) {
+        return
+    }
+    initialized = true
+    const ctx = context()
+    // 每次通话新建的 CallSession 都会从这里取回调，来电/去电都覆盖到
+    avengineKitImpl.sessionCallback = createCallSessionCallback()
+    avengineKitImpl.setup(ctx, new NativeAVEngineCallback(ctx))
+    WfcAVEngineKit.SCREEN_SHARING_REPLACE_MODE = true
+}
+
+export function addICEServer(url: string, name: string, password: string): void {
+    // 适配层里带了一条兜底的默认配置，第一次由应用层写入时要把它顶掉
+    if (!iceServerReplaced) {
+        iceServerReplaced = true
+        Config.ICE_SERVERS = []
+    }
+    Config.ICE_SERVERS.push([url, name, password])
+}
+
+export function isSupportMultiCall(): boolean {
+    // 当前集成的是多人版 avenginekit.har，多人通话可用（高级版同样支持）
+    return true
+}
+
+export function setVideoProfile(profile: number, _swapWidthHeight: boolean): void {
+    // 鸿蒙 SDK 只有分辨率档位，没有 swapWidthHeight 开关
+    WfcAVEngineKit.VIDEO_PROFILE = profile
+}
+
+export function startSingleCall(userId: string, audioOnly: boolean): string | null {
+    return startCall(new Conversation(ConversationType.Single, userId, 0), [userId], audioOnly)
+}
+
+export function startMultiCall(groupId: string, participants: string[], audioOnly: boolean): string | null {
+    return startCall(new Conversation(ConversationType.Group, groupId, 0), participants, audioOnly)
+}
+
+function startCall(conversation: Conversation, participants: string[], audioOnly: boolean): string | null {
+    // 引擎的 startCall 只要 currentSession 还在就直接 return（通话结束时才会置空），
+    // 这里必须用同样的判断，否则会把上一通电话的 session 当成新建的返回给应用层
+    const existing = currentSessionOrNull()
+    if (existing != null) {
+        console.error(TAG, 'startCall 失败：已有通话进行中', existing!.callId, existing!.status)
+        return null
+    }
+    avengineKitImpl.startCall(conversation, participants, audioOnly)
+    // startCall 内部是先同步建好 CallSession 再异步发起始信令的，这里可以直接取回
+    const session = currentSessionOrNull()
+    if (session == null) {
+        console.error(TAG, 'startCall 失败：引擎未创建会话，检查 IM 是否已连接')
+        return null
+    }
+    return callSessionToJson(session!)
+}
+
+export function currentCallSession(): string | null {
+    const session = currentSessionOrNull()
+    return session == null ? null : callSessionToJson(session!)
+}
+
+export function answerCall(callId: string, audioOnly: boolean): void {
+    const session = sessionOf(callId)
+    if (session == null) {
+        return
+    }
+    if (audioOnly && !session!.audioOnly) {
+        session!.downgrade2Voice()
+    }
+    session!.call()
+}
+
+export function endCall(callId: string): void {
+    const session = sessionOf(callId)
+    if (session != null && session!.status != CallState.STATUS_IDLE) {
+        session!.hangup()
+    }
+}
+
+export function muteAudio(callId: string, mute: boolean): boolean {
+    const session = sessionOf(callId)
+    if (session == null) {
+        return false
+    }
+    session!.muteAudio(mute)
+    return true
+}
+
+export function muteVideo(callId: string, mute: boolean): boolean {
+    const session = sessionOf(callId)
+    if (session == null) {
+        return false
+    }
+    session!.muteVideo(mute)
+    return true
+}
+
+export function downgrade2Voice(callId: string): void {
+    sessionOf(callId)?.downgrade2Voice()
+}
+
+export function switchCamera(callId: string): void {
+    sessionOf(callId)?.switchCamera()
+}
+
+export function setSpeakerOn(callId: string, speakerOn: boolean): void {
+    if (sessionOf(callId) == null) {
+        return
+    }
+    audio.getAudioManager().getRoutingManager()
+        .setCommunicationDevice(audio.CommunicationDeviceType.SPEAKER, speakerOn)
+        .catch((err: BusinessError) => {
+            console.error(TAG, 'setCommunicationDevice failed', err.code, err.message)
+        })
+}
+
+export function inviteNewParticipant(callId: string, userIds: string[]): void {
+    sessionOf(callId)?.inviteNewParticipants(userIds)
+}
+
+export function kickoffParticipant(callId: string, userId: string, successCB: () => void, failCB: (error: number) => void): void {
+    const session = sessionOf(callId)
+    if (session == null) {
+        failCB(-1)
+        return
+    }
+    session!.kickoffParticipant(userId, successCB, failCB)
+}
+
+export function getParticipantProfiles(callId: string): string {
+    const session = sessionOf(callId)
+    if (session == null) {
+        return '[]'
+    }
+    const list: UTSJSONObject[] = []
+    session!.getParticipantProfiles().forEach((p: ParticipantProfile) => {
+        list.push(participantProfileToJson(p))
+    })
+    return JSON.stringify(list)
+}
+
+export function getParticipantProfile(callId: string, userId: string, screenSharing: boolean): string | null {
+    const session = sessionOf(callId)
+    if (session == null) {
+        return null
+    }
+    // 鸿蒙 CallSession 没有单个查询接口，从列表里挑
+    const profiles = session!.getParticipantProfiles()
+    for (let i = 0; i < profiles.length; i++) {
+        const p = profiles[i]
+        if (p.userId == userId && p.screenSharing == screenSharing) {
+            return JSON.stringify(participantProfileToJson(p))
+        }
+    }
+    return null
+}
+
+export function getMyProfile(callId: string): string | null {
+    const session = sessionOf(callId)
+    if (session == null) {
+        return null
+    }
+    const p = session!.getSelfProfile()
+    return p == null ? null : JSON.stringify(participantProfileToJson(p!))
+}
+
+export function requestVoipPermissions(audioOnly: boolean, successCB: () => void, failCB: () => void): void {
+    const permissions: Permissions[] = audioOnly
+        ? ['ohos.permission.MICROPHONE']
+        : ['ohos.permission.MICROPHONE', 'ohos.permission.CAMERA']
+    abilityAccessCtrl.createAtManager().requestPermissionsFromUser(context(), permissions)
+        .then((data: PermissionRequestResult) => {
+            const results: number[] = data.authResults
+            for (let i = 0; i < results.length; i++) {
+                if (results[i] != 0) {
+                    failCB()
+                    return
+                }
+            }
+            successCB()
+        })
+        .catch((err: BusinessError) => {
+            console.error(TAG, 'requestPermissionsFromUser failed', err.code, err.message)
+            failCB()
+        })
+}
+
+// 鸿蒙没有 Android 那种"悬浮窗权限"，退到后台后通话由长时任务（VOIP 后台模式）维持，
+// 所以这里直接返回 true，让应用层的"最小化"能正常退回上一页。
+// 真正的画中画（PiP）挂起 UI 未实现，重新进入通话走应用层的 currentCallSession 兜底。
+export function checkOverlayPermission(): boolean {
+    return true
+}
+
+export function minimize(_callId: string): void {
+    // no-op：返回上一页由调用方（应用层 uni.navigateBack）处理，通话在后台继续
+}
+
+export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {
+    if (sessionOf(callId) == null) {
+        return
+    }
+    const holder = holderOf(element, '', false)
+    holder.controller.setScalingMode(ScalingMode.AspectFill)
+    applyTrack(holder)
+}
+
+export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, element: UniNativeViewElement): void {
+    if (sessionOf(callId) == null) {
+        return
+    }
+    const holder = holderOf(element, userId, screenSharing)
+    holder.controller.setScalingMode(ScalingMode.AspectFit)
+    applyTrack(holder)
+}
+
+export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {
+    const session = sessionOf(callId)
+    if (session == null || videoType < 0 || videoType > 2) {
+        return
+    }
+    session!.setParticipantVideoType(userId, screenSharing, videoType)
+}
+
+/**
+ * 由应用层 avEngineKit.uts 在收到 EventType.ReceiveProtoMessages 时调用，
+ * 把原始 proto 消息喂给鸿蒙音视频引擎。Android/iOS 上是空实现
+ * （原生 SDK 自己就挂在消息流上，不需要应用层转发）。
+ */
+export function dispatchReceivedMessages(messagesJson: string, hasMore: boolean): void {
+    if (!initialized) {
+        return
+    }
+    dispatchProtoMessages(context(), messagesJson, hasMore)
+}

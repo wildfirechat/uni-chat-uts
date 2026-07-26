@@ -46,6 +46,21 @@
          }
       },
       {
+        "name": "ohos.permission.CAMERA",
+        "reason": "$string:reason_camera",
+        "usedScene": {
+          "when": "inuse"
+        }
+      },
+      {
+        // 音视频通话切到后台后继续保持通话
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING",
+        "reason": "$string:reason_voip",
+        "usedScene": {
+          "when": "inuse"
+        }
+      },
+      {
         "name": "ohos.permission.APP_TRACKING_CONSENT",
         "reason": "$string:reason_tracking",
         "usedScene": {

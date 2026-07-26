@@ -1,0 +1,98 @@
+/**
+ * 语音对讲 UTS 插件（鸿蒙）—— 空实现。
+ *
+ * 野火目前没有提供鸿蒙版的对讲 SDK（Android 是 pttclient-release.aar，iOS 是
+ * PttClient.xcframework，鸿蒙侧没有对应产物），所以这里只提供一套与
+ * app-android / app-ios 同签名的空实现：
+ *   - `isPttClientEnable()` 返回 false，应用层（wfc/ptt/pttClient.uts）据此隐藏/禁用对讲入口；
+ *   - 其余接口保持可调用但不做事，避免鸿蒙端编译时报
+ *     `Cannot find module ".../uni_modules/wfc-ptt-client"`（uts 插件缺少 app-harmony
+ *     实现时，整个鸿蒙工程都编译不过，连音视频通话也一起挂掉）。
+ *
+ * 等官方出了鸿蒙版对讲 SDK，把这里换成真实实现即可，应用层不用改。
+ */
+
+import { PttEventListener } from '../interface.uts'
+
+const TAG = 'wfc-ptt-harmony'
+
+export function onPttEvent(_listener: PttEventListener): void {
+}
+
+export function isPttClientEnable(): boolean {
+    // 鸿蒙端暂不支持对讲
+    return false
+}
+
+export function initClient(_options: UTSJSONObject): void {
+    console.log(TAG, '鸿蒙端暂不支持语音对讲，initClient 忽略')
+}
+
+export function requestTalk(_type: number, _target: string, _line: number, _priority: number, _onStartTalking: () => void, _onTalkingEnd: (reason: number) => void, onRequestFail: (errorCode: number) => void, _onAmplitudeUpdate: (amplitude: number) => void): void {
+    onRequestFail(-1)
+}
+
+export function releaseTalking(_type: number, _target: string, _line: number): void {
+}
+
+export function getMaxSpeakCount(_type: number, _target: string, _line: number): number {
+    return 0
+}
+
+export function getMaxSpeakTime(_type: number, _target: string, _line: number): number {
+    return 0
+}
+
+export function isSaveVoiceMessage(_type: number, _target: string, _line: number): boolean {
+    return false
+}
+
+export function setSaveVoiceMessage(_type: number, _target: string, _line: number, _save: boolean, _successCB: () => void, failCB: (error: number) => void): void {
+    failCB(-1)
+}
+
+export function setConversationMaxSpeakTime(_type: number, _target: string, _line: number, _duration: number, _successCB: () => void, failCB: (error: number) => void): void {
+    failCB(-1)
+}
+
+export function setConversationMaxSpeakerCount(_type: number, _target: string, _line: number, _count: number, _successCB: () => void, failCB: (error: number) => void): void {
+    failCB(-1)
+}
+
+export function setConversationPttSilent(_type: number, _target: string, _line: number, _silent: boolean, _successCB: () => void, failCB: (error: number) => void): void {
+    failCB(-1)
+}
+
+export function isConversationPttSilent(_type: number, _target: string, _line: number): boolean {
+    return false
+}
+
+export function getTalkingStartTime(): number {
+    return 0
+}
+
+export function getTalkingMembers(_type: number, _target: string, _line: number): string {
+    return '[]'
+}
+
+export function getTalkingMemberCount(_type: number, _target: string, _line: number): number {
+    return 0
+}
+
+export function setEnablePtt(_type: number, _target: string, _line: number, _enable: boolean): void {
+}
+
+export function isRecordPermissionGranted(): boolean {
+    return false
+}
+
+export function requestRecordPermission(_successCB: () => void, failCB: () => void): void {
+    failCB()
+}
+
+export function isSpeakerEnable(): boolean {
+    return false
+}
+
+export function enableSpeaker(): void {
+}

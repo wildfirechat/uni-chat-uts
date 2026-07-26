@@ -10,8 +10,16 @@
     },
     {
       "name": "reason_microphone",
-      "value": "发送语音消息"
+      "value": "发送语音消息、音视频通话"
     },
+	{
+	  "name": "reason_camera",
+	  "value": "视频通话"
+	},
+	{
+	  "name": "reason_voip",
+	  "value": "保持音视频通话"
+	},
 	{
 	  "name": "reason_tracking",
 	  "value": "离线推送"

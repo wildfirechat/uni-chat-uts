@@ -3,7 +3,7 @@
   "name": "野火IM音视频通话插件(UTS)",
   "displayName": "野火IM音视频通话插件(UTS)",
   "version": "0.1.0",
-  "description": "基于 avenginekit.aar / WFAVEngineKit.xcframework 为 uni-app x 重新封装的音视频通话 UTS 插件，官方目前未发布对应的 UTS 版本，此为项目内自建实现。",
+  "description": "基于 avenginekit.aar / WFAVEngineKit.xcframework / avenginekit.har 为 uni-app x 重新封装的音视频通话 UTS 插件，官方目前未发布对应的 UTS 版本，此为项目内自建实现。鸿蒙端还依赖 harmony-configs 下的 avenginekit.har 与 @wfc/client 适配层，详见 harmony-configs/wfcclient/README.md。",
   "keywords": [
     "IM",
     "音视频通话",
@@ -14,7 +14,7 @@
     "declaration": {
       "ads": "无",
       "data": "插件使用的野火IM音视频SDK会采集数据，详情参考 https://www.wildfirechat.net/wildfirechat_user_privacy.html",
-      "permissions": "摄像头、麦克风、悬浮窗权限"
+      "permissions": "摄像头、麦克风、悬浮窗权限（鸿蒙为摄像头、麦克风、长时任务权限）"
     },
     "type": "uts"
   },
@@ -28,6 +28,10 @@
               "minVersion": "21"
             },
             "ios": {
+              "extVersion": "0.1.0",
+              "minVersion": "12"
+            },
+            "harmony": {
               "extVersion": "0.1.0",
               "minVersion": "12"
             }

@@ -12,6 +12,8 @@ import CallSessionCallback from './callSessionCallback.uts'
 import ParticipantProfile from './participantProfile.uts'
 import Config from '../../../config.uts'
 import ConversationType from '../../model/conversationType.uts'
+import wfc from '../../client/wfc.uts'
+import EventType from '../../client/wfcEvent.uts'
 import { navigateToPage, notify } from '../../../common/nav.uts'
 
 function parseArgs(argsJson: string): Array<any | null> {
@@ -78,6 +80,11 @@ class AVEngineKit {
         })
         native.onCallSessionEvent((event: string, argsJson: string) => {
             this._handleCallSessionEvent(event, parseArgs(argsJson))
+        })
+        // 鸿蒙端音视频引擎在 ArkTS 侧，拿不到原生消息回调，voip 信令要靠这里转发过去；
+        // Android/iOS 的 dispatchReceivedMessages 是空实现。
+        wfc.eventEmitter.on(EventType.ReceiveProtoMessages, (args: Array<any | null>) => {
+            native.dispatchReceivedMessages(argString(args, 0), argBoolean(args, 1))
         })
     }
 

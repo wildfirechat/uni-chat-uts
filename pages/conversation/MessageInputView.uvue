@@ -337,7 +337,7 @@ export default {
                 }
                 if (this.conversationInfo.conversation.type == ConversationType.Single) {
                     const callSession = avEngineKit.startSingleCall(this.conversationInfo.conversation.target, audioOnly)
-                    if (callSession != null) {
+					if (callSession != null) {
                         navigateToPage('/pages/voip/Single', callSession)
                     } else {
                         uni.showToast({

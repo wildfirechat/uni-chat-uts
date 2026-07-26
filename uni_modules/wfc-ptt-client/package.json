@@ -30,6 +30,10 @@
             "ios": {
               "extVersion": "0.1.0",
               "minVersion": "12"
+            },
+            "harmony": {
+              "extVersion": "0.1.0",
+              "minVersion": "12"
             }
           }
         }
