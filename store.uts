@@ -60,7 +60,7 @@ import QuitGroupNotification from "./wfc/messages/notification/quitGroupNotifica
 import CallStartMessageContent from "./wfc/av/messages/callStartMessageContent.uts";
 import { eq, gt, numberValue, stringValue } from "./wfc/util/longUtil.uts";
 import { timeFormat, dateFormat, humanSize, getFiletypeIcon, getMediaType } from "./pages/util/helper.uts";
-import { pinyinOf, pinyinFirstLetters } from "./common/pinyin.uts";
+import { pinyinOf, pinyinEntryOf } from "./common/pinyin.uts";
 import { clear, getItem, setItem } from "./pages/util/storageHelper.uts";
 import Config from "./config.uts";
 import ForwardType from "./pages/conversation/message/forward/ForwardType.uts";
@@ -448,12 +448,21 @@ export class StoreState {
     misc: MiscState = miscState
 }
 
+class DeferredReloadEntry {
+    timer: number = 0;
+    // 本轮去抖开始的时间戳，0 表示当前没有待执行的重载
+    firstDeferTime: number = 0;
+}
+
 class Store {
     debug = true;
     state: StoreState = new StoreState();
+    private _reloadTimers: Map<string, DeferredReloadEntry> = new Map<string, DeferredReloadEntry>();
+    private _pendingGroupMemberUpdateGroupIds: Set<string> = new Set<string>();
 
     init(): void {
         console.log('init store')
+        this._cancelDeferredReloads();
 
         wfc.eventEmitter.on(EventType.ConnectionStatusChanged, (args: Array<any | null>) => {
             const status = numberValue(args[0]);
@@ -472,56 +481,78 @@ class Store {
                 if (status == ConnectionStatus.ConnectionStatusKickedOff) {
                     wfc.disconnect();
                 }
+                this._cancelDeferredReloads();
                 _reset();
             }
         });
 
         wfc.eventEmitter.on(EventType.UserInfosUpdate, (args: Array<any | null>) => {
             const userInfos = args[0] as UserInfo[];
+            console.log('store UserInfosUpdate', userInfos.length)
             this._reloadSingleConversationIfExist(userInfos);
-            // TODO optimize
-            this._loadCurrentConversationMessages();
-            this._loadFriendList();
-            this._loadFriendRequest();
-            this._loadSelfUserInfo();
+
+            const updatedUidSet = new Set<string>();
+            for (let i = 0; i < userInfos.length; i++) {
+                updatedUidSet.add(userInfos[i].uid);
+            }
+            // 只有更新的用户出现在当前会话消息里时，才需要重新 patch 当前会话消息
+            const msgs = conversationState.currentConversationMessageList;
+            if (msgs.length > 0 && msgs.findIndex((m: Message): boolean => updatedUidSet.has(m.from)) >= 0) {
+                this._deferPatchCurrentConversationMessages();
+            }
+            this._deferLoadFriendList();
+            this._deferLoadFriendRequest();
+            if (updatedUidSet.has(wfc.getUserId())) {
+                this._loadSelfUserInfo();
+            }
         });
 
         wfc.eventEmitter.on(EventType.SettingUpdate, (args: Array<any | null>) => {
             console.log('store SettingUpdate')
-            this._loadDefaultConversationList();
-            this._loadFavContactList();
-            this._loadFavGroupList();
-            this._loadChannelList();
-            this._loadCurrentConversationMessages();
+            this._deferLoadDefaultConversationList();
+            this._deferLoadFavContactList();
+            this._deferLoadFavGroupList();
+            this._deferLoadChannelList();
+            this._deferLoadCurrentConversationMessages();
         });
 
         wfc.eventEmitter.on(EventType.FriendRequestUpdate, (args: Array<any | null>) => {
-            this._loadFriendRequest();
+            this._deferLoadFriendRequest();
         });
 
         wfc.eventEmitter.on(EventType.FriendListUpdate, (args: Array<any | null>) => {
-            this._loadFriendList();
-            this._loadFriendRequest();
-            this._loadFavContactList();
-            this._loadDefaultConversationList();
-            this._loadCurrentConversationMessages();
+            this._deferLoadFriendList();
+            this._deferLoadFriendRequest();
+            this._deferLoadFavContactList();
+            this._deferLoadDefaultConversationList();
+            this._deferPatchCurrentConversationMessages();
         });
 
         wfc.eventEmitter.on(EventType.GroupInfosUpdate, (args: Array<any | null>) => {
             const groupInfos = args[0] as GroupInfo[];
+            console.log('store GroupInfosUpdate', groupInfos.length)
             this._reloadGroupConversationIfExist(groupInfos);
-            this._loadFavGroupList();
+            this._deferLoadFavGroupList();
         });
 
         wfc.eventEmitter.on(EventType.GroupMembersUpdate, (args: Array<any | null>) => {
             const groupId = '' + args[0];
-            const groupInfos: GroupInfo[] = [new NullGroupInfo(groupId) as GroupInfo];
-            this._reloadGroupConversationIfExist(groupInfos);
+            // 首次同步时每个群都会回调一次群成员更新，逐个重载会话会反复整表排序。
+            // 这里把 groupId 攒起来，去抖后一次性处理
+            this._pendingGroupMemberUpdateGroupIds.add(groupId);
+            this._deferReload('groupMembersUpdate', () => {
+                const groupInfos: GroupInfo[] = [];
+                this._pendingGroupMemberUpdateGroupIds.forEach((gid: string) => {
+                    groupInfos.push(new NullGroupInfo(gid) as GroupInfo);
+                });
+                this._pendingGroupMemberUpdateGroupIds.clear();
+                this._reloadGroupConversationIfExist(groupInfos);
+            });
         });
 
         wfc.eventEmitter.on(EventType.ChannelInfosUpdate, (args: Array<any | null>) => {
-            this._loadDefaultConversationList();
-            this._loadChannelList();
+            this._deferLoadDefaultConversationList();
+            this._deferLoadChannelList();
         });
 
         wfc.eventEmitter.on(EventType.ConversationInfoUpdate, (args: Array<any | null>) => {
@@ -657,8 +688,13 @@ class Store {
             for (let i = 0; i < userOnlineStatus.length; i++) {
                 miscState.userOnlineStateMap.set(userOnlineStatus[i].userId, userOnlineStatus[i]);
             }
-            // 更新在线状态
-            contactState.friendList = this._patchAndSortUserInfos(contactState.friendList, '', null);
+            // 更新在线状态。在线状态不影响显示名、拼音和排序，只需刷新在线状态描述，
+            // 不必全量重新 patch（重算拼音）+ 排序。整体赋值新数组触发刷新
+            const newFriendList = contactState.friendList.slice(0);
+            for (let i = 0; i < newFriendList.length; i++) {
+                newFriendList[i]._userOnlineStatusDesc = this.getUserOnlineState(newFriendList[i].uid);
+            }
+            contactState.friendList = newFriendList;
         })
 
         // 服务端删除
@@ -754,6 +790,102 @@ class Store {
         // StreamingTextGenerating/Generated 都有 streamId 字段
         const payload = content.encode()
         return payload.content
+    }
+
+    // 初次登录或长时间未登录后，数据同步期间 UserInfosUpdate/GroupInfosUpdate/SettingUpdate/FriendListUpdate
+    // 等事件会高频触发，对应 handler 又会全量重载数据（大量原生调用 + 拼音转换 + 排序），把 UI 线程打满，
+    // 导致首页长时间卡顿、数据迟迟补不全。这里做 trailing debounce 合并，maxWait 保证持续风暴下也会定期刷新
+    _deferReload(key: string, reloadFn: () => void, delay: number = 300, maxWait: number = 1500): void {
+        let entry = this._reloadTimers.get(key);
+        if (entry == null) {
+            entry = new DeferredReloadEntry();
+            this._reloadTimers.set(key, entry!);
+        }
+        const e = entry!;
+        const now = new Date().getTime();
+        if (e.firstDeferTime == 0) {
+            e.firstDeferTime = now;
+        }
+        if (e.timer != 0) {
+            clearTimeout(e.timer);
+            e.timer = 0;
+        }
+        // 距离本轮首次延迟已过去越久，等待时间越短，最长不超过 maxWait
+        let wait = e.firstDeferTime + maxWait - now;
+        if (wait > delay) {
+            wait = delay;
+        }
+        if (wait < 0) {
+            wait = 0;
+        }
+        e.timer = setTimeout(() => {
+            e.timer = 0;
+            e.firstDeferTime = 0;
+            reloadFn();
+        }, wait);
+    }
+
+    _cancelDeferredReloads(): void {
+        this._reloadTimers.forEach((entry: DeferredReloadEntry, key: string) => {
+            if (entry.timer != 0) {
+                clearTimeout(entry.timer);
+                entry.timer = 0;
+            }
+            entry.firstDeferTime = 0;
+        });
+        this._reloadTimers.clear();
+        this._pendingGroupMemberUpdateGroupIds.clear();
+    }
+
+    _deferLoadDefaultConversationList(): void {
+        this._deferReload('defaultConversationList', () => {
+            this._loadDefaultConversationList();
+        });
+    }
+
+    _deferLoadFriendList(): void {
+        this._deferReload('friendList', () => {
+            this._loadFriendList();
+        });
+    }
+
+    _deferLoadFriendRequest(): void {
+        this._deferReload('friendRequest', () => {
+            this._loadFriendRequest();
+        });
+    }
+
+    _deferLoadFavContactList(): void {
+        this._deferReload('favContactList', () => {
+            this._loadFavContactList();
+        });
+    }
+
+    _deferLoadFavGroupList(): void {
+        this._deferReload('favGroupList', () => {
+            this._loadFavGroupList();
+        });
+    }
+
+    _deferLoadChannelList(): void {
+        this._deferReload('channelList', () => {
+            this._loadChannelList();
+        });
+    }
+
+    // 只重新 patch 内存中的消息（不重新查库），延迟短一些，保证聊天界面观感
+    _deferPatchCurrentConversationMessages(): void {
+        this._deferReload('patchCurrentMessages', () => {
+            this._patchCurrentConversationMessages();
+            // patch 是原地改 Message 对象，需整体赋值新数组才能触发刷新
+            conversationState.currentConversationMessageList = conversationState.currentConversationMessageList.slice(0);
+        }, 150, 1000);
+    }
+
+    _deferLoadCurrentConversationMessages(): void {
+        this._deferReload('loadCurrentMessages', () => {
+            this._loadCurrentConversationMessages();
+        }, 150, 1000);
     }
 
     _loadDefaultData(): void {
@@ -877,18 +1009,40 @@ class Store {
 
     _reloadSingleConversationIfExist(userInfos: UserInfo[]): void {
         if (userInfos.length > 10) {
-            this._loadDefaultConversationList();
-        } else {
-            for (let i = 0; i < userInfos.length; i++) {
-                const conv = new Conversation(ConversationType.Single, userInfos[i].uid, 0);
-                this._reloadConversation(conv, false);
+            // 初次同步时用户信息会大批量更新，走去抖合并的全量重载
+            this._deferLoadDefaultConversationList();
+            return;
+        }
+        const uidSet = new Set<string>();
+        for (let i = 0; i < userInfos.length; i++) {
+            uidSet.add(userInfos[i].uid);
+        }
+        // 先从会话列表里挑出真正受影响的会话，避免为不存在的会话做无谓的原生查询 + 整表排序。
+        // 群/频道会话的最后一条消息发送者信息变了，也需要刷新
+        const toReloadConversations: Conversation[] = [];
+        const conversationInfoList = conversationState.conversationInfoList;
+        for (let i = 0; i < conversationInfoList.length; i++) {
+            const info = conversationInfoList[i];
+            const conv = info.conversation;
+            if (conv.type == ConversationType.Single) {
+                if (uidSet.has(conv.target)) {
+                    toReloadConversations.push(conv);
+                }
+            } else {
+                const lastMessage = info.lastMessage;
+                if (lastMessage != null && uidSet.has(lastMessage.from)) {
+                    toReloadConversations.push(conv);
+                }
             }
+        }
+        for (let i = 0; i < toReloadConversations.length; i++) {
+            this._reloadConversation(toReloadConversations[i], false);
         }
     }
 
     _reloadGroupConversationIfExist(groupInfos: GroupInfo[]): void {
         if (groupInfos.length > 10) {
-            this._loadDefaultConversationList();
+            this._deferLoadDefaultConversationList();
         } else {
             for (let i = 0; i < groupInfos.length; i++) {
                 const conv = new Conversation(ConversationType.Group, groupInfos[i].target, 0);
@@ -1678,14 +1832,16 @@ class Store {
             } else {
                 u._displayName = wfc.getUserDisplayNameEx(u);
             }
-            u._pinyin = pinyinOf(u._displayName);
+            // 完整拼音和首字母一次取出，命中缓存时不再重复转换
+            const py = pinyinEntryOf(u._displayName);
+            u._pinyin = py.pinyin;
             const firstLetter = u._pinyin.length > 0 ? u._pinyin.charAt(0) : '';
             if (firstLetter >= 'a' && firstLetter <= 'z') {
                 u.__sortPinyin = 'a' + u._pinyin;
             } else {
                 u.__sortPinyin = 'z' + u._pinyin;
             }
-            u._firstLetters = pinyinFirstLetters(u._displayName);
+            u._firstLetters = py.firstLetters;
         }
         let sorted = userInfos
         if (compareFn != null) {
@@ -1867,14 +2023,14 @@ class Store {
     }
 
     filterConversation(query: string): ConversationInfo[] {
+        const lowerQuery = query.toLowerCase();
         return conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => {
             const target = info.conversation._target
             if (target == null) {
                 return false
             }
-            const displayNamePinyin = pinyinOf(target._displayName);
-            const firstLetters = pinyinFirstLetters(target._displayName);
-            return target._displayName.indexOf(query) > -1 || displayNamePinyin.indexOf(query.toLowerCase()) > -1 || firstLetters.indexOf(query) > -1
+            const py = pinyinEntryOf(target._displayName);
+            return target._displayName.indexOf(query) > -1 || py.pinyin.indexOf(lowerQuery) > -1 || py.firstLetters.indexOf(lowerQuery) > -1
         })
     }
 

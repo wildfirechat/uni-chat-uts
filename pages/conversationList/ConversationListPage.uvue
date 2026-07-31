@@ -1,15 +1,15 @@
 <template>
     <view class="page-container">
         <NavBar title="野火" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
-        <scroll-view class="conversation-list" direction="vertical">
-            <text v-if="connectionStatusDesc != ''" class="connection-status">{{ connectionStatusDesc }}</text>
-            <view class="conversation-item" :class="{ top: conversationInfo.top > 0 }"
+        <text v-if="connectionStatusDesc != ''" class="connection-status">{{ connectionStatusDesc }}</text>
+        <list-view class="conversation-list" direction="vertical">
+            <list-item class="conversation-item" :class="{ top: conversationInfo.top > 0 }"
                 v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
                 @tap="showConversation(conversationInfo)"
                 @longpress="showConversationContextMenu($event, conversationInfo)">
                 <ConversationItemView :conversationInfo="conversationInfo" />
-            </view>
-        </scroll-view>
+            </list-item>
+        </list-view>
 
         <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
             :x="contextMenuX" :y="contextMenuY" direction="column" theme="dark" :triangle="false" :dynamic="true" />

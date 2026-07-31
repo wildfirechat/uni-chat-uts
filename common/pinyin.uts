@@ -26,27 +26,57 @@ function pinyinOfChar(c: string): string {
     return c
 }
 
+export class PinyinEntry {
+    pinyin: string
+    firstLetters: string
+
+    constructor(pinyin: string, firstLetters: string) {
+        this.pinyin = pinyin
+        this.firstLetters = firstLetters
+    }
+}
+
+// 拼音转换是纯 CPU 开销，同一个名字的转换结果不变。首次连接同步期间联系人列表/会话列表
+// 会被反复重载，全量重算拼音是主要的卡顿来源，这里按名字缓存转换结果。
+const pinyinCache = new Map<string, PinyinEntry>()
+const PINYIN_CACHE_MAX_SIZE = 10000
+
+/**
+ * 一次转换出完整拼音和首字母，两者共用一次遍历和一份缓存
+ */
+export function pinyinEntryOf(str: string): PinyinEntry {
+    const cached = pinyinCache.get(str)
+    if (cached != null) {
+        return cached!
+    }
+    let full = ''
+    let first = ''
+    for (let i = 0; i < str.length; i++) {
+        const py = pinyinOfChar(str.charAt(i))
+        full += py
+        if (py.length > 0) {
+            first += py.charAt(0)
+        }
+    }
+    const entry = new PinyinEntry(full.trim().toLowerCase(), first.trim().toLowerCase())
+    // 搜索框等场景会以任意输入做 key，加个上限防止无限增长
+    if (pinyinCache.size >= PINYIN_CACHE_MAX_SIZE) {
+        pinyinCache.clear()
+    }
+    pinyinCache.set(str, entry)
+    return entry
+}
+
 /**
  * 完整拼音，等价于原 pinyin(str, {style: 0}).join('').trim().toLowerCase()
  */
 export function pinyinOf(str: string): string {
-    let result = ''
-    for (let i = 0; i < str.length; i++) {
-        result += pinyinOfChar(str.charAt(i))
-    }
-    return result.trim().toLowerCase()
+    return pinyinEntryOf(str).pinyin
 }
 
 /**
  * 拼音首字母，等价于原 pinyin(str, {style: 4}).join('').trim().toLowerCase()
  */
 export function pinyinFirstLetters(str: string): string {
-    let result = ''
-    for (let i = 0; i < str.length; i++) {
-        const py = pinyinOfChar(str.charAt(i))
-        if (py.length > 0) {
-            result += py.charAt(0)
-        }
-    }
-    return result.trim().toLowerCase()
+    return pinyinEntryOf(str).firstLetters
 }
