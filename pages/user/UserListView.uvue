@@ -9,7 +9,7 @@
                     <view class="content" :style="{ paddingLeft: paddingLeft }" @tap="clickUserItem(user)">
                         <image class="avatar" :src="user.portrait" />
                         <view class="name-container">
-                            <text class="single-line name">{{ user._displayName != '' ? user._displayName : user.displayName }}</text>
+                            <text class="single-line user-name">{{ user._displayName != '' ? user._displayName : user.displayName }}</text>
                             <text v-if="user._userOnlineStatusDesc != ''" class="single-line user-online-status">{{ user._userOnlineStatusDesc }}</text>
                         </view>
                     </view>
@@ -145,12 +145,15 @@ export default {
     flex: 1;
 }
 
-.name {
+/* 不要叫 .name：其他页面也有 .name，scoped 没能隔离住 */
+.user-name {
     font-size: 15px;
+    text-align: left;
 }
 
 .user-online-status {
     color: #808080;
     font-size: 10px;
+    text-align: left;
 }
 </style>

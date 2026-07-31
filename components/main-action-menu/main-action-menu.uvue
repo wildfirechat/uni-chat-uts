@@ -1,8 +1,13 @@
 <template>
-    <view v-if="isActive" class="main-action-menu-root">
-        <!-- 遮罩自身承担关闭手势：鸿蒙上 fixed 定位的子节点不一定会把 tap 冒泡给父节点 -->
-        <view class="main-action-menu-background-model" @touchmove.stop.prevent="onMove" @tap="hide"></view>
-        <view class="main-action-menu" :style="{ top: (height + 50) + 'px' }" @tap.stop="onMenuTap">
+    <!--
+        整个遮罩就是这一个 fixed 节点，tap 直接挂在它自己身上：
+        鸿蒙上嵌套的 fixed 节点会被提到独立层，事件不一定冒泡回父节点，
+        所以不能再让外层节点代收「点击空白关闭」的手势。
+        菜单本身也不用 fixed/absolute，纯 flex 靠右排，少踩一个定位差异。
+    -->
+    <view v-if="isActive" class="main-action-menu-root"
+        :style="{ width: maskWidth + 'px', height: maskHeight + 'px' }" @tap="hide">
+        <view class="main-action-menu" :style="{ marginTop: (height + 50) + 'px' }" @tap.stop="onMenuTap">
             <view class="main-action-menu-top-arrow"></view>
             <view class="menu-list">
                 <view class="menu-item" @tap="go2CreateGroup">
@@ -37,12 +42,18 @@ export default {
     data() {
         return {
             height: 0, //距离顶部高度
+            // 遮罩尺寸用绝对像素给，不用 100%：fixed 节点的百分比在鸿蒙上不一定能解析出来，
+            // 解析成 0 的话遮罩没有尺寸，点击空白就永远收不到 tap
+            maskWidth: 0,
+            maskHeight: 0,
             isActive: false,
         };
     },
     mounted() {
         const sysInfo = uni.getSystemInfoSync();
         this.height = sysInfo.statusBarHeight;
+        this.maskWidth = sysInfo.screenWidth;
+        this.maskHeight = sysInfo.screenHeight;
     },
     methods: {
         go2CreateGroup() {
@@ -87,9 +98,6 @@ export default {
                     console.log('scan code err', err)
                 }
             } as ScanCodeOptions);
-        },
-        onMove() {
-            this.hide()
         },
         // 点在菜单面板上不关闭菜单，只有菜单项自己会关闭
         onMenuTap() {
@@ -142,33 +150,20 @@ export default {
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 100%;
+    /* width/height 由 :style 以绝对像素给 */
     z-index: 9997;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    /* 鸿蒙上完全透明的节点可能不参与命中测试，用极低的不透明度保证能收到 tap */
+    background-color: rgba(0, 0, 0, 0.01);
 }
 
 .main-action-menu {
     width: 150px;
-    position: fixed;
-    z-index: 9999;
-    right: 8px;
+    margin-right: 8px;
     display: flex;
     flex-direction: column;
-}
-
-.main-action-menu-background-model {
-    /* 鸿蒙上完全透明的节点可能不参与命中测试，用极低的不透明度保证能收到 tap */
-    background-color: rgba(0, 0, 0, 0.01);
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 9998;
 }
 
 .main-action-menu-top-arrow {

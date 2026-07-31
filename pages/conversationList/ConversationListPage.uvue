@@ -7,7 +7,7 @@
                 v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
                 @tap="showConversation(conversationInfo)"
                 @longpress="showConversationContextMenu($event, conversationInfo)">
-                <ConversationItemView :conversation-info="conversationInfo" />
+                <ConversationItemView :conversationInfo="conversationInfo" />
             </view>
         </scroll-view>
 

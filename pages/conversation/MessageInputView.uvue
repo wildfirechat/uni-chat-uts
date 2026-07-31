@@ -5,10 +5,10 @@
                 <text class="wf-input-button-icon customicons" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
                 <text v-if="isPttEnable" class="wf-input-button-icon customicons" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
                 <view class="wf-input-voice-container" v-if="showVoice">
-                    <AudioInputView :conversation-info="conversationInfo"></AudioInputView>
+                    <AudioInputView :conversationInfo="conversationInfo"></AudioInputView>
                 </view>
                 <view class="wf-input-voice-container" v-else-if="showPtt">
-                    <PttAudioInputView :conversation-info="conversationInfo"></PttAudioInputView>
+                    <PttAudioInputView :conversationInfo="conversationInfo"></PttAudioInputView>
                 </view>
                 <view v-else class="wf-input-middle">
                     <view class="wf-input-text-container">
