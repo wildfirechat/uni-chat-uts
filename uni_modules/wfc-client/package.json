@@ -2,7 +2,7 @@
   "id": "wfc-client",
   "name": "【官方】野火即时通讯IM插件(UTS)",
   "displayName": "【官方】野火即时通讯IM插件(UTS)",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "野火官方发布的移动端实时音视频插件，包括Android和iOS平台，拥有完善的Demo，服务器和移动端免费使用，支持多人音频和多人视频通话，让您一步拥有完美的即时通讯软件。",
   "keywords": [
     "IM",
@@ -40,14 +40,8 @@
       "client": {
         "uni-app": {
           "vue": {
-            "vue2": {
-                "extVersion": "0.7.4",
-                "minVersion": ""
-            },
-            "vue3": {
-                "extVersion": "0.7.4",
-                "minVersion": ""
-            }
+            "vue2": "√",
+            "vue3": "√"
           },
           "web": {
             "safari": "x",
@@ -57,15 +51,15 @@
             "vue": "x",
             "nvue": "x",
             "android": {
-                "extVersion": "0.7.4",
+                "extVersion": "",
                 "minVersion": "21"
             },
             "ios": {
-                "extVersion": "0.7.4",
+                "extVersion": "",
                 "minVersion": "12"
             },
             "harmony": {
-                "extVersion": "0.7.4",
+                "extVersion": "",
                 "minVersion": " 12"
             }
           },
@@ -93,15 +87,15 @@
           },
           "app": {
             "android": {
-                "extVersion": "0.7.4",
+                "extVersion": "",
                 "minVersion": "21"
             },
             "ios": {
-                "extVersion": "0.7.4",
+                "extVersion": "",
                 "minVersion": "12"
             },
             "harmony": {
-                "extVersion": "0.7.4",
+                "extVersion": "",
                 "minVersion": "12"
             }
           },
