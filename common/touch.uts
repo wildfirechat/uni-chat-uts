@@ -1,0 +1,44 @@
+/**
+ * 触摸坐标提取工具。
+ *
+ * 1) longpress 事件下 touches 可能为空数组，而 changedTouches 始终携带
+ *    触发事件的触点坐标（uni-app x 官方 touch 示例及本工程录音长按代码
+ *    均为 `changedTouches[0]` 优先）。
+ * 2) Harmony(ArkUI DOM 模式) 触摸坐标是物理像素，而 getSystemInfoSync()
+ *    的 windowWidth/windowHeight 是逻辑像素(vp)，需恒除以 pixelRatio。
+ */
+export class TouchPoint {
+    x: number
+    y: number
+
+    constructor(x: number, y: number) {
+        this.x = x
+        this.y = y
+    }
+}
+
+/**
+ * 把触摸坐标从物理像素折算为逻辑像素（非 Harmony 平台原样返回）。
+ */
+function toLogical(v: number, pixelRatio: number): number {
+    // #ifdef APP-HARMONY
+    return v / pixelRatio
+    // #endif
+    // #ifndef APP-HARMONY
+    return v
+    // #endif
+}
+
+export function getTouchPoint(e: UniTouchEvent): TouchPoint | null {
+    let t: UniTouch | null = null
+    if (e.changedTouches.length > 0) {
+        t = e.changedTouches[e.changedTouches.length - 1]
+    } else if (e.touches.length > 0) {
+        t = e.touches[0]
+    }
+    if (t == null) {
+        return null
+    }
+    const sys = uni.getSystemInfoSync()
+    return new TouchPoint(toLogical(t.clientX, sys.pixelRatio), toLogical(t.clientY, sys.pixelRatio))
+}

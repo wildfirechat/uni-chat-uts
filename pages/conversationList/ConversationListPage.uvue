@@ -27,6 +27,7 @@ import ConversationInfo from "../../wfc/model/conversationInfo.uts";
 import { getItem } from "../util/storageHelper.uts";
 import organizationServerApi from "../../api/organizationServerApi.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
+import { getTouchPoint } from "../../common/touch.uts";
 import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
 
 defineOptions({
@@ -171,10 +172,11 @@ const conversationInfoKey = (conversationInfo: ConversationInfo): string => {
 }
 
 const showConversationContextMenu = (e: any, conversationInfo: ConversationInfo) => {
-    const touchEvent = e as UniTouchEvent;
-    if (touchEvent.touches.length > 0) {
-        contextMenuX.value = touchEvent.touches[0].clientX;
-        contextMenuY.value = touchEvent.touches[0].clientY;
+    // longpress 事件 touches 可能为空，改用 changedTouches 兜底取触点坐标
+    const point = getTouchPoint(e as UniTouchEvent);
+    if (point != null) {
+        contextMenuX.value = point.x;
+        contextMenuY.value = point.y;
     }
     contextMenuConversationInfo.value = conversationInfo;
     const items: PopupMenuItem[] = [];

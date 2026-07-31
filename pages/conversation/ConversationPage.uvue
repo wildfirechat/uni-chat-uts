@@ -64,6 +64,7 @@ import { navigateToPage } from "@/common/nav.uts";
 import { forward } from "@/common/forward.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import eventBus from "@/common/eventBus.uts";
+import { getTouchPoint } from "@/common/touch.uts";
 import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
 
 let innerAudioContext: InnerAudioContext | null = null;
@@ -389,9 +390,11 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     if (isScroll.value) {
         return;
     }
-    if (e.touches.length > 0) {
-        contextMenuX.value = e.touches[0].clientX;
-        contextMenuY.value = e.touches[0].clientY;
+    // longpress 事件 touches 可能为空，改用 changedTouches 兜底取触点坐标
+    const point = getTouchPoint(e)
+    if (point != null) {
+        contextMenuX.value = point.x;
+        contextMenuY.value = point.y;
     }
     contextMenuMessage.value = message;
 
