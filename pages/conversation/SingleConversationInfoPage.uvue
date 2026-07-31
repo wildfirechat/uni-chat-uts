@@ -38,7 +38,7 @@ export default {
             this.conversationInfo = conversationInfo;
             this.users = store.getConversationMemberUsrInfos(conversationInfo.conversation);
 
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             uni.setNavigationBarTitle({
                 title: target != null ? target._displayName : '',
             } as SetNavigationBarTitleOptions);

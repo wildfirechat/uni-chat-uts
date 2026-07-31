@@ -27,7 +27,6 @@ import ConversationInfo from "./wfc/model/conversationInfo.uts";
 import ConversationSearchResult from "./wfc/model/conversationSearchResult.uts";
 import GroupInfo from "./wfc/model/groupInfo.uts";
 import NullGroupInfo from "./wfc/model/nullGroupInfo.uts";
-import NullUserInfo from "./wfc/model/nullUserInfo.uts";
 import NullChannelInfo from "./wfc/model/NullChannelInfo.uts";
 import ChannelInfo from "./wfc/model/channelInfo.uts";
 import UserInfo from "./wfc/model/userInfo.uts";
@@ -915,56 +914,21 @@ class Store {
     }
 
     _loadConversationList(conversationTypes: number[] = [0, 1, 3], lines: number[] = [0]): void {
-        const conversationList = wfc.getConversationList(conversationTypes, lines);
-        const toLoadUserIdSet = new Set<string>();
-        const toLoadGroupIds: string[] = [];
+        const  conversationList = wfc.getConversationList(conversationTypes, lines);
         console.log('_loadConversationList size', conversationList.length);
-        for (let i = 0; i < conversationList.length; i++) {
-            const info = conversationList[i]
-            if (info.conversation.type == ConversationType.Single) {
-                toLoadUserIdSet.add(info.conversation.target)
-                const lastMessage = info.lastMessage
-                if (lastMessage != null) {
-                    toLoadUserIdSet.add(lastMessage.from);
-                }
-            } else if (info.conversation.type == ConversationType.Group) {
-                toLoadGroupIds.push(info.conversation.target)
-                const lastMessage = info.lastMessage
-                if (lastMessage != null) {
-                    toLoadUserIdSet.add(lastMessage.from);
-                }
-            }
-        }
-        const userInfoMap = new Map<string, UserInfo>();
-        const groupInfoMap = new Map<string, GroupInfo>();
-        const toLoadUserIds: string[] = [];
-        toLoadUserIdSet.forEach((uid: string) => {
-            toLoadUserIds.push(uid);
-            userInfoMap.set(uid, new NullUserInfo(uid) as UserInfo);
-        })
-        for (let i = 0; i < toLoadGroupIds.length; i++) {
-            groupInfoMap.set(toLoadGroupIds[i], new NullGroupInfo(toLoadGroupIds[i]) as GroupInfo)
-        }
-
-        const userInfos = wfc.getUserInfos(toLoadUserIds, '')
-        for (let i = 0; i < userInfos.length; i++) {
-            userInfoMap.set(userInfos[i].uid, userInfos[i]);
-        }
-        const groupInfos = wfc.getGroupInfos(toLoadGroupIds, false)
-        for (let i = 0; i < groupInfos.length; i++) {
-            groupInfoMap.set(groupInfos[i].target, groupInfos[i]);
-        }
-
-        for (let i = 0; i < conversationList.length; i++) {
-            const info = conversationList[i]
-            this._patchConversationInfo(info, true, userInfoMap, groupInfoMap);
-            // side effect
-            const currentConversationInfo = conversationState.currentConversationInfo
-            if (currentConversationInfo != null && currentConversationInfo.conversation.equal(info.conversation)) {
-                conversationState.currentConversationInfo = info;
-                this._patchCurrentConversationOnlineStatus();
-            }
-        }
+        const currentConversationInfo = conversationState.currentConversationInfo
+        // for (let i = 0; i < conversationList.length; i++) {
+        //     const info = conversationList[i]
+        //     // 只做纯本地计算；target（头像/名称）解析很昂贵（可能触发用户/群远程拉取），
+        //     // 会话很多时（2000+ 群）不能在这里批量做，交给会话列表条目渲染时按需 ensureConversationTarget。
+        //     this._patchConversationInfoLight(info);
+        //     if (currentConversationInfo != null && currentConversationInfo.conversation.equal(info.conversation)) {
+        //         // 当前正在聊天的会话本来就要展示，直接解析
+        //         this._resolveConversationTarget(info.conversation);
+        //         conversationState.currentConversationInfo = info;
+        //         this._patchCurrentConversationOnlineStatus();
+        //     }
+        // }
         conversationState.conversationInfoList = conversationList;
     }
 
@@ -1681,8 +1645,9 @@ class Store {
         }
     }
 
-    _patchConversationInfo(info: ConversationInfo, patchLastMessage: boolean = true, userInfoMap: Map<string, UserInfo> | null = null, groupInfoMap: Map<string, GroupInfo> | null = null): ConversationInfo {
-        const conversation = info.conversation
+    // 解析会话目标（头像/名称）需要查用户/群信息，本地没有还会发远程拉取，
+    // 是唯一昂贵的部分，必须按需（展示时）调用，不能对会话列表批量调用。
+    _resolveConversationTarget(conversation: Conversation, userInfoMap: Map<string, UserInfo> | null = null, groupInfoMap: Map<string, GroupInfo> | null = null): void {
         if (conversation.type == ConversationType.Single) {
             const userInfo = userInfoMap?.get(conversation.target) ?? wfc.getUserInfo(conversation.target, false);
             const target = new ConversationTarget();
@@ -1723,6 +1688,10 @@ class Store {
                 conversation._target = new ConversationTarget();
             });
         }
+    }
+
+    // 只做纯本地计算，不涉及任何用户/群信息查询，会话列表批量调用是廉价的。
+    _patchConversationInfoLight(info: ConversationInfo): ConversationInfo {
         if (gt(info.timestamp, 0)) {
             info._timeStr = dateFormat(info.timestamp);
         } else {
@@ -1732,6 +1701,20 @@ class Store {
         info._unread = info.unreadCount.unread + info.unreadCount.unreadMention + info.unreadCount.unreadMentionAll;
 
         return info;
+    }
+
+    _patchConversationInfo(info: ConversationInfo, patchLastMessage: boolean = true, userInfoMap: Map<string, UserInfo> | null = null, groupInfoMap: Map<string, GroupInfo> | null = null): ConversationInfo {
+        this._resolveConversationTarget(info.conversation, userInfoMap, groupInfoMap);
+        return this._patchConversationInfoLight(info);
+    }
+
+    // 会话目标（头像/名称）解析要在真正展示时才有意义，页面渲染时调用本方法按需解析并缓存到 conversation._target 上，
+    // 避免会话很多（2000+ 群）时一次性对全部会话拉取用户/群信息，卡死主线程。
+    ensureConversationTarget(conversation: Conversation): ConversationTarget | null {
+        if (conversation._target == null) {
+            this._resolveConversationTarget(conversation);
+        }
+        return conversation._target;
     }
 
     addDownloadingMessage(messageId: number): void {
@@ -2025,7 +2008,7 @@ class Store {
     filterConversation(query: string): ConversationInfo[] {
         const lowerQuery = query.toLowerCase();
         return conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => {
-            const target = info.conversation._target
+            const target = this.ensureConversationTarget(info.conversation)
             if (target == null) {
                 return false
             }

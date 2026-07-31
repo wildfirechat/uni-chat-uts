@@ -176,7 +176,7 @@ export default {
                     const atAll = new UserInfo()
                     atAll.uid = '@all'
                     atAll.displayName = '所有人'
-                    const target = this.conversationInfo.conversation._target
+                    const target = store.ensureConversationTarget(this.conversationInfo.conversation)
                     atAll.portrait = target != null ? target.portrait : ''
                     atAll._displayName = '所有人'
 

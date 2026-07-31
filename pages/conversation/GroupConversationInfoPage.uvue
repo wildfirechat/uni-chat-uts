@@ -77,7 +77,7 @@ export default {
             this.conversationInfo = conversationInfo;
             this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
 
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             uni.setNavigationBarTitle({
                 title: target != null ? target._displayName : '',
             } as SetNavigationBarTitleOptions);
@@ -186,7 +186,7 @@ export default {
                 return
             }
             const groupId = conversationInfo.conversation.target;
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             if (this.newGroupName == '' || (target != null && this.newGroupName == target._displayName)) {
                 return;
             }
@@ -243,7 +243,7 @@ export default {
             const groupId = conversationInfo.conversation.target
             const fav = e.detail.value
             wfc.setFavGroup(groupId, fav, () => {
-                const target = conversationInfo.conversation._target
+                const target = store.ensureConversationTarget(conversationInfo.conversation)
                 if (target != null) {
                     target._isFav = fav;
                 }
@@ -262,7 +262,7 @@ export default {
             if (conversationInfo == null) {
                 return ''
             }
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             return target != null ? target._displayName : ''
         },
         isFavGroup(): boolean {
@@ -270,7 +270,7 @@ export default {
             if (conversationInfo == null) {
                 return false
             }
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             return target != null ? target._isFav : false
         },
         enableAddGroupMember(): boolean {

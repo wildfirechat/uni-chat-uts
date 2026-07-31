@@ -69,21 +69,21 @@ export default {
 
     methods: {
         portraitOf(conversationInfo: ConversationInfo): string {
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             const portrait = target != null ? target.portrait : ''
             return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
         },
         displayNameOf(conversationInfo: ConversationInfo): string {
-            const target = conversationInfo.conversation._target
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             return target != null ? target._displayName : ''
         },
         portraitOfConversation(conversation: Conversation): string {
-            const target = conversation._target
+            const target = store.ensureConversationTarget(conversation)
             const portrait = target != null ? target.portrait : ''
             return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
         },
         displayNameOfConversation(conversation: Conversation): string {
-            const target = conversation._target
+            const target = store.ensureConversationTarget(conversation)
             return target != null ? target._displayName : ''
         },
         onConversationItemClick(conversation: Conversation) {

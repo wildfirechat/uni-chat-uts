@@ -23,6 +23,7 @@
 <script lang="uts">
 import ConversationInfo from "../../wfc/model/conversationInfo.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
+import { ConversationTarget } from "../../wfc/model/conversation.uts";
 import store, { conversationState } from "../../store.uts";
 import Draft from "../util/draft.uts";
 import NotificationMessageContent from "../../wfc/messages/notification/notificationMessageContent.uts";
@@ -37,14 +38,20 @@ export default {
         },
     },
     computed: {
+        // target（头像/名称）在展示时才按需解析：本地没有还会发远程拉取，
+        // 会话很多（2000+ 群）时不能在加载会话列表时批量做，见 store._loadConversationList。
+        // store 内部按 conversation._target 缓存，重复调用是廉价的。
+        conversationTarget(): ConversationTarget | null {
+            return store.ensureConversationTarget(this.conversationInfo.conversation);
+        },
         portrait(): string {
-            const target = this.conversationInfo.conversation._target
+            const target = this.conversationTarget
             const portrait = target != null ? target.portrait : ''
             return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
         },
         conversationTitle(): string {
             const info = this.conversationInfo;
-            const target = info.conversation._target
+            const target = this.conversationTarget
             if (target == null) {
                 return ''
             }

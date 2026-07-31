@@ -51,7 +51,7 @@ export default {
             if (info == null) {
                 return Config.DEFAULT_PORTRAIT_URL
             }
-            const target = info.conversation._target
+            const target = store.ensureConversationTarget(info.conversation)
             const portrait = target != null ? target.portrait : ''
             return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
         },
