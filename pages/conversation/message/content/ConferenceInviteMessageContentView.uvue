@@ -18,7 +18,8 @@ import store from "@/store.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
 
 defineOptions({
-    name: "ConferenceInviteMessageContentView"
+    name: "ConferenceInviteMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

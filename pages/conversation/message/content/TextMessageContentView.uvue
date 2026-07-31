@@ -28,18 +28,23 @@ const textContent = computed<string>((): string => {
     background-color: #ffffff;
     position: relative;
     border-radius: 5px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
+    align-self: flex-start;
+    /* uni-app x 不支持 vw/calc，rpx 以 750 为屏幕宽：限制气泡最大宽度约为屏幕的 59%，
+       长文本在此宽度内自动换行，避免把气泡撑出屏幕导致左侧被裁剪 */
+    max-width: 440rpx;
 }
 
 .text-message-container.out {
     background-color: #98ea70;
+    align-self: flex-end;
 }
 
 .text {
     color: #050505;
     font-size: 16px;
     line-height: 25px;
+    /* 保留换行符；宽度占满气泡内容区，配合 max-width 实现自动换行 */
+    white-space: pre-line;
+    width: 100%;
 }
 </style>

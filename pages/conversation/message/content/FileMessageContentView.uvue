@@ -14,7 +14,8 @@ import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
 import { humanSize, getFiletypeIcon } from "@/pages/util/helper.uts";
 
 defineOptions({
-    name: "FileMessageContentView"
+    name: "FileMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

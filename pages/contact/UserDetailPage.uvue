@@ -73,19 +73,19 @@ const name = computed<string>((): string => {
 })
 
 const isFriend = computed<boolean>((): boolean => {
-    const user = user.value
-    return user != null && wfc.isMyFriend(user.uid);
+    const friend = user.value
+    return friend != null && wfc.isMyFriend(friend.uid);
 })
 
 const isSelf = computed<boolean>((): boolean => {
-    const user = user.value
-    return user != null && user.uid == wfc.getUserId();
+    const friend = user.value
+    return friend != null && friend.uid == wfc.getUserId();
 })
 
 onMounted(() => {
-    const user = user.value
-    if (user != null) {
-        wfc.getUserInfo(user.uid, true);
+    const friend = user.value
+    if (friend != null) {
+        wfc.getUserInfo(friend.uid, true);
     }
 })
 
@@ -94,23 +94,23 @@ onUnload(() => {
 })
 
 const chat = () => {
-    const user = user.value
-    if (user == null) {
+    const friend = user.value
+    if (friend == null) {
         return
     }
-    const conversation = new Conversation(ConversationType.Single, user.uid, 0);
+    const conversation = new Conversation(ConversationType.Single, friend.uid, 0);
     store.setCurrentConversation(conversation);
     go2ConversationPage();
 }
 
 const updateFriendAlias = (e: UniInputConfirmEvent) => {
-    const user = user.value
-    if (user == null) {
+    const friend = user.value
+    if (friend == null) {
         return
     }
     const friendAlias = e.detail.value;
-    if (friendAlias.trim() != '' && friendAlias != user.friendAlias) {
-        wfc.setFriendAlias(user.uid, friendAlias,
+    if (friendAlias.trim() != '' && friendAlias != friend.friendAlias) {
+        wfc.setFriendAlias(friend.uid, friendAlias,
             () => {
                 console.log('setFriendAlias success', friendAlias);
             },
@@ -121,11 +121,11 @@ const updateFriendAlias = (e: UniInputConfirmEvent) => {
 }
 
 const deleteFriend = () => {
-    const user = user.value
-    if (user == null) {
+    const friend = user.value
+    if (friend == null) {
         return
     }
-    wfc.deleteFriend(user.uid, () => {
+    wfc.deleteFriend(friend.uid, () => {
         uni.showToast({
             title: '删除好友成功',
             icon: 'none'
@@ -144,13 +144,13 @@ const deleteFriend = () => {
 }
 
 const addFriend = () => {
-    const user = user.value
-    if (user == null) {
+    const friend = user.value
+    if (friend == null) {
         return
     }
     const userInfo = wfc.getUserInfo(wfc.getUserId());
     const reason = '你好，我是' + userInfo.displayName;
-    wfc.sendFriendRequest(user.uid, reason, '', () => {
+    wfc.sendFriendRequest(friend.uid, reason, '', () => {
         uni.showToast({
             title: '好友请求发送成功',
             icon: 'none'

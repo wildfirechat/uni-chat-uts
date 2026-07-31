@@ -36,7 +36,8 @@ import eventBus from "@/common/eventBus.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
 defineOptions({
-    name: "NormalInMessageContentView"
+    name: "NormalInMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{
