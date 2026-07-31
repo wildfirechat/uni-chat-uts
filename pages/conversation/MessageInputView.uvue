@@ -2,8 +2,8 @@
     <view>
         <view class="wf-message-input-container" :style="{ paddingBottom: safeAreaBottomHeight + 'px' }">
             <view class="wf-message-input-toolbar">
-                <text class="wf-input-button-icon customicons" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
-                <text v-if="isPttEnable" class="wf-input-button-icon customicons" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
+                <text class="wf-input-button-icon wxfont" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
+                <text v-if="isPttEnable" class="wf-input-button-icon wxfont" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
                 <view class="wf-input-voice-container" v-if="showVoice">
                     <AudioInputView :conversationInfo="conversationInfo"></AudioInputView>
                 </view>
@@ -21,16 +21,16 @@
                         <text class="cancel icomoon" @tap="cancelQuote">&#xf12a;</text>
                     </view>
                 </view>
-                <text @tap="toggleEmoji" class="wf-input-button-icon customicons">&#xe60b;</text>
+                <text @tap="toggleEmoji" class="wf-input-button-icon wxfont">&#xe60b;</text>
                 <view v-if="!hideSendButton && text != ''" class="wf-input-text-send-button" @tap="send">
                     <text class="send-button-text">发送</text>
                 </view>
-                <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon customicons">&#xe657;</text>
+                <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon wxfont">&#xe657;</text>
             </view>
             <view v-if="showExt" class="wf-ext-container" :style="{ height: keyboardHeight + 'px' }">
                 <view class="wf-ext-item" v-for="(v, i) in extList" @tap="onClickExt(v)" :key="i">
                     <view class="wf-ext-item-icon">
-                        <text class="customicons ext-icon">{{ v.icon }}</text>
+                        <text class="wxfont ext-icon">{{ v.icon }}</text>
                     </view>
                     <text class="wf-ext-item-text">{{ v.title }}</text>
                 </view>
@@ -95,7 +95,8 @@ class ExtItem {
 }
 
 defineOptions({
-    name: "MessageInputView"
+    name: "MessageInputView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

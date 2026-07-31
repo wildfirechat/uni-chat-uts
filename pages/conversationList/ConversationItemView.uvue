@@ -30,7 +30,8 @@ import NotificationMessageContent from "../../wfc/messages/notification/notifica
 import Config from "../../config.uts";
 
 defineOptions({
-    name: "ConversationItemView"
+    name: "ConversationItemView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

@@ -54,7 +54,7 @@
 - [ ] native 回调 args：sendMessage 等回调收到 `(value: object)`，wfc.uts 用 argsOf() 转数组（instanceof Array + JSON 兜底）；wfc-event 事件对象取 `.args`（UTSJSONObject/JSON 兜底）。⚠️ 真机验证。
 - [ ] JSON.parse<Array<string>> / JSON.parseObject / JSON.parseArray / obj.get() 的可用性与语义。
 - [ ] `uni.env.CACHE_PATH` + FileSystemManager（compositeMessageContent.createTextFile）。
-- [ ] @font-face 自定义 iconfont；video/switch/slider/picker-view 组件可用性。
+- [x] @font-face 自定义 iconfont（uni-app x 用 loadFontFace + 文本内联 unicode；⚠️ 已修复两次：①wx_iconfont.ttf/customicons.ttf 内部字体名均为 "iconfont"，鸿蒙 Render Service 注册同名冲突导致图标不显示，已将内部名改为 wxfont/customicons；MessageInputView/VideoMessageContentView 误用 customicons 类引用 wxfont 字形，已改为 wxfont；②蒸汽模式(vapor)强制样式隔离2.0，组件默认 isolated 不可引用全局 class，已给全部 11 个使用图标类的组件加 defineOptions({ styleIsolation: 'app' })：NavBar/MessageInputView/VideoMessageContentView/AudioMessageContentViewAMR/CallStartMessageContentView/NormalOutMessageContentContainerView/QuoteMessageView/MessageMultiSelectActionView/ConversationItemView/round-checkbox/main-action-menu）；video/switch/slider/picker-view 组件可用性。
 - [ ] uni.getPushClientId/onPushMessage（App.uvue）。
 - [ ] messageConfig 中 default 参数覆盖的构造器（各消息类构造函数已带默认参数）。
 

@@ -1,7 +1,7 @@
 <template>
     <view class="video-content-container">
         <image class="thumbnail" mode="aspectFill" @tap="preview" :src="thumbnailUri" />
-        <text class="customicons play-button" @tap="preview">&#xe6a6;</text>
+        <text class="wxfont play-button" @tap="preview">&#xe6a6;</text>
     </view>
 </template>
 
@@ -12,7 +12,8 @@ import VideoMessageContent from "../../../../wfc/messages/videoMessageContent.ut
 import Config from "../../../../config.uts";
 
 defineOptions({
-    name: "VideoMessageContentView"
+    name: "VideoMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

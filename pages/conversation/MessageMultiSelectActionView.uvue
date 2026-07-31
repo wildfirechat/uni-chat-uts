@@ -34,7 +34,8 @@ import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
 
 defineOptions({
-    name: "MessageMultiSelectionActionView"
+    name: "MessageMultiSelectionActionView",
+    styleIsolation: 'app'
 })
 
 const deleteMultiMessage = () => {

@@ -37,6 +37,11 @@ import Conversation from "../../wfc/model/conversation.uts";
 import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
+defineOptions({
+    name: "MainActionMenu",
+    styleIsolation: 'app'
+})
+
 const height = ref<number>(0) //距离顶部高度
 // 遮罩尺寸用绝对像素给，不用 100%：fixed 节点的百分比在鸿蒙上不一定能解析出来，
 // 解析成 0 的话遮罩没有尺寸，点击空白就永远收不到 tap

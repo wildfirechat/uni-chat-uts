@@ -15,7 +15,8 @@ import SoundMessageContent from "@/wfc/messages/soundMessageContent.uts";
 import store from "@/store.uts";
 
 defineOptions({
-    name: "AudioMessageContentView"
+    name: "AudioMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

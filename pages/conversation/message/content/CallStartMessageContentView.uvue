@@ -10,7 +10,8 @@ import Message from "@/wfc/messages/message.uts";
 import CallStartMessageContent from "@/wfc/av/messages/callStartMessageContent.uts";
 
 defineOptions({
-    name: "CallStartMessageContentView"
+    name: "CallStartMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

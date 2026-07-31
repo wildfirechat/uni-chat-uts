@@ -21,7 +21,8 @@
  * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
  */
 defineOptions({
-    name: "NavBar"
+    name: "NavBar",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

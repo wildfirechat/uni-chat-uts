@@ -10,7 +10,8 @@
  * 内置 checkbox 在各端样式不统一，且无法改成圆形，这里用 view 自绘。
  */
 defineOptions({
-    name: 'round-checkbox'
+    name: 'round-checkbox',
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

@@ -20,7 +20,8 @@ import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
 import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
 
 defineOptions({
-    name: "QuoteMessageView"
+    name: "QuoteMessageView",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{
