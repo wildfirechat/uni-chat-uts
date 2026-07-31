@@ -17,79 +17,79 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import wfc from "../../wfc/client/wfc.uts";
 import EventType from "../../wfc/client/wfcEvent.uts";
 import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 
-export default {
-    name: "FriendRequestListView",
-    data() {
-        return {
-            isActive: false,
-        };
-    },
-    computed: {
-        friendRequestList(): FriendRequest[] {
-            return contactState.friendRequestList
+defineOptions({
+    name: "FriendRequestListView"
+})
+
+const isActive = ref<boolean>(false)
+
+const friendRequestList = computed<FriendRequest[]>((): FriendRequest[] => {
+    return contactState.friendRequestList
+})
+
+const portraitOf = (friendRequest: FriendRequest): string => {
+    const target = friendRequest._target
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const displayNameOf = (friendRequest: FriendRequest): string => {
+    const target = friendRequest._target
+    return target != null ? target.displayName : ''
+}
+
+const reasonOf = (friendRequest: FriendRequest): string => {
+    if (friendRequest.reason != '') {
+        return friendRequest.reason
+    }
+    return '我是' + displayNameOf(friendRequest)
+}
+
+const showFriendRequest = (friendRequest: FriendRequest) => {
+    store.setCurrentFriendRequest(friendRequest);
+    uni.navigateTo({
+        url: '/pages/contact/FriendRequestDetailPage',
+        fail: (err) => {
+            console.log('nav to FriendRequestDetailPage err', err);
         }
-    },
-    methods: {
-        portraitOf(friendRequest: FriendRequest): string {
-            const target = friendRequest._target
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        displayNameOf(friendRequest: FriendRequest): string {
-            const target = friendRequest._target
-            return target != null ? target.displayName : ''
-        },
-        reasonOf(friendRequest: FriendRequest): string {
-            if (friendRequest.reason != '') {
-                return friendRequest.reason
-            }
-            return '我是' + this.displayNameOf(friendRequest)
-        },
-        showFriendRequest(friendRequest: FriendRequest) {
-            store.setCurrentFriendRequest(friendRequest);
-            uni.navigateTo({
-                url: '/pages/contact/FriendRequestDetailPage',
-                fail: (err) => {
-                    console.log('nav to FriendRequestDetailPage err', err);
-                }
-            } as NavigateToOptions);
-        },
-        accept(friendRequest: FriendRequest) {
-            wfc.handleFriendRequest(friendRequest.target, true, "", () => {
-                friendRequest.status = 1;
-            }, (err: number) => {
-                uni.showToast({
-                    title: '添加好友失败 ' + err,
-                    icon: 'none',
-                } as ShowToastOptions);
-                console.log('accept friend request error', err)
-            })
-        },
-        onFriendRequestUpdate(_args: Array<any | null>) {
-            if (this.isActive) {
-                wfc.clearUnreadFriendRequestStatus();
-            }
-        },
-    },
+    } as NavigateToOptions);
+}
 
-    mounted() {
-        this.isActive = true;
+const accept = (friendRequest: FriendRequest) => {
+    wfc.handleFriendRequest(friendRequest.target, true, "", () => {
+        friendRequest.status = 1;
+    }, (err: number) => {
+        uni.showToast({
+            title: '添加好友失败 ' + err,
+            icon: 'none',
+        } as ShowToastOptions);
+        console.log('accept friend request error', err)
+    })
+}
+
+const onFriendRequestUpdate = (_args: Array<any | null>) => {
+    if (isActive.value) {
         wfc.clearUnreadFriendRequestStatus();
-        wfc.eventEmitter.on(EventType.FriendRequestUpdate, this.onFriendRequestUpdate);
-    },
-
-    beforeUnmount() {
-        this.isActive = false;
-        wfc.eventEmitter.off(EventType.FriendRequestUpdate, this.onFriendRequestUpdate);
     }
 }
+
+onMounted(() => {
+    isActive.value = true;
+    wfc.clearUnreadFriendRequestStatus();
+    wfc.eventEmitter.on(EventType.FriendRequestUpdate, onFriendRequestUpdate);
+})
+
+onBeforeUnmount(() => {
+    isActive.value = false;
+    wfc.eventEmitter.off(EventType.FriendRequestUpdate, onFriendRequestUpdate);
+})
 </script>
 
 <style scoped>

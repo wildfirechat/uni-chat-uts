@@ -29,81 +29,92 @@
         <main-action-menu ref="mainActionMenu"></main-action-menu>
     </view>
 </template>
-<script lang="uts">
+<script setup lang="uts">
 import { contactState } from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 import UserListView from "../user/UserListView.uvue";
 import OrganizationListView from "./OrganizationListView.uvue";
 import NavBar from "../common/NavBar.uvue";
 
-export default {
-    name: "ContactListPage",
-    components: { OrganizationListView, UserListView, NavBar },
-    data() {
-        return {
-            searchIcon: '\ue636',
-            plusIcon: '\ue657',
-        }
-    },
+defineOptions({
+    name: "ContactListPage"
+})
 
-    computed: {
-        unreadFriendRequestCount(): number {
-            return contactState.unreadFriendRequestCount
-        },
-        favGroupCount(): number {
-            return contactState.favGroupList.length
-        },
-        channelCount(): number {
-            return contactState.channelList.length
-        },
-        expandFriendList(): boolean {
-            return contactState.expandFriendList
-        },
-        contactList(): UserInfo[] {
-            return contactState.favContactList.concat(contactState.friendList)
-        },
-    },
+const searchIcon = ref<string>('\ue636')
+const plusIcon = ref<string>('\ue657')
 
-    onHide() {
-        console.log('contactList onHide');
-        (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
-    },
+const unreadFriendRequestCount = computed<number>((): number => {
+    return contactState.unreadFriendRequestCount
+})
 
-    methods: {
-        onPlusTap() {
-            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('toggle');
-        },
-        onSearchTap() {
-            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
-            uni.navigateTo({
-                url: '/pages/search/SearchPortalPage'
-            } as NavigateToOptions);
-        },
-        showNewFriends() {
-            uni.navigateTo({
-                url: '/pages/contact/NewFriendListPage',
-                fail: (err) => {
-                    console.log('nav to NewFriendListPage err', err);
-                }
-            } as NavigateToOptions);
-        },
-        showGroups() {
-            uni.navigateTo({
-                url: '/pages/contact/GroupListPage',
-                fail: (err) => {
-                    console.log('nav to GroupListPage err', err);
-                }
-            } as NavigateToOptions);
-        },
-        showChannels() {
-            uni.navigateTo({
-                url: '/pages/contact/ChannelListPage',
-                fail: (err) => {
-                    console.log('nav to ChannelListPage err', err);
-                }
-            } as NavigateToOptions);
-        },
+const favGroupCount = computed<number>((): number => {
+    return contactState.favGroupList.length
+})
+
+const channelCount = computed<number>((): number => {
+    return contactState.channelList.length
+})
+
+const expandFriendList = computed<boolean>((): boolean => {
+    return contactState.expandFriendList
+})
+
+const contactList = computed<UserInfo[]>((): UserInfo[] => {
+    return contactState.favContactList.concat(contactState.friendList)
+})
+
+const mainActionMenu = ref<ComponentPublicInstance | null>(null)
+
+onHide(() => {
+    console.log('contactList onHide');
+    const menu = mainActionMenu.value
+    if (menu != null) {
+        (menu as ComponentPublicInstance).$callMethod('hide');
     }
+})
+
+const onPlusTap = () => {
+    const menu = mainActionMenu.value
+    if (menu != null) {
+        (menu as ComponentPublicInstance).$callMethod('toggle');
+    }
+}
+
+const onSearchTap = () => {
+    const menu = mainActionMenu.value
+    if (menu != null) {
+        (menu as ComponentPublicInstance).$callMethod('hide');
+    }
+    uni.navigateTo({
+        url: '/pages/search/SearchPortalPage'
+    } as NavigateToOptions);
+}
+
+const showNewFriends = () => {
+    uni.navigateTo({
+        url: '/pages/contact/NewFriendListPage',
+        fail: (err) => {
+            console.log('nav to NewFriendListPage err', err);
+        }
+    } as NavigateToOptions);
+}
+
+const showGroups = () => {
+    uni.navigateTo({
+        url: '/pages/contact/GroupListPage',
+        fail: (err) => {
+            console.log('nav to GroupListPage err', err);
+        }
+    } as NavigateToOptions);
+}
+
+const showChannels = () => {
+    uni.navigateTo({
+        url: '/pages/contact/ChannelListPage',
+        fail: (err) => {
+            console.log('nav to ChannelListPage err', err);
+        }
+    } as NavigateToOptions);
 }
 </script>
 

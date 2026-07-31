@@ -19,7 +19,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import TextMessageContentView from "@/pages/conversation/message/content/TextMessageContentView.uvue";
 import ImageMessageContentView from "@/pages/conversation/message/content/ImageMessageContentView.uvue";
@@ -36,36 +36,18 @@ import UnknownMessageContentView from "./content/UnknownMessageContentView.uvue"
 import StreamingTextMessageContentView from "./content/StreamingTextMessageContentView.uvue";
 import TestCustomMessageContentView from "./content/TestCustomMessageContentView.uvue";
 
-export default {
-    name: "MessageContentContainerView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    emits: ['longpress'],
-    methods: {
-        onLongPress(e: UniTouchEvent) {
-            this.$emit('longpress', e)
-        }
-    },
-    components: {
-        TestCustomMessageContentView,
-        StreamingTextMessageContentView,
-        UnknownMessageContentView,
-        ConferenceInviteMessageContentView,
-        CompositeMessageContentView,
-        AudioMessageContentView,
-        CallStartMessageContentView,
-        UnsupportMessageContentView,
-        TextMessageContentView,
-        ImageMessageContentView,
-        VideoMessageContentView,
-        FileMessageContentView,
-        StickerMessageContentView,
-        UserCardMessageContentView
-    }
+defineOptions({
+    name: "MessageContentContainerView"
+})
+
+defineProps<{
+    message: Message
+}>()
+
+const emit = defineEmits(['longpress'])
+
+const onLongPress = (e: UniTouchEvent) => {
+    emit('longpress', e)
 }
 </script>
 

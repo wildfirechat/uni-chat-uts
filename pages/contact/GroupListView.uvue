@@ -7,27 +7,25 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import GroupInfo from "../../wfc/model/groupInfo.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: "GroupListView",
-    computed: {
-        favGroupList(): GroupInfo[] {
-            return contactState.favGroupList
-        }
-    },
-    methods: {
-        showGroup(group: GroupInfo) {
-            const conversation = new Conversation(ConversationType.Group, group.target, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        }
-    },
+defineOptions({
+    name: "GroupListView"
+})
+
+const favGroupList = computed<GroupInfo[]>((): GroupInfo[] => {
+    return contactState.favGroupList
+})
+
+const showGroup = (group: GroupInfo) => {
+    const conversation = new Conversation(ConversationType.Group, group.target, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
 }
 </script>
 

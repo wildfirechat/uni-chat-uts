@@ -52,7 +52,7 @@
     </scroll-view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { searchState } from "@/store.uts";
 import Conversation from "@/wfc/model/conversation.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
@@ -63,171 +63,155 @@ import wfc from "../../wfc/client/wfc.uts";
 import Config from "../../config.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: "SearchResultView",
-    props: {
-        query: {
-            type: String,
-            default: '',
-        },
-        searchUser: {
-            type: Boolean,
-            default: true,
-        },
-        searchContact: {
-            type: Boolean,
-            default: true,
-        },
-        searchGroup: {
-            type: Boolean,
-            default: true,
-        },
-        searchConversation: {
-            type: Boolean,
-            default: true,
-        },
-    },
-    data() {
-        return {
-            shouldShowAllUser: false,
-            shouldShowAllContact: false,
-            shouldShowAllGroup: false,
-            shouldShowAllConversation: false,
-        }
-    },
+defineOptions({
+    name: "SearchResultView"
+})
 
-    mounted() {
-        let enableCount = 0;
-        if (this.searchUser) enableCount++;
-        if (this.searchContact) enableCount++;
-        if (this.searchGroup) enableCount++;
-        if (this.searchConversation) enableCount++;
-        if (enableCount == 1) {
-            this.shouldShowAllUser = this.searchUser;
-            this.shouldShowAllContact = this.searchContact;
-            this.shouldShowAllGroup = this.searchGroup;
-            this.shouldShowAllConversation = this.searchConversation;
-        }
-    },
+const props = withDefaults(defineProps<{
+    query?: string
+    searchUser?: boolean
+    searchContact?: boolean
+    searchGroup?: boolean
+    searchConversation?: boolean
+}>(), {
+    query: '',
+    searchUser: true,
+    searchContact: true,
+    searchGroup: true,
+    searchConversation: true,
+})
 
-    beforeUnmount() {
-        store.setSearchQuery('')
-    },
+const shouldShowAllUser = ref<boolean>(false)
+const shouldShowAllContact = ref<boolean>(false)
+const shouldShowAllGroup = ref<boolean>(false)
+const shouldShowAllConversation = ref<boolean>(false)
 
-    methods: {
-        convPortrait(convR: ConversationSearchResult): string {
-            const info = convR._conversationInfo
-            if (info == null) {
-                return Config.DEFAULT_PORTRAIT_URL
-            }
-            const target = store.ensureConversationTarget(info.conversation)
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        convDisplayName(convR: ConversationSearchResult): string {
-            const info = convR._conversationInfo
-            if (info == null) {
-                return ''
-            }
-            const target = store.ensureConversationTarget(info.conversation)
-            return target != null ? target._displayName : ''
-        },
-        isFriend(user: UserInfo): boolean {
-            return user.uid == wfc.getUserId() || wfc.isMyFriend(user.uid)
-        },
-        addFriend(user: UserInfo) {
-            wfc.sendFriendRequest(user.uid, '你好', '', () => {
-                uni.showToast({
-                    title: '发送好友请求成功',
-                    icon: 'none',
-                } as ShowToastOptions);
-            }, (err: number) => {
-                console.log('sendFriendRequest fail', err)
-                uni.showToast({
-                    title: '发送好友请求失败',
-                    icon: 'none',
-                } as ShowToastOptions);
-            })
-        },
-        showAllUser() {
-            this.shouldShowAllUser = true;
-        },
-        showAllContact() {
-            this.shouldShowAllContact = true;
-        },
-        showAllGroup() {
-            this.shouldShowAllGroup = true;
-        },
-        showAllConversation() {
-            this.shouldShowAllConversation = true;
-        },
+const userSearchResult = computed<UserInfo[]>((): UserInfo[] => {
+    return searchState.userSearchResult
+})
+const contactSearchResult = computed<UserInfo[]>((): UserInfo[] => {
+    return searchState.contactSearchResult
+})
+const groupSearchResult = computed<GroupInfo[]>((): GroupInfo[] => {
+    return searchState.groupSearchResult
+})
+const conversationSearchResult = computed<ConversationSearchResult[]>((): ConversationSearchResult[] => {
+    return searchState.conversationSearchResult
+})
+const toShowUserList = computed<UserInfo[]>((): UserInfo[] => {
+    return !shouldShowAllUser.value && searchState.userSearchResult.length > 5 ? searchState.userSearchResult.slice(0, 4) : searchState.userSearchResult;
+})
+const toShowContactList = computed<UserInfo[]>((): UserInfo[] => {
+    return !shouldShowAllContact.value && searchState.contactSearchResult.length > 5 ? searchState.contactSearchResult.slice(0, 4) : searchState.contactSearchResult;
+})
+const toShowGroupList = computed<GroupInfo[]>((): GroupInfo[] => {
+    return !shouldShowAllGroup.value && searchState.groupSearchResult.length > 5 ? searchState.groupSearchResult.slice(0, 4) : searchState.groupSearchResult;
+})
+const toShowConversationList = computed<ConversationSearchResult[]>((): ConversationSearchResult[] => {
+    return !shouldShowAllConversation.value && searchState.conversationSearchResult.length > 5 ? searchState.conversationSearchResult.slice(0, 4) : searchState.conversationSearchResult;
+})
+const showEmptyView = computed<boolean>((): boolean => {
+    return searchState.userSearchResult.length + searchState.contactSearchResult.length
+        + searchState.groupSearchResult.length + searchState.conversationSearchResult.length == 0;
+})
 
-        chatToContact(contact: UserInfo) {
-            const conversation = new Conversation(ConversationType.Single, contact.uid, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        },
-
-        chatToGroup(group: GroupInfo) {
-            const conversation = new Conversation(ConversationType.Group, group.target, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        },
-
-        onClickConversationSearchResultItem(result: ConversationSearchResult) {
-            if (result.matchCount == 1) {
-                store.setCurrentConversation(result.conversation);
-                go2ConversationPage();
-            } else {
-                searchState.conversation = result.conversation;
-                uni.navigateTo({
-                    url: '/pages/search/SearchConversationMessagePage'
-                } as NavigateToOptions);
-            }
-        },
-
-        conversationMatchDesc(convSearchResult: ConversationSearchResult): string {
-            const matchMessage = convSearchResult.matchMessage
-            if (matchMessage != null) {
-                return matchMessage.messageContent.digest(matchMessage);
-            } else {
-                return convSearchResult.matchCount + '条相关聊天记录';
-            }
-        },
-    },
-
-    computed: {
-        userSearchResult(): UserInfo[] {
-            return searchState.userSearchResult
-        },
-        contactSearchResult(): UserInfo[] {
-            return searchState.contactSearchResult
-        },
-        groupSearchResult(): GroupInfo[] {
-            return searchState.groupSearchResult
-        },
-        conversationSearchResult(): ConversationSearchResult[] {
-            return searchState.conversationSearchResult
-        },
-        toShowUserList(): UserInfo[] {
-            return !this.shouldShowAllUser && searchState.userSearchResult.length > 5 ? searchState.userSearchResult.slice(0, 4) : searchState.userSearchResult;
-        },
-        toShowContactList(): UserInfo[] {
-            return !this.shouldShowAllContact && searchState.contactSearchResult.length > 5 ? searchState.contactSearchResult.slice(0, 4) : searchState.contactSearchResult;
-        },
-        toShowGroupList(): GroupInfo[] {
-            return !this.shouldShowAllGroup && searchState.groupSearchResult.length > 5 ? searchState.groupSearchResult.slice(0, 4) : searchState.groupSearchResult;
-        },
-        toShowConversationList(): ConversationSearchResult[] {
-            return !this.shouldShowAllConversation && searchState.conversationSearchResult.length > 5 ? searchState.conversationSearchResult.slice(0, 4) : searchState.conversationSearchResult;
-        },
-
-        showEmptyView(): boolean {
-            return searchState.userSearchResult.length + searchState.contactSearchResult.length
-                + searchState.groupSearchResult.length + searchState.conversationSearchResult.length == 0;
-        }
-    },
+const convPortrait = (convR: ConversationSearchResult): string => {
+    const info = convR._conversationInfo
+    if (info == null) {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
 }
+const convDisplayName = (convR: ConversationSearchResult): string => {
+    const info = convR._conversationInfo
+    if (info == null) {
+        return ''
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    return target != null ? target._displayName : ''
+}
+const isFriend = (user: UserInfo): boolean => {
+    return user.uid == wfc.getUserId() || wfc.isMyFriend(user.uid)
+}
+const addFriend = (user: UserInfo) => {
+    wfc.sendFriendRequest(user.uid, '你好', '', () => {
+        uni.showToast({
+            title: '发送好友请求成功',
+            icon: 'none',
+        } as ShowToastOptions);
+    }, (err: number) => {
+        console.log('sendFriendRequest fail', err)
+        uni.showToast({
+            title: '发送好友请求失败',
+            icon: 'none',
+        } as ShowToastOptions);
+    })
+}
+const showAllUser = () => {
+    shouldShowAllUser.value = true;
+}
+const showAllContact = () => {
+    shouldShowAllContact.value = true;
+}
+const showAllGroup = () => {
+    shouldShowAllGroup.value = true;
+}
+const showAllConversation = () => {
+    shouldShowAllConversation.value = true;
+}
+
+const chatToContact = (contact: UserInfo) => {
+    const conversation = new Conversation(ConversationType.Single, contact.uid, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
+}
+
+const chatToGroup = (group: GroupInfo) => {
+    const conversation = new Conversation(ConversationType.Group, group.target, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
+}
+
+const onClickConversationSearchResultItem = (result: ConversationSearchResult) => {
+    if (result.matchCount == 1) {
+        store.setCurrentConversation(result.conversation);
+        go2ConversationPage();
+    } else {
+        searchState.conversation = result.conversation;
+        uni.navigateTo({
+            url: '/pages/search/SearchConversationMessagePage'
+        } as NavigateToOptions);
+    }
+}
+
+const conversationMatchDesc = (convSearchResult: ConversationSearchResult): string => {
+    const matchMessage = convSearchResult.matchMessage
+    if (matchMessage != null) {
+        return matchMessage.messageContent.digest(matchMessage);
+    } else {
+        return convSearchResult.matchCount + '条相关聊天记录';
+    }
+}
+
+onMounted(() => {
+    let enableCount = 0;
+    if (props.searchUser) enableCount++;
+    if (props.searchContact) enableCount++;
+    if (props.searchGroup) enableCount++;
+    if (props.searchConversation) enableCount++;
+    if (enableCount == 1) {
+        shouldShowAllUser.value = props.searchUser;
+        shouldShowAllContact.value = props.searchContact;
+        shouldShowAllGroup.value = props.searchGroup;
+        shouldShowAllConversation.value = props.searchConversation;
+    }
+})
+
+onBeforeUnmount(() => {
+    store.setSearchQuery('')
+})
 </script>
 
 <style scoped>

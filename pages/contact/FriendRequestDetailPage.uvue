@@ -29,7 +29,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import Conversation from "../../wfc/model/conversation.uts";
@@ -37,57 +37,58 @@ import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: "FriendRequestDetailPage",
-    computed: {
-        friendRequest(): FriendRequest | null {
-            return contactState.currentFriendRequest
-        },
-        portrait(): string {
-            const friendRequest = this.friendRequest
-            if (friendRequest == null) {
-                return Config.DEFAULT_PORTRAIT_URL
-            }
-            const target = friendRequest._target
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        alias(): string {
-            const friendRequest = this.friendRequest
-            if (friendRequest == null) {
-                return ''
-            }
-            const target = friendRequest._target
-            return target != null ? target.friendAlias : ''
-        },
-        name(): string {
-            const friendRequest = this.friendRequest
-            if (friendRequest == null) {
-                return ''
-            }
-            const friend = friendRequest._target;
-            if (friend == null) {
-                return ''
-            }
-            if (friend.friendAlias != '') {
-                return friend.friendAlias;
-            } else if (friend.displayName != '') {
-                return friend.displayName;
-            }
-            return friend.name;
-        }
-    },
-    methods: {
-        chat() {
-            const friendRequest = this.friendRequest
-            if (friendRequest == null) {
-                return
-            }
-            const conversation = new Conversation(ConversationType.Single, friendRequest.target, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        }
-    },
+defineOptions({
+    name: "FriendRequestDetailPage"
+})
+
+const friendRequest = computed<FriendRequest | null>((): FriendRequest | null => {
+    return contactState.currentFriendRequest
+})
+
+const portrait = computed<string>((): string => {
+    const friendRequest = friendRequest.value
+    if (friendRequest == null) {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    const target = friendRequest._target
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+})
+
+const alias = computed<string>((): string => {
+    const friendRequest = friendRequest.value
+    if (friendRequest == null) {
+        return ''
+    }
+    const target = friendRequest._target
+    return target != null ? target.friendAlias : ''
+})
+
+const name = computed<string>((): string => {
+    const friendRequest = friendRequest.value
+    if (friendRequest == null) {
+        return ''
+    }
+    const friend = friendRequest._target;
+    if (friend == null) {
+        return ''
+    }
+    if (friend.friendAlias != '') {
+        return friend.friendAlias;
+    } else if (friend.displayName != '') {
+        return friend.displayName;
+    }
+    return friend.name;
+})
+
+const chat = () => {
+    const friendRequest = friendRequest.value
+    if (friendRequest == null) {
+        return
+    }
+    const conversation = new Conversation(ConversationType.Single, friendRequest.target, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
 }
 </script>
 

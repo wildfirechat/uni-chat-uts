@@ -4,28 +4,25 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 
-export default {
-    name: "StreamingTextMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    computed: {
-        textContent(): string {
-            let text = this.message.messageContent.digest(this.message);
-            if (this.message.messageContent.type == MessageContentType.Streaming_Text_Generating) {
-                text += ' ...';
-            }
-            return text;
-        }
+defineOptions({
+    name: "StreamingTextMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const textContent = computed<string>((): string => {
+    let text = props.message.messageContent.digest(props.message);
+    if (props.message.messageContent.type == MessageContentType.Streaming_Text_Generating) {
+        text += ' ...';
     }
-}
+    return text;
+})
 </script>
 
 <style scoped>

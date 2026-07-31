@@ -27,7 +27,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Config from "../../config.uts";
 import store, { contactState } from "../../store.uts";
 import WfcScheme from "../../wfcScheme.uts";
@@ -37,113 +37,119 @@ import Conversation from "../../wfc/model/conversation.uts";
 import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: 'main-action-menu',
-    data() {
-        return {
-            height: 0, //距离顶部高度
-            // 遮罩尺寸用绝对像素给，不用 100%：fixed 节点的百分比在鸿蒙上不一定能解析出来，
-            // 解析成 0 的话遮罩没有尺寸，点击空白就永远收不到 tap
-            maskWidth: 0,
-            maskHeight: 0,
-            isActive: false,
-        };
-    },
-    mounted() {
-        const sysInfo = uni.getSystemInfoSync();
-        this.height = sysInfo.statusBarHeight;
-        this.maskWidth = sysInfo.screenWidth;
-        this.maskHeight = sysInfo.screenHeight;
-    },
-    methods: {
-        go2CreateGroup() {
-            this.hide();
-            let users = contactState.favContactList.concat(contactState.friendList);
-            users = users.filter((u: UserInfo): boolean => {
-                return u.uid != Config.FILE_HELPER_ID
-            });
-            const options = new PickUsersOptions()
-            options.users = users
-            options.successCB = (pickedUsers: UserInfo[]) => {
-                store.createConversation(pickedUsers, (conversation: Conversation) => {
-                    // 不加延时的话，不能正常切换页面
-                    setTimeout(() => {
-                        go2ConversationPage();
-                    }, 50)
-                }, (err: number) => {
-                    console.log('createConversation error', err)
-                })
-            }
-            pickUsers(options);
-        },
-        go2SearchFriend() {
-            this.hide();
-            uni.navigateTo({
-                url: '/pages/contact/SearchUserPage',
-                fail: (err) => {
-                    console.log('nav to SearchUserPage err', err)
-                }
-            } as NavigateToOptions)
-        },
-        go2ScanQrCode() {
-            this.hide();
-            uni.scanCode({
-                success: (res) => {
-                    console.log('条码内容：' + res.result);
-                    if (res.result != '') {
-                        this.onScanQrCode(res.result)
-                    }
-                },
-                fail: (err) => {
-                    console.log('scan code err', err)
-                }
-            } as ScanCodeOptions);
-        },
-        // 点在菜单面板上不关闭菜单，只有菜单项自己会关闭
-        onMenuTap() {
-        },
-        toggle() {
-            if (this.isActive) {
-                this.hide();
-            } else {
-                this.show();
-            }
-        },
-        show() {
-            this.isActive = true
-        },
-        hide() {
-            if (this.isActive) {
-                this.isActive = false
-            }
-        },
-        onScanQrCode(qrcode: string) {
-            const prefix = qrcode.substring(0, qrcode.lastIndexOf('/') + 1)
-            const value = qrcode.substring(qrcode.lastIndexOf('/') + 1)
-            switch (prefix) {
-                case WfcScheme.QR_CODE_PREFIX_USER:
-                    wfc.getUserInfoEx(value, false, (userInfo: UserInfo) => {
-                        store.setCurrentFriend(userInfo);
-                        uni.navigateTo({
-                            url: '/pages/contact/UserDetailPage',
-                            fail: (err) => {
-                                console.log('nav to UserDetailPage err', err);
-                            }
-                        } as NavigateToOptions)
-                    }, (err: number) => {
-                        console.log('getUserInfoEx error', err)
-                    })
-                    break;
-                default:
-                    uni.showToast({
-                        title: '不支持该二维码: ' + qrcode,
-                        icon: 'none',
-                    } as ShowToastOptions);
-                    break;
-            }
-        }
+const height = ref<number>(0) //距离顶部高度
+// 遮罩尺寸用绝对像素给，不用 100%：fixed 节点的百分比在鸿蒙上不一定能解析出来，
+// 解析成 0 的话遮罩没有尺寸，点击空白就永远收不到 tap
+const maskWidth = ref<number>(0)
+const maskHeight = ref<number>(0)
+const isActive = ref<boolean>(false)
+
+onMounted(() => {
+    const sysInfo = uni.getSystemInfoSync();
+    height.value = sysInfo.statusBarHeight;
+    maskWidth.value = sysInfo.screenWidth;
+    maskHeight.value = sysInfo.screenHeight;
+})
+
+const go2CreateGroup = () => {
+    hide();
+    let users = contactState.favContactList.concat(contactState.friendList);
+    users = users.filter((u: UserInfo): boolean => {
+        return u.uid != Config.FILE_HELPER_ID
+    });
+    const options = new PickUsersOptions()
+    options.users = users
+    options.successCB = (pickedUsers: UserInfo[]) => {
+        store.createConversation(pickedUsers, (conversation: Conversation) => {
+            // 不加延时的话，不能正常切换页面
+            setTimeout(() => {
+                go2ConversationPage();
+            }, 50)
+        }, (err: number) => {
+            console.log('createConversation error', err)
+        })
     }
-};
+    pickUsers(options);
+}
+
+const go2SearchFriend = () => {
+    hide();
+    uni.navigateTo({
+        url: '/pages/contact/SearchUserPage',
+        fail: (err) => {
+            console.log('nav to SearchUserPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const go2ScanQrCode = () => {
+    hide();
+    uni.scanCode({
+        success: (res) => {
+            console.log('条码内容：' + res.result);
+            if (res.result != '') {
+                onScanQrCode(res.result)
+            }
+        },
+        fail: (err) => {
+            console.log('scan code err', err)
+        }
+    } as ScanCodeOptions);
+}
+
+// 点在菜单面板上不关闭菜单，只有菜单项自己会关闭
+const onMenuTap = () => {
+}
+
+const toggle = () => {
+    if (isActive.value) {
+        hide();
+    } else {
+        show();
+    }
+}
+
+const show = () => {
+    isActive.value = true
+}
+
+const hide = () => {
+    if (isActive.value) {
+        isActive.value = false
+    }
+}
+
+const onScanQrCode = (qrcode: string) => {
+    const prefix = qrcode.substring(0, qrcode.lastIndexOf('/') + 1)
+    const value = qrcode.substring(qrcode.lastIndexOf('/') + 1)
+    switch (prefix) {
+        case WfcScheme.QR_CODE_PREFIX_USER:
+            wfc.getUserInfoEx(value, false, (userInfo: UserInfo) => {
+                store.setCurrentFriend(userInfo);
+                uni.navigateTo({
+                    url: '/pages/contact/UserDetailPage',
+                    fail: (err) => {
+                        console.log('nav to UserDetailPage err', err);
+                    }
+                } as NavigateToOptions)
+            }, (err: number) => {
+                console.log('getUserInfoEx error', err)
+            })
+            break;
+        default:
+            uni.showToast({
+                title: '不支持该二维码: ' + qrcode,
+                icon: 'none',
+            } as ShowToastOptions);
+            break;
+    }
+}
+
+defineExpose({
+    toggle,
+    show,
+    hide
+})
 </script>
 <style scoped>
 .main-action-menu-root {

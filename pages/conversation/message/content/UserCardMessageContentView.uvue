@@ -8,37 +8,33 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import CardMessageContent from "@/wfc/messages/cardMessageContent.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import store from "@/store.uts";
 
-export default {
-    name: "UserCardMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
+defineOptions({
+    name: "UserCardMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const content = computed<CardMessageContent>((): CardMessageContent => {
+    return props.message.messageContent as CardMessageContent
+})
+
+const userInfo = () => {
+    const userInfo = wfc.getUserInfo(content.value.target);
+    store.setCurrentFriend(userInfo)
+    uni.navigateTo({
+        url: '/pages/contact/UserDetailPage',
+        fail: (err) => {
+            console.log('nav to UserDetailPage err', err);
         }
-    },
-    computed: {
-        content(): CardMessageContent {
-            return this.message.messageContent as CardMessageContent
-        }
-    },
-    methods: {
-        userInfo() {
-            const userInfo = wfc.getUserInfo(this.content.target);
-            store.setCurrentFriend(userInfo)
-            uni.navigateTo({
-                url: '/pages/contact/UserDetailPage',
-                fail: (err) => {
-                    console.log('nav to UserDetailPage err', err);
-                }
-            } as NavigateToOptions)
-        }
-    }
+    } as NavigateToOptions)
 }
 </script>
 

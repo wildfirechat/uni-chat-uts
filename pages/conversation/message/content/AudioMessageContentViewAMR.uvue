@@ -9,52 +9,51 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import SoundMessageContent from "@/wfc/messages/soundMessageContent.uts";
 import store from "@/store.uts";
 
-export default {
-    name: "AudioMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        },
-    },
-    computed: {
-        content(): SoundMessageContent {
-            return this.message.messageContent as SoundMessageContent
-        },
-        isPlaying(): boolean {
-            return this.content._isPlaying
-        },
-        duration(): number {
-            const times = this.content.duration * 1000;
-            let seconds: number;
-            if (times <= 60 * 1000) {
-                seconds = Math.ceil(times / 1000);
-            } else {
-                seconds = 60;
-            }
-            return seconds;
-        },
-        containerWidth(): number {
-            let width = Math.ceil(this.duration / 60.0 * 300);
-            return width < 100 ? 100 : width;
-        },
-    },
-    methods: {
-        playVoice() {
-            const playing = !this.content._isPlaying
-            this.content._isPlaying = playing
-            if (playing) {
-                store.playVoice(this.message)
-            } else {
-                store.playVoice(null)
-            }
-        },
-    },
+defineOptions({
+    name: "AudioMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const content = computed<SoundMessageContent>((): SoundMessageContent => {
+    return props.message.messageContent as SoundMessageContent
+})
+
+const isPlaying = computed<boolean>((): boolean => {
+    return content.value._isPlaying
+})
+
+const duration = computed<number>((): number => {
+    const times = content.value.duration * 1000;
+    let seconds: number;
+    if (times <= 60 * 1000) {
+        seconds = Math.ceil(times / 1000);
+    } else {
+        seconds = 60;
+    }
+    return seconds;
+})
+
+const containerWidth = computed<number>((): number => {
+    let width = Math.ceil(duration.value / 60.0 * 300);
+    return width < 100 ? 100 : width;
+})
+
+const playVoice = () => {
+    const playing = !content.value._isPlaying
+    content.value._isPlaying = playing
+    if (playing) {
+        store.playVoice(props.message)
+    } else {
+        store.playVoice(null)
+    }
 }
 </script>
 

@@ -10,34 +10,25 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import SearchResultView from "./SearchResultView.uvue";
 import store from "../../store.uts";
 
-export default {
-    name: "SearchPortalPage",
-    components: { SearchResultView },
+const keyword = ref<string>('')
+const searchUserOption = ref<boolean>(true)
+const searchContactOption = ref<boolean>(true)
+const searchConversationOption = ref<boolean>(true)
+const searchGroupOption = ref<boolean>(true)
 
-    data() {
-        return {
-            keyword: '',
-            searchUserOption: true,
-            searchContactOption: true,
-            searchConversationOption: true,
-            searchGroupOption: true,
-        }
-    },
-    onLoad(options: OnLoadOptions) {
-        this.searchUserOption = (options['user'] ?? 'true') == 'true'
-        this.searchGroupOption = (options['group'] ?? 'true') == 'true'
-        this.searchContactOption = (options['contact'] ?? 'true') == 'true'
-        this.searchConversationOption = (options['conversation'] ?? 'true') == 'true'
-    },
-    methods: {
-        search() {
-            store.setSearchQuery(this.keyword, this.searchContactOption, this.searchGroupOption, this.searchConversationOption, this.searchUserOption)
-        }
-    }
+onLoad((options: OnLoadOptions) => {
+    searchUserOption.value = (options['user'] ?? 'true') == 'true'
+    searchGroupOption.value = (options['group'] ?? 'true') == 'true'
+    searchContactOption.value = (options['contact'] ?? 'true') == 'true'
+    searchConversationOption.value = (options['conversation'] ?? 'true') == 'true'
+})
+
+const search = () => {
+    store.setSearchQuery(keyword.value, searchContactOption.value, searchGroupOption.value, searchConversationOption.value, searchUserOption.value)
 }
 </script>
 

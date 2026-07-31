@@ -34,7 +34,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import TextMessageContentView from "@/pages/conversation/message/content/TextMessageContentView.uvue";
 import UnsupportMessageContentView from "@/pages/conversation/message/content/UnsupportMessageContentView.uvue";
 import CompositeMessageContentView from "@/pages/conversation/message/content/CompositeMessageContentView.uvue";
@@ -49,106 +49,92 @@ import CompositeMessageContent from "@/wfc/messages/compositeMessageContent.uts"
 import Config from "@/config.uts";
 import { takePageOptions } from "@/common/nav.uts";
 
-export default {
-    name: "CompositeMessagePage",
-    data() {
-        return {
-            message: null as Message | null,
-            compositeMessage: null as Message | null,
-        }
-    },
+defineOptions({
+    name: "CompositeMessagePage"
+})
 
-    onLoad(_options: OnLoadOptions) {
-        console.log('CompositeMessagePage onLoad')
-        const pageOptions = takePageOptions()
-        if (pageOptions != null && pageOptions instanceof Message) {
-            const message = pageOptions as Message
-            this.message = message;
-            store._patchMessage(message, 0);
-            const content = message.messageContent
-            if (content instanceof CompositeMessageContent && (content as CompositeMessageContent).remotePath != '') {
-                this.loadMediaCompositeMessage(message);
-            } else {
-                this.compositeMessage = message;
-            }
+const message = ref<Message | null>(null)
+const compositeMessage = ref<Message | null>(null)
 
-            if (content instanceof CompositeMessageContent) {
-                uni.setNavigationBarTitle({
-                    title: (content as CompositeMessageContent).title
-                } as SetNavigationBarTitleOptions);
-            }
-        }
-    },
+const compositeMessages = computed<Message[]>((): Message[] => {
+    const msg = compositeMessage.value
+    if (msg == null) {
+        return []
+    }
+    const content = msg.messageContent
+    if (content instanceof CompositeMessageContent) {
+        return (content as CompositeMessageContent).messages
+    }
+    return []
+})
 
-    computed: {
-        compositeMessages(): Message[] {
-            const compositeMessage = this.compositeMessage
-            if (compositeMessage == null) {
-                return []
-            }
-            const content = compositeMessage.messageContent
-            if (content instanceof CompositeMessageContent) {
-                return (content as CompositeMessageContent).messages
-            }
-            return []
-        }
-    },
+const shouldShowPortrait = (index: number): boolean => {
+    const messages = compositeMessages.value
+    if (index == 0) {
+        return true
+    }
+    return messages[index].from != messages[index - 1].from
+}
 
-    methods: {
-        shouldShowPortrait(index: number): boolean {
-            const messages = this.compositeMessages
-            if (index == 0) {
-                return true
-            }
-            return messages[index].from != messages[index - 1].from
-        },
-        portraitOf(message: Message): string {
-            const from = message._from
-            const portrait = from != null ? from.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        fromNameOf(message: Message): string {
-            const from = message._from
-            return from != null ? from._displayName : ''
-        },
-        previewCompositeMessage(focusMessageUid: string) {
-            const compositeMessage = this.compositeMessage
-            if (compositeMessage != null) {
-                store.previewCompositeMessage(compositeMessage, focusMessageUid);
-            }
-        },
-        loadMediaCompositeMessage(msg: Message) {
-            const content = msg.messageContent as CompositeMessageContent;
-            uni.request<string>({
-                url: content.remotePath,
-                dataType: 'string',
-                success: (res) => {
-                    const data = res.data
-                    if (data != null) {
-                        content._decodeMessages(data);
-                        store._patchMessage(msg, 0);
-                        this.compositeMessage = msg;
-                        content.loaded = true;
-                    }
-                },
-                fail: (err) => {
-                    console.log('loadMediaCompositeMessage error', err)
-                }
-            } as RequestOptions<string>)
-        }
-    },
+const portraitOf = (message: Message): string => {
+    const from = message._from
+    const portrait = from != null ? from.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+}
 
-    components: {
-        UnknownMessageContentView,
-        CompositeMessageContentView,
-        UnsupportMessageContentView,
-        TextMessageContentView,
-        ImageMessageContentView,
-        VideoMessageContentView,
-        FileMessageContentView,
-        StickerMessageContentView,
+const fromNameOf = (message: Message): string => {
+    const from = message._from
+    return from != null ? from._displayName : ''
+}
+
+const previewCompositeMessage = (focusMessageUid: string) => {
+    const msg = compositeMessage.value
+    if (msg != null) {
+        store.previewCompositeMessage(msg, focusMessageUid);
     }
 }
+
+const loadMediaCompositeMessage = (msg: Message) => {
+    const content = msg.messageContent as CompositeMessageContent;
+    uni.request<string>({
+        url: content.remotePath,
+        dataType: 'string',
+        success: (res) => {
+            const data = res.data
+            if (data != null) {
+                content._decodeMessages(data);
+                store._patchMessage(msg, 0);
+                compositeMessage.value = msg;
+                content.loaded = true;
+            }
+        },
+        fail: (err) => {
+            console.log('loadMediaCompositeMessage error', err)
+        }
+    } as RequestOptions<string>)
+}
+
+onLoad((_options: OnLoadOptions) => {
+    console.log('CompositeMessagePage onLoad')
+    const pageOptions = takePageOptions()
+    if (pageOptions != null && pageOptions instanceof Message) {
+        const msg = pageOptions as Message
+        message.value = msg;
+        store._patchMessage(msg, 0);
+        const content = msg.messageContent
+        if (content instanceof CompositeMessageContent && (content as CompositeMessageContent).remotePath != '') {
+            loadMediaCompositeMessage(msg);
+        } else {
+            compositeMessage.value = msg;
+        }
+
+        if (content instanceof CompositeMessageContent) {
+            uni.setNavigationBarTitle({
+                title: (content as CompositeMessageContent).title
+            } as SetNavigationBarTitleOptions);
+        }
+    }
+})
 </script>
 
 <style scoped>

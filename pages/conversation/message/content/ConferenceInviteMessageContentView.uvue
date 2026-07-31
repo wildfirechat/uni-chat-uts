@@ -11,39 +11,36 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import ConferenceInviteMessageContent from "@/wfc/av/messages/conferenceInviteMessageContent.uts";
 import store from "@/store.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
 
-export default {
-    name: "ConferenceInviteMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    computed: {
-        content(): ConferenceInviteMessageContent {
-            return this.message.messageContent as ConferenceInviteMessageContent
-        },
-        portrait(): string {
-            const groupId = this.message.conversation.type == ConversationType.Group ? this.message.conversation.target : '';
-            const userInfos = store.getUserInfos([this.content.host], groupId)
-            return userInfos.length > 0 ? userInfos[0].portrait : '';
-        }
-    },
-    methods: {
-        showConferenceInfo() {
-            // uni-app x 版本暂不支持音视频会议
-            uni.showToast({
-                title: '当前版本不支持会议功能',
-                icon: 'none',
-            } as ShowToastOptions);
-        }
-    },
+defineOptions({
+    name: "ConferenceInviteMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const content = computed<ConferenceInviteMessageContent>((): ConferenceInviteMessageContent => {
+    return props.message.messageContent as ConferenceInviteMessageContent
+})
+
+const portrait = computed<string>((): string => {
+    const groupId = props.message.conversation.type == ConversationType.Group ? props.message.conversation.target : '';
+    const userInfos = store.getUserInfos([content.value.host], groupId)
+    return userInfos.length > 0 ? userInfos[0].portrait : '';
+})
+
+const showConferenceInfo = () => {
+    // uni-app x 版本暂不支持音视频会议
+    uni.showToast({
+        title: '当前版本不支持会议功能',
+        icon: 'none',
+    } as ShowToastOptions);
 }
 </script>
 

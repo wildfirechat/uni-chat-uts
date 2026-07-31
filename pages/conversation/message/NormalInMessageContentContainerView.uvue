@@ -24,7 +24,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import MessageContentContainerView from "@/pages/conversation/message/MessageContentContainerView.uvue";
 import QuoteMessageView from "@/pages/conversation/message/QuoteMessageView.uvue";
 import Message from "@/wfc/messages/message.uts";
@@ -35,78 +35,72 @@ import Config from "@/config.uts";
 import eventBus from "@/common/eventBus.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
-export default {
-    name: "NormalInMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        },
-    },
-    data() {
-        return {
-            quotedMessage: null as Message | null,
-        }
-    },
-    methods: {
-        onClickUserPortrait() {
-            const from = this.message._from
-            if (from != null) {
-                store.setCurrentFriend(from);
-                uni.navigateTo({
-                    url: '/pages/contact/UserDetailPage',
-                    fail: (err) => {
-                        console.log('nav to UserDetailPage err', err);
-                    }
-                } as NavigateToOptions)
+defineOptions({
+    name: "NormalInMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const quotedMessage = ref<Message | null>(null)
+
+const onClickUserPortrait = () => {
+    const from = props.message._from
+    if (from != null) {
+        store.setCurrentFriend(from);
+        uni.navigateTo({
+            url: '/pages/contact/UserDetailPage',
+            fail: (err) => {
+                console.log('nav to UserDetailPage err', err);
             }
-        },
-        openMessageContextMenu(event: UniTouchEvent) {
-            eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, this.message))
-        },
-    },
-    mounted() {
-        const content = this.message.messageContent
-        if (content instanceof TextMessageContent) {
-            const quoteInfo = (content as TextMessageContent).quoteInfo
-            if (quoteInfo != null) {
-                const messageUid = quoteInfo.messageUid;
-                const msg = store.getMessageByUid(messageUid);
-                if (msg == null) {
-                    wfc.loadRemoteMessage(messageUid, (ms: Message[]) => {
-                        if (ms.length > 0) {
-                            this.quotedMessage = store._patchMessage(ms[0], 0);
-                        }
-                    }, (err: number) => {
-                        console.log('load remote message error', messageUid, err)
-                    })
-                } else {
-                    this.quotedMessage = msg;
-                }
-            }
-        }
-    },
-    computed: {
-        enableMessageMultiSelection(): boolean {
-            return conversationState.enableMessageMultiSelection
-        },
-        fromPortrait(): string {
-            const from = this.message._from
-            return from != null ? from.portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        fromDisplayName(): string {
-            const from = this.message._from
-            return from != null ? from._displayName : ''
-        },
-        isMessageChecked(): boolean {
-            return pickState.messages.findIndex((m: Message): boolean => m.messageId == this.message.messageId) >= 0;
-        }
-    },
-    components: {
-        MessageContentContainerView,
-        QuoteMessageView,
-    },
+        } as NavigateToOptions)
+    }
 }
+
+const openMessageContextMenu = (event: UniTouchEvent) => {
+    eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, props.message))
+}
+
+onMounted(() => {
+    const content = props.message.messageContent
+    if (content instanceof TextMessageContent) {
+        const quoteInfo = (content as TextMessageContent).quoteInfo
+        if (quoteInfo != null) {
+            const messageUid = quoteInfo.messageUid;
+            const msg = store.getMessageByUid(messageUid);
+            if (msg == null) {
+                wfc.loadRemoteMessage(messageUid, (ms: Message[]) => {
+                    if (ms.length > 0) {
+                        quotedMessage.value = store._patchMessage(ms[0], 0);
+                    }
+                }, (err: number) => {
+                    console.log('load remote message error', messageUid, err)
+                })
+            } else {
+                quotedMessage.value = msg;
+            }
+        }
+    }
+})
+
+const enableMessageMultiSelection = computed<boolean>((): boolean => {
+    return conversationState.enableMessageMultiSelection
+})
+
+const fromPortrait = computed<string>((): string => {
+    const from = props.message._from
+    return from != null ? from.portrait : Config.DEFAULT_PORTRAIT_URL
+})
+
+const fromDisplayName = computed<string>((): string => {
+    const from = props.message._from
+    return from != null ? from._displayName : ''
+})
+
+const isMessageChecked = computed<boolean>((): boolean => {
+    return pickState.messages.findIndex((m: Message): boolean => m.messageId == props.message.messageId) >= 0;
+})
 </script>
 
 <style scoped>

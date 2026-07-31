@@ -26,93 +26,85 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { pickState } from "@/store.uts";
 import CheckableUserListView from "@/pages/user/CheckableUserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { currentPickUsersOptions, notifyPickedUsers } from "@/common/picker.uts";
 
-export default {
-    name: "PickUserPage",
-    data() {
-        return {
-            users: [] as UserInfo[],
-            initialCheckedUsers: [] as UserInfo[],
-            uncheckableUsers: [] as UserInfo[],
-            confirmTitle: '确定',
-            showCategoryLabel: true,
-            filterQuery: '',
-            confirmed: false,
-        }
-    },
+defineOptions({
+    name: "PickUserPage"
+})
 
-    onLoad(_options: OnLoadOptions) {
-        console.log('PickUserPage onLoad')
-        const options = currentPickUsersOptions()
-        if (options != null) {
-            this.users = options.users;
-            this.initialCheckedUsers = options.initialCheckedUsers;
-            this.uncheckableUsers = options.uncheckableUsers;
-            this.showCategoryLabel = options.showCategoryLabel;
-            this.confirmTitle = options.confirmTitle;
-        }
-    },
+const users = ref<UserInfo[]>([] as UserInfo[])
+const initialCheckedUsers = ref<UserInfo[]>([] as UserInfo[])
+const uncheckableUsers = ref<UserInfo[]>([] as UserInfo[])
+const confirmTitle = ref<string>('确定')
+const showCategoryLabel = ref<boolean>(true)
+const filterQuery = ref<string>('')
+const confirmed = ref<boolean>(false)
 
-    onUnload() {
-        pickState.users = []
-    },
+const checkedUsers = computed<UserInfo[]>((): UserInfo[] => {
+    const users = pickState.users;
+    if (initialCheckedUsers.value.length == 0) {
+        return users;
+    }
+    return users.filter((u: UserInfo): boolean => {
+        return initialCheckedUsers.value.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1
+    })
+})
 
-    methods: {
-        unpick(user: UserInfo) {
-            if (this.isUserUncheckable(user)) {
-                return;
-            }
-            store.pickOrUnpickUser(user);
-        },
+const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
+    if (filterQuery.value != '') {
+        return store.filterUsers(users.value, filterQuery.value);
+    } else {
+        return users.value;
+    }
+})
 
-        isUserUncheckable(user: UserInfo): boolean {
-            return this.uncheckableUsers.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
-        },
+onLoad((_options: OnLoadOptions) => {
+    console.log('PickUserPage onLoad')
+    const options = currentPickUsersOptions()
+    if (options != null) {
+        users.value = options.users;
+        initialCheckedUsers.value = options.initialCheckedUsers;
+        uncheckableUsers.value = options.uncheckableUsers;
+        showCategoryLabel.value = options.showCategoryLabel;
+        confirmTitle.value = options.confirmTitle;
+    }
+})
 
-        /**
-         * 不包含默认选中的用户
-         */
-        confirm() {
-            let pickedUsers: UserInfo[]
-            if (this.initialCheckedUsers.length > 0) {
-                pickedUsers = pickState.users.filter((u: UserInfo): boolean => this.initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1);
-            } else {
-                pickedUsers = pickState.users;
-            }
-            const users = pickedUsers.slice(0);
-            pickState.users = []
-            this.confirmed = true
+onUnload(() => {
+    pickState.users = []
+})
 
-            uni.navigateBack({} as NavigateBackOptions);
-            notifyPickedUsers(users);
-        },
-    },
+const unpick = (user: UserInfo) => {
+    if (isUserUncheckable(user)) {
+        return;
+    }
+    store.pickOrUnpickUser(user);
+}
 
-    computed: {
-        checkedUsers(): UserInfo[] {
-            const users = pickState.users;
-            if (this.initialCheckedUsers.length == 0) {
-                return users;
-            }
-            return users.filter((u: UserInfo): boolean => {
-                return this.initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1
-            })
-        },
-        filteredUsers(): UserInfo[] {
-            if (this.filterQuery != '') {
-                return store.filterUsers(this.users, this.filterQuery);
-            } else {
-                return this.users;
-            }
-        }
-    },
+const isUserUncheckable = (user: UserInfo): boolean => {
+    return uncheckableUsers.value.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
+}
 
-    components: { CheckableUserListView },
+/**
+ * 不包含默认选中的用户
+ */
+const confirm = () => {
+    let pickedUsers: UserInfo[]
+    if (initialCheckedUsers.value.length > 0) {
+        pickedUsers = pickState.users.filter((u: UserInfo): boolean => initialCheckedUsers.value.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1);
+    } else {
+        pickedUsers = pickState.users;
+    }
+    const users = pickedUsers.slice(0);
+    pickState.users = []
+    confirmed.value = true
+
+    uni.navigateBack({} as NavigateBackOptions);
+    notifyPickedUsers(users);
 }
 </script>
 

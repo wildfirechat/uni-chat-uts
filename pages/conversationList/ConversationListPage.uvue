@@ -17,7 +17,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import ConversationItemView from "./ConversationItemView.uvue";
 import NavBar from "../common/NavBar.uvue";
 import store, { conversationState, miscState } from "../../store.uts";
@@ -29,195 +29,194 @@ import organizationServerApi from "../../api/organizationServerApi.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
 
-export default {
-    name: 'ConversationListPage',
-    components: {
-        ConversationItemView,
-        NavBar,
-    },
-    data() {
-        return {
-            // wx_iconfont.ttf 中的图标：搜索、加号（与原 titleNView buttons 一致）
-            searchIcon: '\ue636',
-            plusIcon: '\ue657',
-            showContextMenu: false,
-            contextMenuX: 0,
-            contextMenuY: 0,
-            contextMenuItems: [] as PopupMenuItem[],
-            contextMenuConversationInfo: null as ConversationInfo | null,
-            orgLoginTried: false,
-        };
-    },
+defineOptions({
+    name: 'ConversationListPage'
+})
 
-    onShow() {
-        console.log('conversationList onShow', conversationState.conversationInfoList.length)
-        const userId = getItem('userId');
-        if (userId == '') {
-            // 被踢等，需要退到登录页面
-            uni.reLaunch({
-                url: '/pages/login/LoginPage'
-            } as ReLaunchOptions);
-        } else {
-            this.updateTabBarBadge();
+// wx_iconfont.ttf 中的图标：搜索、加号（与原 titleNView buttons 一致）
+const searchIcon = ref<string>('\ue636')
+const plusIcon = ref<string>('\ue657')
+const showContextMenu = ref<boolean>(false)
+const contextMenuX = ref<number>(0)
+const contextMenuY = ref<number>(0)
+const contextMenuItems = ref<PopupMenuItem[]>([] as PopupMenuItem[])
+const contextMenuConversationInfo = ref<ConversationInfo | null>(null)
+const orgLoginTried = ref<boolean>(false)
+
+const mainActionMenu = ref<ComponentPublicInstance | null>(null)
+
+const conversationInfoList = computed<ConversationInfo[]>((): ConversationInfo[] => {
+    return conversationState.conversationInfoList
+})
+
+const connectionStatus = computed<number>((): number => {
+    return miscState.connectionStatus
+})
+
+const connectionStatusDesc = computed<string>((): string => {
+    let desc = '';
+    switch (miscState.connectionStatus) {
+        case ConnectionStatus.ConnectionStatusConnecting:
+            desc = '正在连接...';
+            break;
+        case ConnectionStatus.ConnectionStatusReceiveing:
+            desc = '正在同步...';
+            break;
+        case ConnectionStatus.ConnectionStatusConnected:
+            desc = '';
+            break;
+        case ConnectionStatus.ConnectionStatusUnconnected:
+            desc = '连接失败';
+            break;
+        default:
+            break;
+    }
+    return desc;
+})
+
+const unread = computed<number>((): number => {
+    let count = 0;
+    const list = conversationState.conversationInfoList
+    for (let i = 0; i < list.length; i++) {
+        const info = list[i]
+        if (info.isSilent) {
+            continue;
         }
-    },
+        count += info.unreadCount.unread;
+    }
+    return count;
+})
 
-    onHide() {
-        console.log('conversationList onHide');
-        (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
-    },
+const updateTabBarBadge = () => {
+    const newValue = unread.value;
+    if (newValue > 0) {
+        uni.setTabBarBadge({
+            index: 0,
+            text: '' + newValue
+        } as SetTabBarBadgeOptions)
+    } else {
+        uni.removeTabBarBadge({
+            index: 0
+        } as RemoveTabBarBadgeOptions)
+    }
+}
 
-    watch: {
-        connectionStatus: {
-            handler(newValue: number, _oldValue: number) {
-                if (newValue == ConnectionStatus.ConnectionStatusConnected && !this.orgLoginTried) {
-                    this.orgLoginTried = true
-                    organizationServerApi.login()
-                        .then((r): void => {
-                            console.log('org login success')
-                        })
-                        .catch((reason): void => {
-                            console.log('org login fail')
-                        });
-                }
-            },
-            immediate: true
-        },
-        unread: {
-            handler(newValue: number, _oldValue: number) {
-                this.updateTabBarBadge();
-            },
-        }
-    },
+watch(connectionStatus, (newValue: number, _oldValue: number) => {
+    if (newValue == ConnectionStatus.ConnectionStatusConnected && !orgLoginTried.value) {
+        orgLoginTried.value = true
+        organizationServerApi.login()
+            .then((r): void => {
+                console.log('org login success')
+            })
+            .catch((reason): void => {
+                console.log('org login fail')
+            });
+    }
+}, { immediate: true })
 
-    computed: {
-        conversationInfoList(): ConversationInfo[] {
-            return conversationState.conversationInfoList
-        },
-        connectionStatus(): number {
-            return miscState.connectionStatus
-        },
-        connectionStatusDesc(): string {
-            let desc = '';
-            switch (miscState.connectionStatus) {
-                case ConnectionStatus.ConnectionStatusConnecting:
-                    desc = '正在连接...';
-                    break;
-                case ConnectionStatus.ConnectionStatusReceiveing:
-                    desc = '正在同步...';
-                    break;
-                case ConnectionStatus.ConnectionStatusConnected:
-                    desc = '';
-                    break;
-                case ConnectionStatus.ConnectionStatusUnconnected:
-                    desc = '连接失败';
-                    break;
-                default:
-                    break;
-            }
-            return desc;
-        },
-        unread(): number {
-            let count = 0;
-            const list = conversationState.conversationInfoList
-            for (let i = 0; i < list.length; i++) {
-                const info = list[i]
-                if (info.isSilent) {
-                    continue;
-                }
-                count += info.unreadCount.unread;
-            }
-            return count;
-        }
-    },
+watch(unread, (newValue: number, _oldValue: number) => {
+    updateTabBarBadge();
+})
 
-    methods: {
-        onPlusTap() {
-            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('toggle');
-        },
-        onSearchTap() {
-            (this.$refs['mainActionMenu'] as ComponentPublicInstance).$callMethod('hide');
-            uni.navigateTo({
-                url: '/pages/search/SearchPortalPage'
-            } as NavigateToOptions);
-        },
-        showConversation(conversationInfo: ConversationInfo) {
-            store.setCurrentConversationInfo(conversationInfo);
-            go2ConversationPage();
-        },
+onShow(() => {
+    console.log('conversationList onShow', conversationState.conversationInfoList.length)
+    const userId = getItem('userId');
+    if (userId == '') {
+        // 被踢等，需要退到登录页面
+        uni.reLaunch({
+            url: '/pages/login/LoginPage'
+        } as ReLaunchOptions);
+    } else {
+        updateTabBarBadge();
+    }
+})
 
-        removeConversation(conversationInfo: ConversationInfo) {
+onHide(() => {
+    console.log('conversationList onHide');
+    const menu = mainActionMenu.value
+    if (menu != null) {
+        (menu as ComponentPublicInstance).$callMethod('hide');
+    }
+})
+
+const onPlusTap = () => {
+    const menu = mainActionMenu.value
+    if (menu != null) {
+        (menu as ComponentPublicInstance).$callMethod('toggle');
+    }
+}
+
+const onSearchTap = () => {
+    const menu = mainActionMenu.value
+    if (menu != null) {
+        (menu as ComponentPublicInstance).$callMethod('hide');
+    }
+    uni.navigateTo({
+        url: '/pages/search/SearchPortalPage'
+    } as NavigateToOptions);
+}
+
+const showConversation = (conversationInfo: ConversationInfo) => {
+    store.setCurrentConversationInfo(conversationInfo);
+    go2ConversationPage();
+}
+
+const removeConversation = (conversationInfo: ConversationInfo) => {
+    store.removeConversation(conversationInfo.conversation);
+}
+
+const conversationInfoKey = (conversationInfo: ConversationInfo): string => {
+    const conv = conversationInfo.conversation;
+    return conv.target + '-' + conv.type + '-' + conv.line;
+}
+
+const showConversationContextMenu = (e: any, conversationInfo: ConversationInfo) => {
+    const touchEvent = e as UniTouchEvent;
+    if (touchEvent.touches.length > 0) {
+        contextMenuX.value = touchEvent.touches[0].clientX;
+        contextMenuY.value = touchEvent.touches[0].clientY;
+    }
+    contextMenuConversationInfo.value = conversationInfo;
+    const items: PopupMenuItem[] = [];
+
+    items.push(new PopupMenuItem(conversationInfo.top > 0 ? '取消置顶' : '置顶', 'top'))
+    items.push(new PopupMenuItem(conversationInfo.isSilent ? '取消静音' : '静音', 'silent'))
+    items.push(new PopupMenuItem('删除会话', 'delete'))
+    items.push(new PopupMenuItem(conversationInfo._unread == 0 ? '标记为未读' : '标记为已读', 'mark'))
+    contextMenuItems.value = items;
+    showContextMenu.value = true;
+}
+
+const onContextMenuItemSelect = (t: PopupMenuItem) => {
+    const conversationInfo = contextMenuConversationInfo.value
+    if (conversationInfo == null) {
+        return
+    }
+    switch (t.tag) {
+        case 'delete':
             store.removeConversation(conversationInfo.conversation);
-        },
-
-        conversationInfoKey(conversationInfo: ConversationInfo): string {
-            const conv = conversationInfo.conversation;
-            return conv.target + '-' + conv.type + '-' + conv.line;
-        },
-
-        showConversationContextMenu(e: any, conversationInfo: ConversationInfo) {
-            const touchEvent = e as UniTouchEvent;
-            if (touchEvent.touches.length > 0) {
-                this.contextMenuX = touchEvent.touches[0].clientX;
-                this.contextMenuY = touchEvent.touches[0].clientY;
-            }
-            this.contextMenuConversationInfo = conversationInfo;
-            const items: PopupMenuItem[] = [];
-
-            items.push(new PopupMenuItem(conversationInfo.top > 0 ? '取消置顶' : '置顶', 'top'))
-            items.push(new PopupMenuItem(conversationInfo.isSilent ? '取消静音' : '静音', 'silent'))
-            items.push(new PopupMenuItem('删除会话', 'delete'))
-            items.push(new PopupMenuItem(conversationInfo._unread == 0 ? '标记为未读' : '标记为已读', 'mark'))
-            this.contextMenuItems = items;
-            this.showContextMenu = true;
-        },
-
-        onContextMenuItemSelect(t: PopupMenuItem) {
-            const conversationInfo = this.contextMenuConversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            switch (t.tag) {
-                case 'delete':
-                    store.removeConversation(conversationInfo.conversation);
-                    break;
-                case 'top':
-                    store.setConversationTop(conversationInfo.conversation, conversationInfo.top > 0 ? 0 : 1);
-                    break;
-                case 'silent':
-                    store.setConversationSilent(conversationInfo.conversation, !conversationInfo.isSilent);
-                    break;
-                case 'mark':
-                    if (conversationInfo._unread == 0) {
-                        wfc.markConversationAsUnread(conversationInfo.conversation, true);
-                    } else {
-                        wfc.clearConversationUnreadStatus(conversationInfo.conversation);
-                    }
-                    break;
-                default:
-                    uni.showToast({
-                        title: 'TODO ' + t.title,
-                        icon: 'none'
-                    } as ShowToastOptions)
-                    break;
-            }
-        },
-
-        updateTabBarBadge() {
-            const newValue = this.unread;
-            if (newValue > 0) {
-                uni.setTabBarBadge({
-                    index: 0,
-                    text: '' + newValue
-                } as SetTabBarBadgeOptions)
+            break;
+        case 'top':
+            store.setConversationTop(conversationInfo.conversation, conversationInfo.top > 0 ? 0 : 1);
+            break;
+        case 'silent':
+            store.setConversationSilent(conversationInfo.conversation, !conversationInfo.isSilent);
+            break;
+        case 'mark':
+            if (conversationInfo._unread == 0) {
+                wfc.markConversationAsUnread(conversationInfo.conversation, true);
             } else {
-                uni.removeTabBarBadge({
-                    index: 0
-                } as RemoveTabBarBadgeOptions)
+                wfc.clearConversationUnreadStatus(conversationInfo.conversation);
             }
-        }
-    },
-};
+            break;
+        default:
+            uni.showToast({
+                title: 'TODO ' + t.title,
+                icon: 'none'
+            } as ShowToastOptions)
+            break;
+    }
+}
 </script>
 
 <style scoped>

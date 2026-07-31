@@ -11,37 +11,35 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "../../../wfc/messages/message.uts";
 import ArticlesMessageContent from "../../../wfc/messages/articlesMessageContent.uts";
 
-export default {
-    name: "ArticlesMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
+defineOptions({
+    name: "ArticlesMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const emit = defineEmits(['longpress'])
+
+const content = computed<ArticlesMessageContent>((): ArticlesMessageContent => {
+    return props.message.messageContent as ArticlesMessageContent
+})
+
+const onLongPress = (e: UniTouchEvent) => {
+    emit('longpress', e)
+}
+
+const openArticle = (url: string) => {
+    uni.navigateTo({
+        url: `/pages/misc/WebViewPage?url=${encodeURIComponent(url)}`,
+        fail: (e) => {
+            console.log('navigate to WebViewPage error', e)
         }
-    },
-    emits: ['longpress'],
-    computed: {
-        content(): ArticlesMessageContent {
-            return this.message.messageContent as ArticlesMessageContent
-        }
-    },
-    methods: {
-        onLongPress(e: UniTouchEvent) {
-            this.$emit('longpress', e)
-        },
-        openArticle(url: string) {
-            uni.navigateTo({
-                url: `/pages/misc/WebViewPage?url=${encodeURIComponent(url)}`,
-                fail: (e) => {
-                    console.log('navigate to WebViewPage error', e)
-                }
-            } as NavigateToOptions);
-        }
-    }
+    } as NavigateToOptions);
 }
 </script>
 

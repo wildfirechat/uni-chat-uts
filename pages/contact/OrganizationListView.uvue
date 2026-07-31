@@ -9,51 +9,49 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store from "../../store.uts";
 import organizationServerApi from "../../api/organizationServerApi.uts";
 import Config from "../../config.uts";
 
-export default {
-    name: "OrganizationListView",
-    data() {
-        return {
-            rootOrganizations: [] as UTSJSONObject[],
-        }
-    },
-    mounted() {
-        organizationServerApi.getRootOrganization()
-            .then((orgs): void => {
-                if (orgs != null && orgs instanceof Array) {
-                    const list: UTSJSONObject[] = []
-                    const arr = orgs as Array<any>
-                    for (let i = 0; i < arr.length; i++) {
-                        const o = arr[i]
-                        if (o instanceof UTSJSONObject) {
-                            list.push(o as UTSJSONObject)
-                        }
+defineOptions({
+    name: "OrganizationListView"
+})
+
+const rootOrganizations = ref<UTSJSONObject[]>([] as UTSJSONObject[])
+
+onMounted(() => {
+    organizationServerApi.getRootOrganization()
+        .then((orgs): void => {
+            if (orgs != null && orgs instanceof Array) {
+                const list: UTSJSONObject[] = []
+                const arr = orgs as Array<any>
+                for (let i = 0; i < arr.length; i++) {
+                    const o = arr[i]
+                    if (o instanceof UTSJSONObject) {
+                        list.push(o as UTSJSONObject)
                     }
-                    this.rootOrganizations = list;
                 }
-            }).catch((reason): void => {
-                console.log('getRootOrganization fail')
-            })
-    },
-    methods: {
-        portraitOf(organization: UTSJSONObject): string {
-            const portrait = organization.getString('portrait')
-            return portrait != null && portrait != '' ? portrait : Config.DEFAULT_ORGANIZATION_PORTRAIT_URL
-        },
-        showOrganization(organization: UTSJSONObject) {
-            store.setCurrentOrganization(organization)
-            uni.navigateTo({
-                url: '/pages/contact/OrganizationTreePage',
-                fail: (err) => {
-                    console.log('nav to OrganizationTreePage err', err);
-                }
-            } as NavigateToOptions)
-        },
-    },
+                rootOrganizations.value = list;
+            }
+        }).catch((reason): void => {
+            console.log('getRootOrganization fail')
+        })
+})
+
+const portraitOf = (organization: UTSJSONObject): string => {
+    const portrait = organization.getString('portrait')
+    return portrait != null && portrait != '' ? portrait : Config.DEFAULT_ORGANIZATION_PORTRAIT_URL
+}
+
+const showOrganization = (organization: UTSJSONObject) => {
+    store.setCurrentOrganization(organization)
+    uni.navigateTo({
+        url: '/pages/contact/OrganizationTreePage',
+        fail: (err) => {
+            console.log('nav to OrganizationTreePage err', err);
+        }
+    } as NavigateToOptions)
 }
 </script>
 

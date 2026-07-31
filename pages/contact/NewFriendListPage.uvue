@@ -6,25 +6,16 @@
         </scroll-view>
     </view>
 </template>
-<script lang="uts">
+<script setup lang="uts">
 import FriendRequestListView from "./FriendRequestListView.uvue";
 import NavBar from "../common/NavBar.uvue";
 
-export default {
-    name: "NewFriendListPage",
-    components: { FriendRequestListView, NavBar },
-    data() {
-        return {
-            searchIcon: '\ue636',
-        }
-    },
-    methods: {
-        onSearchTap() {
-            uni.navigateTo({
-                url: '/pages/search/SearchPortalPage?user=true&contact=false&group=false&conversation=false'
-            } as NavigateToOptions);
-        }
-    }
+const searchIcon = ref<string>('\ue636')
+
+const onSearchTap = () => {
+    uni.navigateTo({
+        url: '/pages/search/SearchPortalPage?user=true&contact=false&group=false&conversation=false'
+    } as NavigateToOptions);
 }
 </script>
 

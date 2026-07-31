@@ -4,10 +4,10 @@
     </view>
 </template>
 
-<script lang="uts">
-export default {
+<script setup lang="uts">
+defineOptions({
     name: "LoadingView"
-}
+})
 </script>
 
 <style scoped>

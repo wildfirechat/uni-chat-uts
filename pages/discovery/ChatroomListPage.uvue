@@ -12,22 +12,17 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store from "../../store.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: "ChatroomListPage",
-    methods: {
-        go2Chatroom(index: number) {
-            const conversation = new Conversation(ConversationType.ChatRoom, `chatroom${index}`, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        },
-    }
-}
+const go2Chatroom = (index: number) => {
+    const conversation = new Conversation(ConversationType.ChatRoom, `chatroom${index}`, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
+};
 </script>
 
 <style scoped>

@@ -10,50 +10,41 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store from "@/store.uts";
 import UserListView from "../user/UserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { currentPickUserOptions, notifyPickedUser } from "@/common/picker.uts";
 
-export default {
-    name: "PickSingleUserPage",
-    data() {
-        return {
-            filterQuery: '',
-            users: [] as UserInfo[],
-            showCategoryLabel: true,
-        }
-    },
+defineOptions({
+    name: "PickSingleUserPage"
+})
 
-    onLoad(_options: OnLoadOptions) {
-        console.log('PickSingleUserPage onLoad')
-        const options = currentPickUserOptions()
-        if (options != null) {
-            this.users = options.users;
-            this.showCategoryLabel = options.showCategoryLabel;
-        }
-    },
+const filterQuery = ref<string>('')
+const users = ref<UserInfo[]>([] as UserInfo[])
+const showCategoryLabel = ref<boolean>(true)
 
-    methods: {
-        onClickUser(user: UserInfo) {
-            console.log('onClick user', user.uid)
-            uni.navigateBack({} as NavigateBackOptions);
-            notifyPickedUser(user);
-        },
-    },
+const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
+    if (filterQuery.value != '') {
+        return store.filterUsers(users.value, filterQuery.value);
+    } else {
+        return users.value;
+    }
+})
 
-    computed: {
-        filteredUsers(): UserInfo[] {
-            if (this.filterQuery != '') {
-                return store.filterUsers(this.users, this.filterQuery);
-            } else {
-                return this.users;
-            }
-        }
-    },
+onLoad((_options: OnLoadOptions) => {
+    console.log('PickSingleUserPage onLoad')
+    const options = currentPickUserOptions()
+    if (options != null) {
+        users.value = options.users;
+        showCategoryLabel.value = options.showCategoryLabel;
+    }
+})
 
-    components: { UserListView },
+const onClickUser = (user: UserInfo) => {
+    console.log('onClick user', user.uid)
+    uni.navigateBack({} as NavigateBackOptions);
+    notifyPickedUser(user);
 }
 </script>
 

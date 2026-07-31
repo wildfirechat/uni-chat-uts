@@ -9,38 +9,33 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import UserListView from "../user/UserListView.uvue";
 import wfc from "../../wfc/client/wfc.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 import SearchType from "../../wfc/model/searchType.uts";
 
-export default {
-    name: "SearchUserPage",
-    components: { UserListView },
-    data() {
-        return {
-            keyword: '',
-            users: [] as UserInfo[],
-        }
-    },
-    methods: {
-        searchUser() {
-            if (this.keyword.trim() == '') {
-                this.users = [];
-                return;
-            }
-            console.log('search user', this.keyword);
-            wfc.searchUser(this.keyword, SearchType.General, 0, (keyword: string, users: UserInfo[]) => {
-                console.log('searchUser success', keyword, users.length)
-                if (keyword == this.keyword) {
-                    this.users = users;
-                }
-            }, (err: number) => {
-                console.log('searchUser err', err)
-            });
-        }
+defineOptions({
+    name: "SearchUserPage"
+})
+
+const keyword = ref<string>('')
+const users = ref<UserInfo[]>([] as UserInfo[])
+
+const searchUser = () => {
+    if (keyword.value.trim() == '') {
+        users.value = [];
+        return;
     }
+    console.log('search user', keyword.value);
+    wfc.searchUser(keyword.value, SearchType.General, 0, (keyword: string, resultUsers: UserInfo[]) => {
+        console.log('searchUser success', keyword, resultUsers.length)
+        if (keyword == keyword.value) {
+            users.value = resultUsers;
+        }
+    }, (err: number) => {
+        console.log('searchUser err', err)
+    });
 }
 </script>
 

@@ -20,7 +20,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import ConversationInfo from "../../wfc/model/conversationInfo.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import { ConversationTarget } from "../../wfc/model/conversation.uts";
@@ -29,97 +29,97 @@ import Draft from "../util/draft.uts";
 import NotificationMessageContent from "../../wfc/messages/notification/notificationMessageContent.uts";
 import Config from "../../config.uts";
 
-export default {
-    name: "ConversationItemView",
-    props: {
-        conversationInfo: {
-            type: Object as PropType<ConversationInfo>,
-            required: true,
-        },
-    },
-    computed: {
-        // target（头像/名称）在展示时才按需解析：本地没有还会发远程拉取，
-        // 会话很多（2000+ 群）时不能在加载会话列表时批量做，见 store._loadConversationList。
-        // store 内部按 conversation._target 缓存，重复调用是廉价的。
-        conversationTarget(): ConversationTarget | null {
-            return store.ensureConversationTarget(this.conversationInfo.conversation);
-        },
-        portrait(): string {
-            const target = this.conversationTarget
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        conversationTitle(): string {
-            const info = this.conversationInfo;
-            const target = this.conversationTarget
-            if (target == null) {
-                return ''
+defineOptions({
+    name: "ConversationItemView"
+})
+
+const props = defineProps<{
+    conversationInfo: ConversationInfo
+}>()
+
+// target（头像/名称）在展示时才按需解析：本地没有还会发远程拉取，
+// 会话很多（2000+ 群）时不能在加载会话列表时批量做，见 store._loadConversationList。
+// store 内部按 conversation._target 缓存，重复调用是廉价的。
+const conversationTarget = computed<ConversationTarget | null>((): ConversationTarget | null => {
+    return store.ensureConversationTarget(props.conversationInfo.conversation);
+})
+
+const portrait = computed<string>((): string => {
+    const target = conversationTarget.value
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+})
+
+const conversationTitle = computed<string>((): string => {
+    const info = props.conversationInfo;
+    const target = conversationTarget.value
+    if (target == null) {
+        return ''
+    }
+    if (info.conversation.type == ConversationType.Single) {
+        return target._displayName;
+    } else {
+        return target.name;
+    }
+})
+
+const shouldShowDraft = computed<boolean>((): boolean => {
+    const currentConversationInfo = conversationState.currentConversationInfo
+    if (currentConversationInfo != null && currentConversationInfo.conversation.equal(props.conversationInfo.conversation)) {
+        return false;
+    }
+    if (props.conversationInfo.unreadCount.unreadMention + props.conversationInfo.unreadCount.unreadMentionAll > 0) {
+        return false;
+    }
+    const draft = Draft.getConversationDraftEx(props.conversationInfo);
+    return draft.text.trim() != '' || draft.quotedMessage != null;
+})
+
+const draft = computed<string>((): string => {
+    const draft = Draft.getConversationDraftEx(props.conversationInfo);
+    let draftText = draft.text;
+    draftText = draftText.replace(/<img [:a-zA-Z0-9_+; ,\-=\/."]+>/g, '[图片]')
+    draftText = draftText.replace(/&nbsp;/g, ' ');
+    draftText = draftText.replace(/<br>/g, '')
+    if (draft.quotedMessage != null) {
+        draftText += '...'
+    }
+    return draftText;
+})
+
+const lastMessageContent = computed<string>((): string => {
+    const conversationInfo = props.conversationInfo;
+    const lastMessage = conversationInfo.lastMessage
+    if (lastMessage != null) {
+        let senderName = '';
+        if (conversationInfo.conversation.type == ConversationType.Group && lastMessage.direction == 1
+            && !(lastMessage.messageContent instanceof NotificationMessageContent)) {
+            let from = lastMessage._from
+            if (from == null) {
+                store._patchMessage(lastMessage, 0)
+                from = lastMessage._from
             }
-            if (info.conversation.type == ConversationType.Single) {
-                return target._displayName;
+            if (from != null) {
+                senderName = from._displayName + ': ';
             } else {
-                return target.name;
+                senderName = '<' + lastMessage.from + '>: ';
             }
-        },
-
-        shouldShowDraft(): boolean {
-            const currentConversationInfo = conversationState.currentConversationInfo
-            if (currentConversationInfo != null && currentConversationInfo.conversation.equal(this.conversationInfo.conversation)) {
-                return false;
-            }
-            if (this.conversationInfo.unreadCount.unreadMention + this.conversationInfo.unreadCount.unreadMentionAll > 0) {
-                return false;
-            }
-            const draft = Draft.getConversationDraftEx(this.conversationInfo);
-            return draft.text.trim() != '' || draft.quotedMessage != null;
-        },
-
-        draft(): string {
-            const draft = Draft.getConversationDraftEx(this.conversationInfo);
-            let draftText = draft.text;
-            draftText = draftText.replace(/<img [:a-zA-Z0-9_+; ,\-=\/."]+>/g, '[图片]')
-            draftText = draftText.replace(/&nbsp;/g, ' ');
-            draftText = draftText.replace(/<br>/g, '')
-            if (draft.quotedMessage != null) {
-                draftText += '...'
-            }
-            return draftText;
-        },
-
-        lastMessageContent(): string {
-            const conversationInfo = this.conversationInfo;
-            const lastMessage = conversationInfo.lastMessage
-            if (lastMessage != null) {
-                let senderName = '';
-                if (conversationInfo.conversation.type == ConversationType.Group && lastMessage.direction == 1
-                    && !(lastMessage.messageContent instanceof NotificationMessageContent)) {
-                    let from = lastMessage._from
-                    if (from == null) {
-                        store._patchMessage(lastMessage, 0)
-                        from = lastMessage._from
-                    }
-                    if (from != null) {
-                        senderName = from._displayName + ': ';
-                    } else {
-                        senderName = '<' + lastMessage.from + '>: ';
-                    }
-                }
-                return senderName + lastMessage.messageContent.digest(lastMessage);
-            } else {
-                return '';
-            }
-        },
-
-        unread(): number {
-            const unreadCount = this.conversationInfo.unreadCount;
-            return unreadCount.unread + unreadCount.unreadMention + unreadCount.unreadMentionAll;
-        },
-        unreadMention(): number {
-            const unreadCount = this.conversationInfo.unreadCount;
-            return unreadCount.unreadMention + unreadCount.unreadMentionAll;
         }
-    },
-};
+        return senderName + lastMessage.messageContent.digest(lastMessage);
+    } else {
+        return '';
+    }
+})
+
+const unread = computed<number>((): number => {
+    const unreadCount = props.conversationInfo.unreadCount;
+    return unreadCount.unread + unreadCount.unreadMention + unreadCount.unreadMentionAll;
+})
+
+const unreadMention = computed<number>((): number => {
+    const unreadCount = props.conversationInfo.unreadCount;
+    return unreadCount.unreadMention + unreadCount.unreadMentionAll;
+})
 </script>
 
 <style scoped>

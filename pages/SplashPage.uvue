@@ -2,40 +2,36 @@
     <view class="splash-container"></view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import { getItem } from "./util/storageHelper.uts";
 import wfc from "../wfc/client/wfc.uts";
 
-export default {
-    name: "SplashPage",
-    onLoad() {
-        const userId = getItem('userId');
-        const token = getItem('token')
-        if (token != '') {
-            wfc.connect(userId, token);
-            this.go2ConversationList();
-        } else {
-            uni.redirectTo({
-                url: '/pages/login/LoginPage',
-            } as RedirectToOptions)
-        }
-    },
-    methods: {
-        go2ConversationList() {
-            uni.switchTab({
-                url: '/pages/conversationList/ConversationListPage',
-                success: (_) => {
-                    console.log('to conversation list success');
-                },
-                fail: (e) => {
-                    console.log('to conversation list error', e);
-                },
-                complete: (_) => {
-                    console.log('switch tab complete')
-                }
-            } as SwitchTabOptions);
-        }
+onLoad(() => {
+    const userId = getItem('userId');
+    const token = getItem('token')
+    if (token != '') {
+        wfc.connect(userId, token);
+        go2ConversationList();
+    } else {
+        uni.redirectTo({
+            url: '/pages/login/LoginPage',
+        } as RedirectToOptions)
     }
+})
+
+const go2ConversationList = () => {
+    uni.switchTab({
+        url: '/pages/conversationList/ConversationListPage',
+        success: (_) => {
+            console.log('to conversation list success');
+        },
+        fail: (e) => {
+            console.log('to conversation list error', e);
+        },
+        complete: (_) => {
+            console.log('switch tab complete')
+        }
+    } as SwitchTabOptions);
 }
 </script>
 

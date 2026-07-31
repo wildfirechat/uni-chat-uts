@@ -32,7 +32,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import NavBar from "@/pages/common/NavBar.uvue";
 import MessageInputView from "@/pages/conversation/MessageInputView.uvue";
 import NormalOutMessageContentView from "@/pages/conversation/message/NormalOutMessageContentContainerView.uvue";
@@ -68,435 +68,421 @@ import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
 
 let innerAudioContext: InnerAudioContext | null = null;
 
-export default {
-    name: 'ConversationPage',
-    components: {
-        NavBar,
-        ContextableNotificationMessageContentContainerView,
-        MultiSelectActionView,
-        NotificationMessageContentView,
-        RecallNotificationMessageContentView,
-        NormalInMessageContentView,
-        NormalOutMessageContentView,
-        MessageInputView,
-    },
-    data() {
-        return {
-            moreIcon: '',
+defineOptions({
+    name: 'ConversationPage'
+})
 
-            isScroll: false,
-            touchStartX: 0,
-            touchStartY: 0,
+const moreIcon = ref<string>('')
 
-            showContextMenu: false,
-            contextMenuX: 0,
-            contextMenuY: 0,
-            contextMenuItems: [] as PopupMenuItem[],
-            contextMenuMessage: null as Message | null,
+const isScroll = ref<boolean>(false)
+const touchStartX = ref<number>(0)
+const touchStartY = ref<number>(0)
 
-            keyboardHeight: 0,
-            scrollTop: 0,
-            triggered: false,
-            freshing: false,
+const showContextMenu = ref<boolean>(false)
+const contextMenuX = ref<number>(0)
+const contextMenuY = ref<number>(0)
+const contextMenuItems = ref<PopupMenuItem[]>([] as PopupMenuItem[])
+const contextMenuMessage = ref<Message | null>(null)
 
-            // onUnload 时会清空 store 里的当前会话，而此时页面关闭动画才刚开始，页面仍在渲染，
-            // 直接渲染 store 数据会导致整个页面瞬间变白(白屏动画滑出后才看到会话列表)。
-            // 所以关闭时冻结渲染，用关闭前的数据副本，保证动画期间页面内容不变。
-            closing: false,
-            closingConversationInfo: null as ConversationInfo | null,
-            closingMessageList: [] as Message[],
-        };
-    },
+const keyboardHeight = ref<number>(0)
+const scrollTop = ref<number>(0)
+const triggered = ref<boolean>(false)
+const freshing = ref<boolean>(false)
 
-    computed: {
-        conversationInfo(): ConversationInfo | null {
-            return this.closing ? this.closingConversationInfo : conversationState.currentConversationInfo
-        },
-        messageList(): Message[] {
-            return this.closing ? this.closingMessageList : conversationState.currentConversationMessageList
-        },
-        enableMessageMultiSelection(): boolean {
-            return conversationState.enableMessageMultiSelection
-        },
-        conversationTitle(): string {
-            const info = this.conversationInfo;
-            if (info == null) {
-                return ''
-            }
-            const target = store.ensureConversationTarget(info.conversation)
-            return target != null ? target._displayName : '';
-        },
-        targetUserOnlineStateDesc(): string {
-            const info = this.conversationInfo;
-            return info != null ? info.conversation._targetOnlineStateDesc : '';
-        },
-        navTitle(): string {
-            return this.targetUserOnlineStateDesc != ''
-                ? this.conversationTitle + `(${this.targetUserOnlineStateDesc})`
-                : this.conversationTitle
-        },
-        // 用于控制同时只能播放一个语音
-        currentVoiceMessage(): Message | null {
-            const voice = conversationState.currentVoiceMessage;
-            if (voice != null) {
-                this.playVoice(voice);
-            } else {
-                const ctx = innerAudioContext
-                if (ctx != null) {
-                    ctx.stop();
-                    innerAudioContext = null;
-                }
-            }
-            return voice;
-        },
-    },
+// onUnload 时会清空 store 里的当前会话，而此时页面关闭动画才刚开始，页面仍在渲染，
+// 直接渲染 store 数据会导致整个页面瞬间变白(白屏动画滑出后才看到会话列表)。
+// 所以关闭时冻结渲染，用关闭前的数据副本，保证动画期间页面内容不变。
+const closing = ref<boolean>(false)
+const closingConversationInfo = ref<ConversationInfo | null>(null)
+const closingMessageList = ref<Message[]>([] as Message[])
 
-    watch: {
-        messageList: {
-            handler(_newList: Message[], _old: Message[]) {
-                if (conversationState.shouldAutoScrollToBottom) {
-                    this.scrollToBottom();
-                }
-                const info = conversationState.currentConversationInfo
-                if (info != null && info.unreadCount.unread > 0) {
-                    store.clearConversationUnreadStatus(info.conversation);
-                }
-            },
-            deep: false,
-        },
-        // 触发 currentVoiceMessage computed 的求值
-        currentVoiceMessage: {
-            handler(_n: Message | null, _o: Message | null) {
-            },
-            immediate: true
+const messageInputView = ref<MessageInputView | null>(null)
+
+const conversationInfo = computed<ConversationInfo | null>((): ConversationInfo | null => {
+    return closing.value ? closingConversationInfo.value : conversationState.currentConversationInfo
+})
+
+const messageList = computed<Message[]>((): Message[] => {
+    return closing.value ? closingMessageList.value : conversationState.currentConversationMessageList
+})
+
+const enableMessageMultiSelection = computed<boolean>((): boolean => {
+    return conversationState.enableMessageMultiSelection
+})
+
+const conversationTitle = computed<string>((): string => {
+    const info = conversationInfo.value;
+    if (info == null) {
+        return ''
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    return target != null ? target._displayName : '';
+})
+
+const targetUserOnlineStateDesc = computed<string>((): string => {
+    const info = conversationInfo.value;
+    return info != null ? info.conversation._targetOnlineStateDesc : '';
+})
+
+const navTitle = computed<string>((): string => {
+    return targetUserOnlineStateDesc.value != ''
+        ? conversationTitle.value + `(${targetUserOnlineStateDesc.value})`
+        : conversationTitle.value
+})
+
+// 用于控制同时只能播放一个语音
+const currentVoiceMessage = computed<Message | null>((): Message | null => {
+    const voice = conversationState.currentVoiceMessage;
+    if (voice != null) {
+        playVoice(voice);
+    } else {
+        const ctx = innerAudioContext
+        if (ctx != null) {
+            ctx.stop();
+            innerAudioContext = null;
         }
-    },
+    }
+    return voice;
+})
 
-    onUnload() {
-        // 先冻结渲染，再清空 store，避免关闭动画期间页面变白
-        this.closingConversationInfo = conversationState.currentConversationInfo;
-        this.closingMessageList = conversationState.currentConversationMessageList;
-        this.closing = true;
+const scrollToBottom = () => {
+    setTimeout(() => {
+        scrollTop.value = scrollTop.value == 999999 ? 999998 : 999999;
+    }, 200)
+    // 图片/视频/语音等消息没有输入法弹出带来的额外滚动机会，且内容排版比纯文本慢，
+    // 200ms 时可能还没排版完成，这里再兜底滚动一次
+    setTimeout(() => {
+        scrollTop.value = scrollTop.value == 999999 ? 999998 : 999999;
+    }, 600)
+}
 
-        store.setCurrentConversationInfo(null);
-        eventBus.$off('openMessageContextMenu', this.onOpenMessageContextMenu)
-        eventBus.$off('reeditMessage', this.onReeditMessage)
-    },
+watch(messageList, (_newList: Message[], _old: Message[]) => {
+    if (conversationState.shouldAutoScrollToBottom) {
+        scrollToBottom();
+    }
+    const info = conversationState.currentConversationInfo
+    if (info != null && info.unreadCount.unread > 0) {
+        store.clearConversationUnreadStatus(info.conversation);
+    }
+}, { deep: false })
 
-    mounted() {
-        this.scrollToBottom();
-        const info = conversationState.currentConversationInfo
-        if (info != null) {
-            store.clearConversationUnreadStatus(info.conversation);
+// 触发 currentVoiceMessage computed 的求值
+watch(currentVoiceMessage, (_n: Message | null, _o: Message | null) => {
+}, { immediate: true })
+
+onUnload(() => {
+    // 先冻结渲染，再清空 store，避免关闭动画期间页面变白
+    closingConversationInfo.value = conversationState.currentConversationInfo;
+    closingMessageList.value = conversationState.currentConversationMessageList;
+    closing.value = true;
+
+    store.setCurrentConversationInfo(null);
+    eventBus.$off('openMessageContextMenu', onOpenMessageContextMenu)
+    eventBus.$off('reeditMessage', onReeditMessage)
+})
+
+onMounted(() => {
+    scrollToBottom();
+    const info = conversationState.currentConversationInfo
+    if (info != null) {
+        store.clearConversationUnreadStatus(info.conversation);
+    }
+
+    const savedKeyboardHeight = getItem('keyboardHeight');
+    if (savedKeyboardHeight != '') {
+        keyboardHeight.value = parseInt(savedKeyboardHeight);
+    }
+    uni.onKeyboardHeightChange((res) => {
+        if (keyboardHeight.value != res.height && res.height > 0) {
+            keyboardHeight.value = res.height;
+            setItem('keyboardHeight', '' + keyboardHeight.value)
         }
-
-        const savedKeyboardHeight = getItem('keyboardHeight');
-        if (savedKeyboardHeight != '') {
-            this.keyboardHeight = parseInt(savedKeyboardHeight);
+        const inputView = messageInputView.value
+        if (inputView != null && res.height > 0) {
+            (inputView as ComponentPublicInstance).$callMethod('onKeyboardHeightChange', keyboardHeight.value, res.height);
         }
-        uni.onKeyboardHeightChange((res) => {
-            if (this.keyboardHeight != res.height && res.height > 0) {
-                this.keyboardHeight = res.height;
-                setItem('keyboardHeight', '' + this.keyboardHeight)
-            }
-            const inputView = this.$refs['messageInputView']
-            if (inputView != null && res.height > 0) {
-                (inputView as ComponentPublicInstance).$callMethod('onKeyboardHeightChange', this.keyboardHeight, res.height);
-            }
-            this.scrollToBottom();
-        });
+        scrollToBottom();
+    });
 
-        eventBus.$on('openMessageContextMenu', this.onOpenMessageContextMenu);
-        eventBus.$on('reeditMessage', this.onReeditMessage);
-    },
+    eventBus.$on('openMessageContextMenu', onOpenMessageContextMenu);
+    eventBus.$on('reeditMessage', onReeditMessage);
+})
 
-    methods: {
-        onOpenMessageContextMenu(data: any | null) {
-            if (data instanceof OpenMessageContextMenuEvent) {
-                const e = data as OpenMessageContextMenuEvent
-                this.showMessageContextMenu(e.event, e.message)
-            }
-        },
+const onOpenMessageContextMenu = (data: any | null) => {
+    if (data instanceof OpenMessageContextMenuEvent) {
+        const e = data as OpenMessageContextMenuEvent
+        showMessageContextMenu(e.event, e.message)
+    }
+}
 
-        onReeditMessage(data: any | null) {
-            if (data != null) {
-                const inputView = this.$refs['messageInputView']
-                if (inputView != null) {
-                    (inputView as ComponentPublicInstance).$callMethod('insertText', '' + data);
-                }
-            }
-        },
+const onReeditMessage = (data: any | null) => {
+    if (data != null) {
+        const inputView = messageInputView.value
+        if (inputView != null) {
+            (inputView as ComponentPublicInstance).$callMethod('insertText', '' + data);
+        }
+    }
+}
 
-        showConversationInfo() {
-            const info = conversationState.currentConversationInfo
-            if (info == null) {
-                return
-            }
-            if (info.conversation.type == ConversationType.Single) {
-                navigateToPage('/pages/conversation/SingleConversationInfoPage', info);
-            } else if (info.conversation.type == ConversationType.Group) {
-                navigateToPage('/pages/conversation/GroupConversationInfoPage', info);
-            } else {
-                uni.showToast({
-                    title: 'TODO 暂不支持该会话类型',
-                    icon: 'none'
-                } as ShowToastOptions)
-            }
-        },
+const showConversationInfo = () => {
+    const info = conversationState.currentConversationInfo
+    if (info == null) {
+        return
+    }
+    if (info.conversation.type == ConversationType.Single) {
+        navigateToPage('/pages/conversation/SingleConversationInfoPage', info);
+    } else if (info.conversation.type == ConversationType.Group) {
+        navigateToPage('/pages/conversation/GroupConversationInfoPage', info);
+    } else {
+        uni.showToast({
+            title: 'TODO 暂不支持该会话类型',
+            icon: 'none'
+        } as ShowToastOptions)
+    }
+}
 
-        clickMessageItem(message: Message) {
-            if (message.messageContent instanceof NotificationMessageContent) {
-                return;
-            }
-            if (conversationState.enableMessageMultiSelection) {
-                store.selectOrDeselectMessage(message);
-            }
-        },
+const clickMessageItem = (message: Message) => {
+    if (message.messageContent instanceof NotificationMessageContent) {
+        return;
+    }
+    if (conversationState.enableMessageMultiSelection) {
+        store.selectOrDeselectMessage(message);
+    }
+}
 
-        isNotificationMessage(message: Message): boolean {
-            return message.messageContent instanceof NotificationMessageContent
-                && message.messageContent.type != MessageContentType.RecallMessage_Notification
-                && message.messageContent.type != MessageContentType.Rich_Notification;
-        },
+const isNotificationMessage = (message: Message): boolean => {
+    return message.messageContent instanceof NotificationMessageContent
+        && message.messageContent.type != MessageContentType.RecallMessage_Notification
+        && message.messageContent.type != MessageContentType.Rich_Notification;
+}
 
-        isContextableNotificationMessage(message: Message): boolean {
-            return message.messageContent instanceof RichNotificationMessageContent || message.messageContent instanceof ArticlesMessageContent;
-        },
+const isContextableNotificationMessage = (message: Message): boolean => {
+    return message.messageContent instanceof RichNotificationMessageContent || message.messageContent instanceof ArticlesMessageContent;
+}
 
-        isRecallNotificationMessage(message: Message): boolean {
-            return message.messageContent.type == MessageContentType.RecallMessage_Notification;
-        },
+const isRecallNotificationMessage = (message: Message): boolean => {
+    return message.messageContent.type == MessageContentType.RecallMessage_Notification;
+}
 
-        // 目前仅文本消息支持复制
-        isCopyable(message: Message): boolean {
-            return message.messageContent instanceof TextMessageContent;
-        },
+// 目前仅文本消息支持复制
+const isCopyable = (message: Message): boolean => {
+    return message.messageContent instanceof TextMessageContent;
+}
 
-        isDownloadAble(message: Message): boolean {
-            return message.messageContent instanceof ImageMessageContent
-                || message.messageContent instanceof FileMessageContent
-                || message.messageContent instanceof VideoMessageContent;
-        },
+const isDownloadAble = (message: Message): boolean => {
+    return message.messageContent instanceof ImageMessageContent
+        || message.messageContent instanceof FileMessageContent
+        || message.messageContent instanceof VideoMessageContent;
+}
 
-        isForwardable(message: Message): boolean {
-            if (message.messageContent instanceof SoundMessageContent) {
-                return false;
-            }
+const isForwardable = (message: Message): boolean => {
+    if (message.messageContent instanceof SoundMessageContent) {
+        return false;
+    }
+    return true;
+}
+
+const isRecallable = (message: Message): boolean => {
+    if (message.conversation.type == ConversationType.Group) {
+        const groupInfo = wfc.getGroupInfo(message.conversation.target);
+        const selfUserId = wfc.getUserId();
+        if (groupInfo.owner == selfUserId) {
             return true;
-        },
-
-        isRecallable(message: Message): boolean {
-            if (message.conversation.type == ConversationType.Group) {
-                const groupInfo = wfc.getGroupInfo(message.conversation.target);
-                const selfUserId = wfc.getUserId();
-                if (groupInfo.owner == selfUserId) {
-                    return true;
-                }
-
-                const groupMember = wfc.getGroupMember(message.conversation.target, selfUserId);
-                if (groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner) {
-                    return true;
-                }
-            }
-            const delta = wfc.getServerDeltaTime();
-            const now = new Date().getTime();
-            if (message.direction == 0 && now - (message.timestamp - delta) < 60 * 1000) {
-                return true;
-            }
-            return false;
-        },
-
-        isQuotable(message: Message): boolean {
-            return [MessageContentType.VOIP_CONTENT_TYPE_START,
-            MessageContentType.Voice,
-            MessageContentType.Video,
-            MessageContentType.Composite_Message,
-            MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE].indexOf(message.messageContent.type) <= -1;
-        },
-
-        copy(message: Message) {
-            const content = message.messageContent;
-            if (content instanceof TextMessageContent) {
-                copyText((content as TextMessageContent).content)
-            }
-        },
-
-        recallMessage(message: Message) {
-            wfc.recallMessage(message.messageUid, null, null);
-        },
-
-        forwardMessage(message: Message) {
-            forward(ForwardType.NORMAL, [message]);
-        },
-
-        multiSelect(message: Message) {
-            store.toggleMessageMultiSelection(message);
-        },
-
-        // 同时只能播放一个语音，逻辑放在会话页统一控制
-        playVoice(message: Message) {
-            let ctx = innerAudioContext
-            if (ctx != null) {
-                ctx.stop();
-            }
-            const content = message.messageContent
-            if (!(content instanceof SoundMessageContent)) {
-                return
-            }
-            const voice = content as SoundMessageContent;
-            let mp3RemotePath = voice.remotePath
-            if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS != '') {
-                mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
-            }
-            ctx = uni.createInnerAudioContext();
-            innerAudioContext = ctx;
-            ctx.autoplay = false;
-            ctx.src = mp3RemotePath;
-            ctx.onPlay(() => {
-                voice._isPlaying = true;
-            });
-            ctx.onError((res) => {
-                console.log('play voice error', res)
-                voice._isPlaying = false;
-                store.playVoice(null)
-            });
-            ctx.onEnded(() => {
-                voice._isPlaying = false;
-                store.playVoice(null)
-            })
-            ctx.onCanplay(() => {
-                innerAudioContext?.play();
-            })
-        },
-
-        onTouchStart(e: UniTouchEvent) {
-            this.isScroll = false
-            if (e.touches.length > 0) {
-                this.touchStartX = e.touches[0].clientX
-                this.touchStartY = e.touches[0].clientY
-            }
-        },
-
-        onTouchMove(e: UniTouchEvent) {
-            uni.hideKeyboard();
-            if (e.touches.length > 0) {
-                const delX = e.touches[0].clientX - this.touchStartX
-                const delY = e.touches[0].clientY - this.touchStartY
-                if (Math.abs(delX) > 5 || Math.abs(delY) > 5) {
-                    this.isScroll = true
-                }
-            }
-        },
-
-        showMessageContextMenu(e: UniTouchEvent, message: Message) {
-            if (this.isScroll) {
-                return;
-            }
-            if (e.touches.length > 0) {
-                this.contextMenuX = e.touches[0].clientX;
-                this.contextMenuY = e.touches[0].clientY;
-            }
-            this.contextMenuMessage = message;
-
-            const items: PopupMenuItem[] = [];
-            if (this.isCopyable(message)) {
-                items.push(new PopupMenuItem('复制', 'copy'))
-            }
-            if (this.isDownloadAble(message)) {
-                items.push(new PopupMenuItem('下载', 'download'))
-            }
-            items.push(new PopupMenuItem('本地删除', 'delete'))
-            items.push(new PopupMenuItem('远程删除', 'deleteRemote'))
-            if (this.isForwardable(message)) {
-                items.push(new PopupMenuItem('转发', 'forward'))
-            }
-            if (this.isRecallable(message)) {
-                items.push(new PopupMenuItem('撤回', 'recall'))
-            }
-            if (this.isQuotable(message)) {
-                items.push(new PopupMenuItem('引用', 'quote'))
-            }
-            items.push(new PopupMenuItem('多选', 'multiSelection'))
-            this.contextMenuItems = items;
-            this.showContextMenu = true;
-        },
-
-        onContextMenuItemSelect(t: PopupMenuItem) {
-            const message = this.contextMenuMessage
-            if (message == null) {
-                return
-            }
-            switch (t.tag) {
-                case 'delete':
-                    wfc.deleteMessage(message.messageId);
-                    break;
-                case 'deleteRemote':
-                    wfc.deleteRemoteMessageByUid(message.messageUid, () => {
-                        console.log('delete remote message success')
-                    }, (err: number) => {
-                        console.log('delete remote message fail', err);
-                    })
-                    break;
-                case 'forward':
-                    this.forwardMessage(message)
-                    break;
-                case 'recall':
-                    this.recallMessage(message);
-                    break;
-                case 'quote':
-                    store.quoteMessage(message);
-                    break;
-                case 'multiSelection':
-                    this.multiSelect(message);
-                    break;
-                case 'copy':
-                    this.copy(message);
-                    break;
-                default:
-                    uni.showToast({
-                        title: 'TODO ' + t.title,
-                        icon: 'none'
-                    } as ShowToastOptions)
-                    break;
-            }
-            eventBus.$emit('contextMenuClosed', null)
-        },
-
-        onRefresh() {
-            console.log('onRefresh...')
-            if (this.freshing) {
-                return;
-            }
-
-            this.freshing = true;
-            this.triggered = true;
-            store.loadConversationHistoryMessages(() => {
-                this.triggered = false;
-                this.freshing = false;
-            }, () => {
-                this.triggered = false;
-                this.freshing = false;
-            });
-        },
-        onRestore() {
-            console.log("onRestore");
-        },
-        onAbort() {
-            console.log("onAbort");
-        },
-
-        scrollToBottom() {
-            setTimeout(() => {
-                this.scrollTop = this.scrollTop == 999999 ? 999998 : 999999;
-            }, 200)
-            // 图片/视频/语音等消息没有输入法弹出带来的额外滚动机会，且内容排版比纯文本慢，
-            // 200ms 时可能还没排版完成，这里再兜底滚动一次
-            setTimeout(() => {
-                this.scrollTop = this.scrollTop == 999999 ? 999998 : 999999;
-            }, 600)
         }
-    },
-};
+
+        const groupMember = wfc.getGroupMember(message.conversation.target, selfUserId);
+        if (groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner) {
+            return true;
+        }
+    }
+    const delta = wfc.getServerDeltaTime();
+    const now = new Date().getTime();
+    if (message.direction == 0 && now - (message.timestamp - delta) < 60 * 1000) {
+        return true;
+    }
+    return false;
+}
+
+const isQuotable = (message: Message): boolean => {
+    return [MessageContentType.VOIP_CONTENT_TYPE_START,
+    MessageContentType.Voice,
+    MessageContentType.Video,
+    MessageContentType.Composite_Message,
+    MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE].indexOf(message.messageContent.type) <= -1;
+}
+
+const copy = (message: Message) => {
+    const content = message.messageContent;
+    if (content instanceof TextMessageContent) {
+        copyText((content as TextMessageContent).content)
+    }
+}
+
+const recallMessage = (message: Message) => {
+    wfc.recallMessage(message.messageUid, null, null);
+}
+
+const forwardMessage = (message: Message) => {
+    forward(ForwardType.NORMAL, [message]);
+}
+
+const multiSelect = (message: Message) => {
+    store.toggleMessageMultiSelection(message);
+}
+
+// 同时只能播放一个语音，逻辑放在会话页统一控制
+const playVoice = (message: Message) => {
+    let ctx = innerAudioContext
+    if (ctx != null) {
+        ctx.stop();
+    }
+    const content = message.messageContent
+    if (!(content instanceof SoundMessageContent)) {
+        return
+    }
+    const voice = content as SoundMessageContent;
+    let mp3RemotePath = voice.remotePath
+    if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS != '') {
+        mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
+    }
+    ctx = uni.createInnerAudioContext();
+    innerAudioContext = ctx;
+    ctx.autoplay = false;
+    ctx.src = mp3RemotePath;
+    ctx.onPlay(() => {
+        voice._isPlaying = true;
+    });
+    ctx.onError((res) => {
+        console.log('play voice error', res)
+        voice._isPlaying = false;
+        store.playVoice(null)
+    });
+    ctx.onEnded(() => {
+        voice._isPlaying = false;
+        store.playVoice(null)
+    })
+    ctx.onCanplay(() => {
+        innerAudioContext?.play();
+    })
+}
+
+const onTouchStart = (e: UniTouchEvent) => {
+    isScroll.value = false
+    if (e.touches.length > 0) {
+        touchStartX.value = e.touches[0].clientX
+        touchStartY.value = e.touches[0].clientY
+    }
+}
+
+const onTouchMove = (e: UniTouchEvent) => {
+    uni.hideKeyboard();
+    if (e.touches.length > 0) {
+        const delX = e.touches[0].clientX - touchStartX.value
+        const delY = e.touches[0].clientY - touchStartY.value
+        if (Math.abs(delX) > 5 || Math.abs(delY) > 5) {
+            isScroll.value = true
+        }
+    }
+}
+
+const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
+    if (isScroll.value) {
+        return;
+    }
+    if (e.touches.length > 0) {
+        contextMenuX.value = e.touches[0].clientX;
+        contextMenuY.value = e.touches[0].clientY;
+    }
+    contextMenuMessage.value = message;
+
+    const items: PopupMenuItem[] = [];
+    if (isCopyable(message)) {
+        items.push(new PopupMenuItem('复制', 'copy'))
+    }
+    if (isDownloadAble(message)) {
+        items.push(new PopupMenuItem('下载', 'download'))
+    }
+    items.push(new PopupMenuItem('本地删除', 'delete'))
+    items.push(new PopupMenuItem('远程删除', 'deleteRemote'))
+    if (isForwardable(message)) {
+        items.push(new PopupMenuItem('转发', 'forward'))
+    }
+    if (isRecallable(message)) {
+        items.push(new PopupMenuItem('撤回', 'recall'))
+    }
+    if (isQuotable(message)) {
+        items.push(new PopupMenuItem('引用', 'quote'))
+    }
+    items.push(new PopupMenuItem('多选', 'multiSelection'))
+    contextMenuItems.value = items;
+    showContextMenu.value = true;
+}
+
+const onContextMenuItemSelect = (t: PopupMenuItem) => {
+    const message = contextMenuMessage.value
+    if (message == null) {
+        return
+    }
+    switch (t.tag) {
+        case 'delete':
+            wfc.deleteMessage(message.messageId);
+            break;
+        case 'deleteRemote':
+            wfc.deleteRemoteMessageByUid(message.messageUid, () => {
+                console.log('delete remote message success')
+            }, (err: number) => {
+                console.log('delete remote message fail', err);
+            })
+            break;
+        case 'forward':
+            forwardMessage(message)
+            break;
+        case 'recall':
+            recallMessage(message);
+            break;
+        case 'quote':
+            store.quoteMessage(message);
+            break;
+        case 'multiSelection':
+            multiSelect(message);
+            break;
+        case 'copy':
+            copy(message);
+            break;
+        default:
+            uni.showToast({
+                title: 'TODO ' + t.title,
+                icon: 'none'
+            } as ShowToastOptions)
+            break;
+    }
+    eventBus.$emit('contextMenuClosed', null)
+}
+
+const onRefresh = () => {
+    console.log('onRefresh...')
+    if (freshing.value) {
+        return;
+    }
+
+    freshing.value = true;
+    triggered.value = true;
+    store.loadConversationHistoryMessages(() => {
+        triggered.value = false;
+        freshing.value = false;
+    }, () => {
+        triggered.value = false;
+        freshing.value = false;
+    });
+}
+
+const onRestore = () => {
+    console.log("onRestore");
+}
+
+const onAbort = () => {
+    console.log("onAbort");
+}
 </script>
 
 <style scoped>

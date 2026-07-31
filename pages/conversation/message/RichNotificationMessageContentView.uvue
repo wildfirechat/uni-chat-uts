@@ -16,34 +16,32 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "../../../wfc/messages/message.uts";
 import RichNotificationMessageContent from "../../../wfc/messages/notification/richNotificationMessageContent.uts";
 import { navigateToPage } from "../../../common/nav.uts";
 
-export default {
-    name: "RichNotificationMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true
-        }
-    },
-    emits: ['longpress'],
-    computed: {
-        content(): RichNotificationMessageContent {
-            return this.message.messageContent as RichNotificationMessageContent
-        }
-    },
-    methods: {
-        onLongPress(e: UniTouchEvent) {
-            this.$emit('longpress', e)
-        },
-        onClickRichNotification() {
-            const targetPageUrl = '/pages/workspace/WorkspaceWebViewPage';
-            navigateToPage(`${targetPageUrl}?url=${encodeURIComponent(this.content.exUrl)}`, null);
-        }
-    },
+defineOptions({
+    name: "RichNotificationMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const emit = defineEmits(['longpress'])
+
+const content = computed<RichNotificationMessageContent>((): RichNotificationMessageContent => {
+    return props.message.messageContent as RichNotificationMessageContent
+})
+
+const onLongPress = (e: UniTouchEvent) => {
+    emit('longpress', e)
+}
+
+const onClickRichNotification = () => {
+    const targetPageUrl = '/pages/workspace/WorkspaceWebViewPage';
+    navigateToPage(`${targetPageUrl}?url=${encodeURIComponent(content.value.exUrl)}`, null);
 }
 </script>
 

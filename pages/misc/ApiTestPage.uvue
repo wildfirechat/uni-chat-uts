@@ -7,31 +7,32 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import wfc from "../../wfc/client/wfc.uts";
 
-export default {
-    name: "ApiTestPage",
+defineOptions({
+    name: "ApiTestPage"
+})
 
-    methods: {
-        setUserEnableReceipt() {
-            wfc.setUserEnableReceipt(true, () => {
-                console.log('setUserEnableReceipt success')
-            }, (err: number) => {
-                console.log('setUserEnableReceipt fail', err)
-            })
-        },
-        modifyMyInfo() {
-            // 参考原实现，默认注释
-        },
-        systemInfo() {
-            const info = uni.getSystemInfoSync()
-            console.log('systemInfo', info.osName, info.osVersion, info.deviceType)
-        },
-        setHiddenGroupMemberName() {
-            // 参考原实现，默认注释
-        },
-    }
+const setUserEnableReceipt = () => {
+    wfc.setUserEnableReceipt(true, () => {
+        console.log('setUserEnableReceipt success')
+    }, (err: number) => {
+        console.log('setUserEnableReceipt fail', err)
+    })
+}
+
+const modifyMyInfo = () => {
+    // 参考原实现，默认注释
+}
+
+const systemInfo = () => {
+    const info = uni.getSystemInfoSync()
+    console.log('systemInfo', info.osName, info.osVersion, info.deviceType)
+}
+
+const setHiddenGroupMemberName = () => {
+    // 参考原实现，默认注释
 }
 </script>
 

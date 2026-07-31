@@ -20,104 +20,98 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import wfc from "../../wfc/client/wfc.uts";
 import Config from '../../config.uts';
 import { setItem } from "../util/storageHelper.uts";
 import appServerApi, { LoginResult } from "../../api/appServerApi.uts";
 
-export default {
-    name: 'LoginPage',
-    data() {
-        return {
-            focus: false,
-            phone: '',
-            code: ''
-        };
-    },
+const focus = ref<boolean>(false)
+const phone = ref<string>('')
+const code = ref<string>('')
 
-    onShow() {
-        console.log('login onShow');
-        if ((Config.APP_SERVER.indexOf('wildfirechat') >= 0 && Config.IM_SERVER_HOST.indexOf('wildfirechat') == -1)
-            || (Config.APP_SERVER.indexOf('wildfirechat') == -1 && Config.IM_SERVER_HOST.indexOf('wildfirechat') >= 0)) {
-            console.error('!!!! 严重错误!!!! Config.APP_SERVER 和 Config.IM_SERVER_HOST要一起修改，不能一个用官方服务，一个用自己部署的服务');
-        } else if (Config.IM_SERVER_HOST.indexOf(':') >= 0) {
-            console.error('!!!! 严重错误!!!! Config.IM_SERVER_HOST 不能包含端口，只需要 HOST 即可');
-        } else if (Config.IM_SERVER_HOST.indexOf('http') >= 0) {
-            console.error('!!!! 严重错误!!!! Config.IM_SERVER_HOST 不能包含http，只需要 HOST 即可');
-        }
-    },
-    methods: {
-        bindPhoneInput(e: UniInputEvent) {
-            this.phone = e.detail.value;
-        },
-        bindCodeInput(e: UniInputEvent) {
-            this.code = e.detail.value;
-        },
-        bindLoginTap() {
-            console.log(this.phone);
-            this.login(this.phone, this.code);
-        },
-
-        login(phone: string, code: string) {
-            console.log('login', wfc.getClientId(), Config.getWFCPlatform());
-            appServerApi.loginWithAuthCode(phone, code)
-                .then((result: LoginResult) => {
-                    console.log('login result', result.userId);
-                    const userId = result.userId;
-                    const token = result.token;
-                    wfc.connect(userId, token);
-                    setItem('userId', userId);
-                    setItem('token', token)
-
-                    this.go2ConversationList();
-                })
-                .catch((r) => {
-                    console.log('login failed', r)
-                    uni.showToast({
-                        title: '登录失败',
-                        icon: 'none',
-                    } as ShowToastOptions);
-                });
-        },
-
-        bindAuthCodeTap() {
-            console.log(this.phone);
-            this.authCode(this.phone);
-        },
-
-        authCode(phone: string) {
-            appServerApi.requestAuthCode(phone)
-                .then((result) => {
-                    uni.showToast({
-                        title: '发送验证码成功',
-                        icon: 'none',
-                    } as ShowToastOptions);
-                })
-                .catch((reason) => {
-                    uni.showToast({
-                        title: '发送验证码失败',
-                        icon: 'none',
-                    } as ShowToastOptions);
-                })
-        },
-
-        go2ConversationList() {
-            uni.switchTab({
-                url: '/pages/conversationList/ConversationListPage',
-                success: (_) => {
-                    console.log('to conversation list success');
-                },
-                fail: (e) => {
-                    console.log('to conversation list error', e);
-                },
-                complete: (_) => {
-                    console.log('switch tab complete')
-                }
-            } as SwitchTabOptions);
-        }
+onShow(() => {
+    console.log('login onShow');
+    if ((Config.APP_SERVER.indexOf('wildfirechat') >= 0 && Config.IM_SERVER_HOST.indexOf('wildfirechat') == -1)
+        || (Config.APP_SERVER.indexOf('wildfirechat') == -1 && Config.IM_SERVER_HOST.indexOf('wildfirechat') >= 0)) {
+        console.error('!!!! 严重错误!!!! Config.APP_SERVER 和 Config.IM_SERVER_HOST要一起修改，不能一个用官方服务，一个用自己部署的服务');
+    } else if (Config.IM_SERVER_HOST.indexOf(':') >= 0) {
+        console.error('!!!! 严重错误!!!! Config.IM_SERVER_HOST 不能包含端口，只需要 HOST 即可');
+    } else if (Config.IM_SERVER_HOST.indexOf('http') >= 0) {
+        console.error('!!!! 严重错误!!!! Config.IM_SERVER_HOST 不能包含http，只需要 HOST 即可');
     }
-};
+})
+
+const bindPhoneInput = (e: UniInputEvent) => {
+    phone.value = e.detail.value;
+}
+
+const bindCodeInput = (e: UniInputEvent) => {
+    code.value = e.detail.value;
+}
+
+const bindLoginTap = () => {
+    console.log(phone.value);
+    login(phone.value, code.value);
+}
+
+const login = (phone: string, code: string) => {
+    console.log('login', wfc.getClientId(), Config.getWFCPlatform());
+    appServerApi.loginWithAuthCode(phone, code)
+        .then((result: LoginResult) => {
+            console.log('login result', result.userId);
+            const userId = result.userId;
+            const token = result.token;
+            wfc.connect(userId, token);
+            setItem('userId', userId);
+            setItem('token', token)
+
+            go2ConversationList();
+        })
+        .catch((r) => {
+            console.log('login failed', r)
+            uni.showToast({
+                title: '登录失败',
+                icon: 'none',
+            } as ShowToastOptions);
+        });
+}
+
+const bindAuthCodeTap = () => {
+    console.log(phone.value);
+    authCode(phone.value);
+}
+
+const authCode = (phone: string) => {
+    appServerApi.requestAuthCode(phone)
+        .then((result) => {
+            uni.showToast({
+                title: '发送验证码成功',
+                icon: 'none',
+            } as ShowToastOptions);
+        })
+        .catch((reason) => {
+            uni.showToast({
+                title: '发送验证码失败',
+                icon: 'none',
+            } as ShowToastOptions);
+        })
+}
+
+const go2ConversationList = () => {
+    uni.switchTab({
+        url: '/pages/conversationList/ConversationListPage',
+        success: (_) => {
+            console.log('to conversation list success');
+        },
+        fail: (e) => {
+            console.log('to conversation list error', e);
+        },
+        complete: (_) => {
+            console.log('switch tab complete')
+        }
+    } as SwitchTabOptions);
+}
 </script>
 <style>
 .page-body {

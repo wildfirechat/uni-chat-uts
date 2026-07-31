@@ -4,25 +4,22 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import { t } from "@/i18n/i18n.uts";
 
 // 未知消息
-export default {
-    name: "UnknownMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    computed: {
-        desc(): string {
-            return t('message.unsupport_message_desc')
-        }
-    }
-}
+defineOptions({
+    name: "UnknownMessageContentView"
+})
+
+defineProps<{
+    message: Message
+}>()
+
+const desc = computed<string>((): string => {
+    return t('message.unsupport_message_desc')
+})
 </script>
 
 <style scoped>

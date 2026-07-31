@@ -50,7 +50,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import Conversation from "../../wfc/model/conversation.uts";
@@ -58,127 +58,128 @@ import UserInfo from "../../wfc/model/userInfo.uts";
 import wfc from "../../wfc/client/wfc.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: "UserDetailPage",
-    data() {
-        return {
-            user: contactState.currentFriend as UserInfo | null,
-        }
-    },
+defineOptions({
+    name: "UserDetailPage"
+})
 
-    mounted() {
-        const user = this.user
-        if (user != null) {
-            wfc.getUserInfo(user.uid, true);
-        }
-    },
+const user = ref<UserInfo | null>(contactState.currentFriend as UserInfo | null)
 
-    onUnload() {
-        store.setCurrentFriend(null);
-    },
-
-    methods: {
-        chat() {
-            const user = this.user
-            if (user == null) {
-                return
-            }
-            const conversation = new Conversation(ConversationType.Single, user.uid, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        },
-        updateFriendAlias(e: UniInputConfirmEvent) {
-            const user = this.user
-            if (user == null) {
-                return
-            }
-            const friendAlias = e.detail.value;
-            if (friendAlias.trim() != '' && friendAlias != user.friendAlias) {
-                wfc.setFriendAlias(user.uid, friendAlias,
-                    () => {
-                        console.log('setFriendAlias success', friendAlias);
-                    },
-                    (error: number) => {
-                        console.log('setFriendAlias error', error);
-                    })
-            }
-        },
-        deleteFriend() {
-            const user = this.user
-            if (user == null) {
-                return
-            }
-            wfc.deleteFriend(user.uid, () => {
-                uni.showToast({
-                    title: '删除好友成功',
-                    icon: 'none'
-                } as ShowToastOptions);
-                setTimeout(() => {
-                    uni.navigateBack({
-                        delta: 1
-                    } as NavigateBackOptions)
-                }, 1000)
-            }, (err: number) => {
-                uni.showToast({
-                    title: '删除好友失败' + err,
-                    icon: 'none'
-                } as ShowToastOptions);
-            })
-        },
-        addFriend() {
-            const user = this.user
-            if (user == null) {
-                return
-            }
-            const userInfo = wfc.getUserInfo(wfc.getUserId());
-            const reason = '你好，我是' + userInfo.displayName;
-            wfc.sendFriendRequest(user.uid, reason, '', () => {
-                uni.showToast({
-                    title: '好友请求发送成功',
-                    icon: 'none'
-                } as ShowToastOptions);
-                setTimeout(() => {
-                    uni.navigateBack({
-                        delta: 1
-                    } as NavigateBackOptions)
-                }, 1000)
-            }, (err: number) => {
-                uni.showToast({
-                    title: '好友请求发送失败 ' + err,
-                    icon: 'none'
-                } as ShowToastOptions);
-            })
-        },
-        startAudioCall() {
-            uni.showToast({
-                title: '当前版本暂不支持音视频通话',
-                icon: 'none'
-            } as ShowToastOptions)
-        },
-        startVideoCall() {
-            uni.showToast({
-                title: '当前版本暂不支持音视频通话',
-                icon: 'none'
-            } as ShowToastOptions)
-        }
-    },
-    computed: {
-        name(): string {
-            const friend = this.user;
-            if (friend == null) {
-                return '';
-            }
-            return friend.displayName != '' ? friend.displayName : friend.name;
-        },
-        isFriend(): boolean {
-            const user = this.user
-            return user != null && wfc.isMyFriend(user.uid);
-        },
-        isSelf(): boolean {
-            const user = this.user
-            return user != null && user.uid == wfc.getUserId();
-        }
+const name = computed<string>((): string => {
+    const friend = user.value;
+    if (friend == null) {
+        return '';
     }
+    return friend.displayName != '' ? friend.displayName : friend.name;
+})
+
+const isFriend = computed<boolean>((): boolean => {
+    const user = user.value
+    return user != null && wfc.isMyFriend(user.uid);
+})
+
+const isSelf = computed<boolean>((): boolean => {
+    const user = user.value
+    return user != null && user.uid == wfc.getUserId();
+})
+
+onMounted(() => {
+    const user = user.value
+    if (user != null) {
+        wfc.getUserInfo(user.uid, true);
+    }
+})
+
+onUnload(() => {
+    store.setCurrentFriend(null);
+})
+
+const chat = () => {
+    const user = user.value
+    if (user == null) {
+        return
+    }
+    const conversation = new Conversation(ConversationType.Single, user.uid, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
+}
+
+const updateFriendAlias = (e: UniInputConfirmEvent) => {
+    const user = user.value
+    if (user == null) {
+        return
+    }
+    const friendAlias = e.detail.value;
+    if (friendAlias.trim() != '' && friendAlias != user.friendAlias) {
+        wfc.setFriendAlias(user.uid, friendAlias,
+            () => {
+                console.log('setFriendAlias success', friendAlias);
+            },
+            (error: number) => {
+                console.log('setFriendAlias error', error);
+            })
+    }
+}
+
+const deleteFriend = () => {
+    const user = user.value
+    if (user == null) {
+        return
+    }
+    wfc.deleteFriend(user.uid, () => {
+        uni.showToast({
+            title: '删除好友成功',
+            icon: 'none'
+        } as ShowToastOptions);
+        setTimeout(() => {
+            uni.navigateBack({
+                delta: 1
+            } as NavigateBackOptions)
+        }, 1000)
+    }, (err: number) => {
+        uni.showToast({
+            title: '删除好友失败' + err,
+            icon: 'none'
+        } as ShowToastOptions);
+    })
+}
+
+const addFriend = () => {
+    const user = user.value
+    if (user == null) {
+        return
+    }
+    const userInfo = wfc.getUserInfo(wfc.getUserId());
+    const reason = '你好，我是' + userInfo.displayName;
+    wfc.sendFriendRequest(user.uid, reason, '', () => {
+        uni.showToast({
+            title: '好友请求发送成功',
+            icon: 'none'
+        } as ShowToastOptions);
+        setTimeout(() => {
+            uni.navigateBack({
+                delta: 1
+            } as NavigateBackOptions)
+        }, 1000)
+    }, (err: number) => {
+        uni.showToast({
+            title: '好友请求发送失败 ' + err,
+            icon: 'none'
+        } as ShowToastOptions);
+    })
+}
+
+const startAudioCall = () => {
+    uni.showToast({
+        title: '当前版本暂不支持音视频通话',
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
+const startVideoCall = () => {
+    uni.showToast({
+        title: '当前版本暂不支持音视频通话',
+        icon: 'none'
+    } as ShowToastOptions)
 }
 </script>
 

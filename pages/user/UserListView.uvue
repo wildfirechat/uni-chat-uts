@@ -19,7 +19,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
@@ -28,71 +28,62 @@ class GroupedUsers {
     users: UserInfo[] = []
 }
 
-export default {
-    name: "UserListView",
-    props: {
-        users: {
-            type: Array as PropType<UserInfo[]>,
-            required: true,
-        },
-        showCategoryLabel: {
-            type: Boolean,
-            default: true,
-        },
-        // 为 true 时点击项时触发 userClick 事件，否则默认跳转用户详情
-        emitClickEvent: {
-            type: Boolean,
-            default: false,
-        },
-        paddingLeft: {
-            type: String,
-            default: '5px'
-        }
-    },
-    emits: ['userClick'],
-    methods: {
-        clickUserItem(user: UserInfo) {
-            if (this.emitClickEvent) {
-                this.$emit('userClick', user);
-            } else {
-                store.setCurrentFriend(user)
-                uni.navigateTo({
-                    url: '/pages/contact/UserDetailPage',
-                    fail: (err) => {
-                        console.log('nav to UserDetailPage err', err);
-                    }
-                } as NavigateToOptions);
-            }
-        },
-    },
+defineOptions({
+    name: "UserListView"
+})
 
-    computed: {
-        groupedUsers(): GroupedUsers[] {
-            const groupedUsers: GroupedUsers[] = [];
-            if (!this.showCategoryLabel) {
-                const all = new GroupedUsers()
-                all.category = 'not-show-category'
-                all.users = this.users
-                groupedUsers.push(all)
+const props = withDefaults(defineProps<{
+    users: UserInfo[]
+    showCategoryLabel?: boolean
+    // 为 true 时点击项时触发 userClick 事件，否则默认跳转用户详情
+    emitClickEvent?: boolean
+    paddingLeft?: string
+}>(), {
+    showCategoryLabel: true,
+    emitClickEvent: false,
+    paddingLeft: '5px'
+})
+
+const emit = defineEmits(['userClick'])
+
+const groupedUsers = computed<GroupedUsers[]>((): GroupedUsers[] => {
+    const groupedUsers: GroupedUsers[] = [];
+    if (!props.showCategoryLabel) {
+        const all = new GroupedUsers()
+        all.category = 'not-show-category'
+        all.users = props.users
+        groupedUsers.push(all)
+    } else {
+        let current: GroupedUsers | null = null;
+        let lastCategory = '';
+        for (let i = 0; i < props.users.length; i++) {
+            const user = props.users[i]
+            if (current == null || lastCategory != user._category) {
+                lastCategory = user._category;
+                current = new GroupedUsers();
+                current.category = user._category;
+                current.users = [user];
+                groupedUsers.push(current);
             } else {
-                let current: GroupedUsers | null = null;
-                let lastCategory = '';
-                for (let i = 0; i < this.users.length; i++) {
-                    const user = this.users[i]
-                    if (current == null || lastCategory != user._category) {
-                        lastCategory = user._category;
-                        current = new GroupedUsers();
-                        current.category = user._category;
-                        current.users = [user];
-                        groupedUsers.push(current);
-                    } else {
-                        current.users.push(user);
-                    }
-                }
+                current.users.push(user);
             }
-            return groupedUsers;
-        },
-    },
+        }
+    }
+    return groupedUsers;
+})
+
+const clickUserItem = (user: UserInfo) => {
+    if (props.emitClickEvent) {
+        emit('userClick', user);
+    } else {
+        store.setCurrentFriend(user)
+        uni.navigateTo({
+            url: '/pages/contact/UserDetailPage',
+            fail: (err) => {
+                console.log('nav to UserDetailPage err', err);
+            }
+        } as NavigateToOptions);
+    }
 }
 </script>
 

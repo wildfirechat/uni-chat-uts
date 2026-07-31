@@ -31,7 +31,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState, pickState } from "@/store.uts";
 import ForwardMessageView from "@/pages/conversation/message/forward/ForwardMessageView.uvue";
 import CheckableUserListView from "@/pages/user/CheckableUserListView.uvue";
@@ -39,70 +39,60 @@ import UserInfo from "@/wfc/model/userInfo.uts";
 import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
-export default {
-    name: "ForwardMessageByCreateConversationView",
-    props: {
-        forwardType: {
-            type: Number,
-            default: 0,
-        },
-        messages: {
-            type: Array as PropType<Message[]>,
-            required: true,
-        }
-    },
-    emits: ['forward-target-type'],
-    data() {
-        return {
-            query: '',
-        }
-    },
-    methods: {
-        unpick(user: UserInfo) {
-            store.pickOrUnpickUser(user);
-        },
+defineOptions({
+    name: "ForwardMessageByCreateConversationView"
+})
 
-        backPickConversation() {
-            pickState.users = []
-            this.$emit('forward-target-type', 'pickConversation')
-        },
+const props = withDefaults(defineProps<{
+    forwardType?: number
+    messages: Message[]
+}>(), {
+    forwardType: 0,
+})
 
-        confirm() {
-            const pickedUsers = pickState.users.slice(0);
-            pickState.users = []
-            let extraMessageText = ''
-            const forwardMessageView = this.$refs['forwardMessageView']
-            if (forwardMessageView != null) {
-                const extra = (forwardMessageView as ComponentPublicInstance).$callMethod('getExtraText')
-                if (extra != null) {
-                    extraMessageText = '' + extra
-                }
-            }
-            store.forwardByCreateConversation(this.forwardType, pickedUsers, this.messages, extraMessageText)
-            uni.navigateBack({} as NavigateBackOptions);
-        },
-    },
+const emit = defineEmits(['forward-target-type'])
 
-    computed: {
-        pickedUsers(): UserInfo[] {
-            return pickState.users
-        },
-        filteredUsers(): UserInfo[] {
-            let result: UserInfo[];
-            if (this.query.trim() != '') {
-                result = store.filterContact(this.query)
-            } else {
-                result = contactState.friendList;
-            }
-            return result.filter((u: UserInfo): boolean => u.uid != Config.FILE_HELPER_ID)
-        }
-    },
+const query = ref<string>('')
 
-    components: {
-        CheckableUserListView,
-        ForwardMessageView
-    },
+const forwardMessageViewRef = ref<ForwardMessageView | null>(null)
+
+const unpick = (user: UserInfo) => {
+    store.pickOrUnpickUser(user);
 }
+
+const backPickConversation = () => {
+    pickState.users = []
+    emit('forward-target-type', 'pickConversation')
+}
+
+const confirm = () => {
+    const pickedUsers = pickState.users.slice(0);
+    pickState.users = []
+    let extraMessageText = ''
+    const forwardMessageView = forwardMessageViewRef.value
+    if (forwardMessageView != null) {
+        const extra = (forwardMessageView as ComponentPublicInstance).$callMethod('getExtraText')
+        if (extra != null) {
+            extraMessageText = '' + extra
+        }
+    }
+    store.forwardByCreateConversation(props.forwardType, pickedUsers, props.messages, extraMessageText)
+    uni.navigateBack({} as NavigateBackOptions);
+}
+
+const pickedUsers = computed<UserInfo[]>((): UserInfo[] => {
+    return pickState.users
+})
+
+const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
+    let result: UserInfo[];
+    if (query.value.trim() != '') {
+        result = store.filterContact(query.value)
+    } else {
+        result = contactState.friendList;
+    }
+    return result.filter((u: UserInfo): boolean => u.uid != Config.FILE_HELPER_ID)
+})
 </script>
 
 <style scoped>

@@ -8,7 +8,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
@@ -16,80 +16,77 @@ import Message from "@/wfc/messages/message.uts";
 import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
 import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
 
-export default {
-    name: "ForwardMessageView",
-    props: {
-        forwardType: {
-            type: Number,
-            default: 0,
-        },
-        messages: {
-            type: Array as PropType<Message[]>,
-            required: true,
-        },
-    },
-    data() {
-        return {
-            extraMessageText: '',
-        }
-    },
-    methods: {
-        getExtraText(): string {
-            return this.extraMessageText
-        }
-    },
-    computed: {
-        mediaThumbnail(): string {
-            if (this.messages.length == 0) {
-                return ''
-            }
-            const firstMsg = this.messages[0];
-            const content = firstMsg.messageContent
-            if (content instanceof ImageMessageContent) {
-                return 'data:image/jpeg;base64,' + (content as ImageMessageContent).thumbnail
-            }
-            if (content instanceof VideoMessageContent) {
-                return 'data:image/jpeg;base64,' + (content as VideoMessageContent).thumbnail
-            }
-            return ''
-        },
-        forwardMessageStr(): string {
-            if (this.messages.length == 0) {
-                return ''
-            }
-            let str = '';
-            const firstMsg = this.messages[0];
-            const from = firstMsg._from
-            switch (this.forwardType) {
-                case ForwardType.NORMAL:
-                    str = from == null ? '' : from._displayName + ':';
-                    if (firstMsg.messageContent.type != MessageContentType.Image && firstMsg.messageContent.type != MessageContentType.Video) {
-                        str += firstMsg.messageContent.digest(firstMsg);
-                    }
-                    break;
-                case ForwardType.ONE_BY_ONE:
-                    str = '[逐条转发]'
-                    if (firstMsg.conversation.type == ConversationType.Single && from != null) {
-                        str += `${from._displayName}的聊天记录`;
-                    } else {
-                        str += '群聊的聊天记录';
-                    }
-                    break;
-                case ForwardType.COMPOSITE:
-                    str = '[合并转发]'
-                    if (firstMsg.conversation.type == ConversationType.Single && from != null) {
-                        str += `${from._displayName}的聊天记录`;
-                    } else {
-                        str += '群聊的聊天记录';
-                    }
-                    break;
-                default:
-                    break;
-            }
-            return str;
-        }
-    },
+defineOptions({
+    name: "ForwardMessageView"
+})
+
+const props = withDefaults(defineProps<{
+    forwardType?: number
+    messages: Message[]
+}>(), {
+    forwardType: 0,
+})
+
+const extraMessageText = ref<string>('')
+
+const getExtraText = (): string => {
+    return extraMessageText.value
 }
+
+const mediaThumbnail = computed<string>((): string => {
+    if (props.messages.length == 0) {
+        return ''
+    }
+    const firstMsg = props.messages[0];
+    const content = firstMsg.messageContent
+    if (content instanceof ImageMessageContent) {
+        return 'data:image/jpeg;base64,' + (content as ImageMessageContent).thumbnail
+    }
+    if (content instanceof VideoMessageContent) {
+        return 'data:image/jpeg;base64,' + (content as VideoMessageContent).thumbnail
+    }
+    return ''
+})
+
+const forwardMessageStr = computed<string>((): string => {
+    if (props.messages.length == 0) {
+        return ''
+    }
+    let str = '';
+    const firstMsg = props.messages[0];
+    const from = firstMsg._from
+    switch (props.forwardType) {
+        case ForwardType.NORMAL:
+            str = from == null ? '' : from._displayName + ':';
+            if (firstMsg.messageContent.type != MessageContentType.Image && firstMsg.messageContent.type != MessageContentType.Video) {
+                str += firstMsg.messageContent.digest(firstMsg);
+            }
+            break;
+        case ForwardType.ONE_BY_ONE:
+            str = '[逐条转发]'
+            if (firstMsg.conversation.type == ConversationType.Single && from != null) {
+                str += `${from._displayName}的聊天记录`;
+            } else {
+                str += '群聊的聊天记录';
+            }
+            break;
+        case ForwardType.COMPOSITE:
+            str = '[合并转发]'
+            if (firstMsg.conversation.type == ConversationType.Single && from != null) {
+                str += `${from._displayName}的聊天记录`;
+            } else {
+                str += '群聊的聊天记录';
+            }
+            break;
+        default:
+            break;
+    }
+    return str;
+})
+
+defineExpose({
+    getExtraText,
+})
 </script>
 
 <style scoped>

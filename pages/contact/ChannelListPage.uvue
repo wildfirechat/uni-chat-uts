@@ -12,7 +12,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
@@ -20,31 +20,26 @@ import ChannelInfo from "../../wfc/model/channelInfo.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import NavBar from "../common/NavBar.uvue";
 
-export default {
-    name: "ChannelListPage",
-    components: { NavBar },
-    data() {
-        return {
-            searchIcon: '\ue636',
-        }
-    },
-    computed: {
-        channelList(): ChannelInfo[] {
-            return contactState.channelList
-        }
-    },
-    methods: {
-        onSearchTap() {
-            uni.navigateTo({
-                url: '/pages/search/SearchPortalPage'
-            } as NavigateToOptions);
-        },
-        showChannel(channelInfo: ChannelInfo) {
-            const conversation = new Conversation(ConversationType.Channel, channelInfo.channelId, 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        }
-    },
+defineOptions({
+    name: "ChannelListPage"
+})
+
+const searchIcon = ref<string>('\ue636')
+
+const channelList = computed<ChannelInfo[]>((): ChannelInfo[] => {
+    return contactState.channelList
+})
+
+const onSearchTap = () => {
+    uni.navigateTo({
+        url: '/pages/search/SearchPortalPage'
+    } as NavigateToOptions);
+}
+
+const showChannel = (channelInfo: ChannelInfo) => {
+    const conversation = new Conversation(ConversationType.Channel, channelInfo.channelId, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
 }
 </script>
 

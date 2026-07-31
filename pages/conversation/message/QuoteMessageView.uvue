@@ -11,7 +11,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store from "@/store.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 import Message from "@/wfc/messages/message.uts";
@@ -19,75 +19,72 @@ import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
 import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
 import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
 
-export default {
-    name: "QuoteMessageView",
-    props: {
-        showCloseButton: {
-            type: Boolean,
-            default: false,
-        },
-        // 被引用的消息
-        quotedMessage: {
-            type: Object as PropType<Message>,
-            required: true,
-        },
-        quotedMessageDigest: {
-            type: String,
-            default: '',
-        },
-    },
-    emits: ['cancelQuoteMessage'],
-    computed: {
-        isMediaQuoted(): boolean {
-            const type = this.quotedMessage.messageContent.type
-            return type == MessageContentType.Image || type == MessageContentType.Video || type == MessageContentType.Sticker
-        },
-        quotedFromName(): string {
-            const from = this.quotedMessage._from
-            return (from != null ? from._displayName : '') + ':'
-        },
-        quotedMessageStr(): string {
-            let str = '';
-            const from = this.quotedMessage._from
-            str = (from != null ? from._displayName : '') + ':';
-            str += this.quotedMessage.messageContent.digest(this.quotedMessage);
-            if (MessageContentType.RecallMessage_Notification == this.quotedMessage.messageContent.type) {
-                str = "引用内容已撤回"
-            }
-            return str;
-        },
-        mediaSrc(): string {
-            const msgCnt = this.quotedMessage.messageContent;
-            let thumbnail = ''
-            let remotePath = ''
-            if (msgCnt instanceof ImageMessageContent) {
-                thumbnail = (msgCnt as ImageMessageContent).thumbnail
-                remotePath = (msgCnt as ImageMessageContent).remotePath
-            } else if (msgCnt instanceof VideoMessageContent) {
-                thumbnail = (msgCnt as VideoMessageContent).thumbnail
-                remotePath = (msgCnt as VideoMessageContent).remotePath
-            } else if (msgCnt instanceof StickerMessageContent) {
-                remotePath = (msgCnt as StickerMessageContent).remotePath
-            }
-            return thumbnail != '' ? 'data:image/jpeg;base64,' + thumbnail : remotePath;
-        }
-    },
-    methods: {
-        cancelQuoteMessage() {
-            this.$emit('cancelQuoteMessage')
-        },
+defineOptions({
+    name: "QuoteMessageView"
+})
 
-        onMessageClick() {
-            switch (this.quotedMessage.messageContent.type) {
-                case MessageContentType.Video:
-                case MessageContentType.Image:
-                    store.previewMessage(this.quotedMessage, false);
-                    break;
-                default:
-                    break
-            }
-        },
-    },
+const props = withDefaults(defineProps<{
+    showCloseButton?: boolean
+    // 被引用的消息
+    quotedMessage: Message
+    quotedMessageDigest?: string
+}>(), {
+    showCloseButton: false,
+    quotedMessageDigest: ''
+})
+
+const emit = defineEmits(['cancelQuoteMessage'])
+
+const isMediaQuoted = computed<boolean>((): boolean => {
+    const type = props.quotedMessage.messageContent.type
+    return type == MessageContentType.Image || type == MessageContentType.Video || type == MessageContentType.Sticker
+})
+
+const quotedFromName = computed<string>((): string => {
+    const from = props.quotedMessage._from
+    return (from != null ? from._displayName : '') + ':'
+})
+
+const quotedMessageStr = computed<string>((): string => {
+    let str = '';
+    const from = props.quotedMessage._from
+    str = (from != null ? from._displayName : '') + ':';
+    str += props.quotedMessage.messageContent.digest(props.quotedMessage);
+    if (MessageContentType.RecallMessage_Notification == props.quotedMessage.messageContent.type) {
+        str = "引用内容已撤回"
+    }
+    return str;
+})
+
+const mediaSrc = computed<string>((): string => {
+    const msgCnt = props.quotedMessage.messageContent;
+    let thumbnail = ''
+    let remotePath = ''
+    if (msgCnt instanceof ImageMessageContent) {
+        thumbnail = (msgCnt as ImageMessageContent).thumbnail
+        remotePath = (msgCnt as ImageMessageContent).remotePath
+    } else if (msgCnt instanceof VideoMessageContent) {
+        thumbnail = (msgCnt as VideoMessageContent).thumbnail
+        remotePath = (msgCnt as VideoMessageContent).remotePath
+    } else if (msgCnt instanceof StickerMessageContent) {
+        remotePath = (msgCnt as StickerMessageContent).remotePath
+    }
+    return thumbnail != '' ? 'data:image/jpeg;base64,' + thumbnail : remotePath;
+})
+
+const cancelQuoteMessage = () => {
+    emit('cancelQuoteMessage')
+}
+
+const onMessageClick = () => {
+    switch (props.quotedMessage.messageContent.type) {
+        case MessageContentType.Video:
+        case MessageContentType.Image:
+            store.previewMessage(props.quotedMessage, false);
+            break;
+        default:
+            break
+    }
 }
 </script>
 

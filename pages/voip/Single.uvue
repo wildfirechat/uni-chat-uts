@@ -79,7 +79,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
 import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
 import CallSession from "@/wfc/av/engine/callSession.uts";
@@ -91,252 +91,245 @@ import wfc from "@/wfc/client/wfc.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { takePageOptions } from "@/common/nav.uts";
 
-export default {
-    name: "Single",
-    data() {
-        return {
-            session: null as CallSession | null,
-            audioOnly: false,
-            audioMuted: false,
-            videoMuted: false,
-            callState: 0,
-            startTimestamp: 0,
-            currentTimestamp: 0,
-            timer: 0,
-            localVideoElement: null as UniNativeViewElement | null,
-            remoteVideoElement: null as UniNativeViewElement | null,
-        }
-    },
+defineOptions({
+    name: "Single"
+})
 
-    onLoad(_options: OnLoadOptions) {
-        const pageOptions = takePageOptions()
-        if (pageOptions != null && pageOptions instanceof CallSession) {
-            const session = pageOptions as CallSession
-            this.session = session
-            this.callState = session.state
-            this.audioOnly = session.audioOnly
-            if (session.connectedTime > 0) {
-                this.startTimestamp = session.connectedTime
+const session = ref<CallSession | null>(null as CallSession | null)
+const audioOnly = ref<boolean>(false)
+const audioMuted = ref<boolean>(false)
+const videoMuted = ref<boolean>(false)
+const callState = ref<number>(0)
+const startTimestamp = ref<number>(0)
+const currentTimestamp = ref<number>(0)
+const timer = ref<number>(0)
+const localVideoElement = ref<UniNativeViewElement | null>(null as UniNativeViewElement | null)
+const remoteVideoElement = ref<UniNativeViewElement | null>(null as UniNativeViewElement | null)
+
+const participantUserInfo = computed<UserInfo>((): UserInfo => {
+    const session = session.value!
+    return getUserInfo(session.conversation.target, false)
+})
+const selfUserInfo = computed<UserInfo>((): UserInfo => {
+    return getUserInfo(wfc.getUserId(), false)
+})
+const duration = computed<string>((): string => {
+    if (currentTimestamp.value <= 0) {
+        return '00:00'
+    }
+    const elapsed = Math.floor((currentTimestamp.value - startTimestamp.value) / 1000)
+    const min = Math.floor(elapsed / 60)
+    const sec = elapsed % 60
+    const minStr = min < 10 ? ('0' + min) : ('' + min)
+    const secStr = sec < 10 ? ('0' + sec) : ('' + sec)
+    return minStr + ':' + secStr
+})
+
+const setupSessionCallback = () => {
+    const callback = new CallSessionCallback()
+    callback.didChangeState = (state: number): void => {
+        callState.value = state
+        if (state == CallState.STATUS_CONNECTED) {
+            onVoipConnected()
+        } else if (state == CallState.STATUS_IDLE) {
+            if (timer.value != 0) {
+                clearInterval(timer.value)
+                timer.value = 0
             }
         }
-    },
-
-    mounted() {
-        const curSession = avEngineKit.currentCallSession()
-        if (curSession == null || curSession.state == CallState.STATUS_IDLE) {
-            uni.navigateBack({
-                delta: 1,
-                fail: (err) => {
-                    console.log('nav back err', err)
-                }
-            } as NavigateBackOptions)
+    }
+    callback.didChangeMode = (audioOnly: boolean): void => {
+        audioOnly.value = audioOnly
+    }
+    callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
+        const session = session.value
+        if (session == null) {
             return
         }
-        this.session = curSession
-        this.callState = curSession.state
-        this.audioOnly = curSession.audioOnly
-        this.audioMuted = curSession.audioMuted
-        this.videoMuted = curSession.videoMuted
-
-        this.setupSessionCallback()
-
-        if (this.callState == CallState.STATUS_CONNECTED) {
-            this.onVoipConnected()
-        }
-    },
-
-    onBackPress(event: OnBackPressOptions): boolean {
-        // minimize 触发的返回，不阻止；其他情况（手势/物理返回键）阻止直接退出通话页面
-        return event.from != 'navigateBack'
-    },
-
-    beforeUnmount() {
-        if (this.timer != 0) {
-            clearInterval(this.timer)
-            this.timer = 0
-        }
-    },
-
-    methods: {
-        setupSessionCallback() {
-            const callback = new CallSessionCallback()
-            callback.didChangeState = (state: number): void => {
-                this.callState = state
-                if (state == CallState.STATUS_CONNECTED) {
-                    this.onVoipConnected()
-                } else if (state == CallState.STATUS_IDLE) {
-                    if (this.timer != 0) {
-                        clearInterval(this.timer)
-                        this.timer = 0
-                    }
-                }
+        setupRemoteVideoView()
+    }
+    callback.didCallEndWithReason = (_reason: number): void => {
+        session.value = null
+    }
+    callback.didVideoMuted = (userId: string, muted: boolean): void => {
+        if (userId == wfc.getUserId()) {
+            videoMuted.value = muted
+            if (!muted) {
+                nextTick((): void => {
+                    setupLocalVideoView()
+                })
             }
-            callback.didChangeMode = (audioOnly: boolean): void => {
-                this.audioOnly = audioOnly
-            }
-            callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
-                const session = this.session
-                if (session == null) {
-                    return
-                }
-                this.setupRemoteVideoView()
-            }
-            callback.didCallEndWithReason = (_reason: number): void => {
-                this.session = null
-            }
-            callback.didVideoMuted = (userId: string, muted: boolean): void => {
-                if (userId == wfc.getUserId()) {
-                    this.videoMuted = muted
-                    if (!muted) {
-                        this.$nextTick((): void => {
-                            this.setupLocalVideoView()
-                        })
-                    }
-                } else if (!muted) {
-                    this.$nextTick((): void => {
-                        this.setupRemoteVideoView()
-                    })
-                }
-            }
-            avEngineKit.setSessionCallback(callback)
-        },
-
-        // native-view 创建后（v-if 首次满足或重新满足时）触发，元素随即用于挂载视频画面
-        onLocalVideoViewInit(e: UniNativeViewInitEvent) {
-            this.localVideoElement = e.detail.element
-            this.setupLocalVideoView()
-        },
-
-        onRemoteVideoViewInit(e: UniNativeViewInitEvent) {
-            this.remoteVideoElement = e.detail.element
-            this.setupRemoteVideoView()
-        },
-
-        setupLocalVideoView() {
-            const session = this.session
-            const element = this.localVideoElement
-            if (session == null || element == null) {
-                return
-            }
-            avEngineKit.setLocalVideoView(session.callId, element)
-        },
-
-        setupRemoteVideoView() {
-            const session = this.session
-            const element = this.remoteVideoElement
-            if (session == null || element == null) {
-                return
-            }
-            avEngineKit.setRemoteVideoView(session.callId, session.conversation.target, element)
-        },
-
-        switchVideoType() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            avEngineKit.setParticipantVideoType(session.callId, session.conversation.target, false, VideoType.BIG_STREAM)
-        },
-
-        answer() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            checkVoipPermissions(session.audioOnly).then((granted: boolean): void => {
-                if (!granted) {
-                    return
-                }
-                avEngineKit.answerCall(session.callId, false)
+        } else if (!muted) {
+            nextTick((): void => {
+                setupRemoteVideoView()
             })
-        },
-
-        hangup() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            avEngineKit.endCall(session.callId)
-            this.session = null
-        },
-
-        switchCamera() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            avEngineKit.switchCamera(session.callId)
-        },
-
-        mute() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            this.audioMuted = !this.audioMuted
-            avEngineKit.muteAudio(session.callId, this.audioMuted)
-        },
-
-        onVoipConnected() {
-            if (this.timer == 0) {
-                if (this.startTimestamp == 0) {
-                    this.startTimestamp = new Date().getTime()
-                }
-                this.timer = setInterval((): void => {
-                    this.currentTimestamp = new Date().getTime()
-                }, 1000)
-            }
-            if (!this.audioOnly) {
-                setTimeout((): void => {
-                    this.setupLocalVideoView()
-                    this.setupRemoteVideoView()
-                }, 100)
-            }
-        },
-
-        minimize() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            if (avEngineKit.checkOverlayPermission()) {
-                avEngineKit.minimize(session.callId)
-                uni.navigateBack({
-                    delta: 1,
-                    fail: (err) => {
-                        console.log('nav back err', err)
-                    }
-                } as NavigateBackOptions)
-            } else {
-                uni.showToast({
-                    title: '需要悬浮窗权限',
-                    icon: 'none',
-                } as ShowToastOptions)
-            }
-        },
-    },
-
-    computed: {
-        participantUserInfo(): UserInfo {
-            const session = this.session!
-            return getUserInfo(session.conversation.target, false)
-        },
-        selfUserInfo(): UserInfo {
-            return getUserInfo(wfc.getUserId(), false)
-        },
-        duration(): string {
-            if (this.currentTimestamp <= 0) {
-                return '00:00'
-            }
-            const elapsed = Math.floor((this.currentTimestamp - this.startTimestamp) / 1000)
-            const min = Math.floor(elapsed / 60)
-            const sec = elapsed % 60
-            const minStr = min < 10 ? ('0' + min) : ('' + min)
-            const secStr = sec < 10 ? ('0' + sec) : ('' + sec)
-            return minStr + ':' + secStr
-        },
-    },
+        }
+    }
+    avEngineKit.setSessionCallback(callback)
 }
+
+// native-view 创建后（v-if 首次满足或重新满足时）触发，元素随即用于挂载视频画面
+const onLocalVideoViewInit = (e: UniNativeViewInitEvent) => {
+    localVideoElement.value = e.detail.element
+    setupLocalVideoView()
+}
+
+const onRemoteVideoViewInit = (e: UniNativeViewInitEvent) => {
+    remoteVideoElement.value = e.detail.element
+    setupRemoteVideoView()
+}
+
+const setupLocalVideoView = () => {
+    const session = session.value
+    const element = localVideoElement.value
+    if (session == null || element == null) {
+        return
+    }
+    avEngineKit.setLocalVideoView(session.callId, element)
+}
+
+const setupRemoteVideoView = () => {
+    const session = session.value
+    const element = remoteVideoElement.value
+    if (session == null || element == null) {
+        return
+    }
+    avEngineKit.setRemoteVideoView(session.callId, session.conversation.target, element)
+}
+
+const switchVideoType = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    avEngineKit.setParticipantVideoType(session.callId, session.conversation.target, false, VideoType.BIG_STREAM)
+}
+
+const answer = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    checkVoipPermissions(audioOnly.value).then((granted: boolean): void => {
+        if (!granted) {
+            return
+        }
+        avEngineKit.answerCall(session.callId, false)
+    })
+}
+
+const hangup = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    avEngineKit.endCall(session.callId)
+    session.value = null
+}
+
+const switchCamera = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    avEngineKit.switchCamera(session.callId)
+}
+
+const mute = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    audioMuted.value = !audioMuted.value
+    avEngineKit.muteAudio(session.callId, audioMuted.value)
+}
+
+const onVoipConnected = () => {
+    if (timer.value == 0) {
+        if (startTimestamp.value == 0) {
+            startTimestamp.value = new Date().getTime()
+        }
+        timer.value = setInterval((): void => {
+            currentTimestamp.value = new Date().getTime()
+        }, 1000)
+    }
+    if (!audioOnly.value) {
+        setTimeout((): void => {
+            setupLocalVideoView()
+            setupRemoteVideoView()
+        }, 100)
+    }
+}
+
+const minimize = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    if (avEngineKit.checkOverlayPermission()) {
+        avEngineKit.minimize(session.callId)
+        uni.navigateBack({
+            delta: 1,
+            fail: (err) => {
+                console.log('nav back err', err)
+            }
+        } as NavigateBackOptions)
+    } else {
+        uni.showToast({
+            title: '需要悬浮窗权限',
+            icon: 'none',
+        } as ShowToastOptions)
+    }
+}
+
+onLoad((_options: OnLoadOptions) => {
+    const pageOptions = takePageOptions()
+    if (pageOptions != null && pageOptions instanceof CallSession) {
+        const session = pageOptions as CallSession
+        session.value = session
+        callState.value = session.state
+        audioOnly.value = session.audioOnly
+        if (session.connectedTime > 0) {
+            startTimestamp.value = session.connectedTime
+        }
+    }
+})
+
+onMounted(() => {
+    const curSession = avEngineKit.currentCallSession()
+    if (curSession == null || curSession.state == CallState.STATUS_IDLE) {
+        uni.navigateBack({
+            delta: 1,
+            fail: (err) => {
+                console.log('nav back err', err)
+            }
+        } as NavigateBackOptions)
+        return
+    }
+    session.value = curSession
+    callState.value = curSession.state
+    audioOnly.value = curSession.audioOnly
+    audioMuted.value = curSession.audioMuted
+    videoMuted.value = curSession.videoMuted
+
+    setupSessionCallback()
+
+    if (callState.value == CallState.STATUS_CONNECTED) {
+        onVoipConnected()
+    }
+})
+
+onBackPress((event: OnBackPressOptions): boolean => {
+    // minimize 触发的返回，不阻止；其他情况（手势/物理返回键）阻止直接退出通话页面
+    return event.from != 'navigateBack'
+})
+
+onBeforeUnmount(() => {
+    if (timer.value != 0) {
+        clearInterval(timer.value)
+        timer.value = 0
+    }
+})
 </script>
 
 <style scoped>

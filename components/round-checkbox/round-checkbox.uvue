@@ -4,33 +4,30 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 /**
  * 圆形复选框，替代内置的方形 checkbox。
  * 内置 checkbox 在各端样式不统一，且无法改成圆形，这里用 view 自绘。
  */
-export default {
-    name: 'round-checkbox',
-    props: {
-        checked: {
-            type: Boolean,
-            default: false
-        },
-        disabled: {
-            type: Boolean,
-            default: false
-        },
-    },
-    computed: {
-        // uni-app x 不支持 .a.b 这种复合选择器，这里把状态合成一个 class
-        boxClass(): string {
-            if (this.disabled) {
-                return this.checked ? 'box-disabled-checked' : 'box-disabled'
-            }
-            return this.checked ? 'box-checked' : 'box-normal'
-        },
-    },
-}
+defineOptions({
+    name: 'round-checkbox'
+})
+
+const props = withDefaults(defineProps<{
+    checked?: boolean
+    disabled?: boolean
+}>(), {
+    checked: false,
+    disabled: false
+})
+
+// uni-app x 不支持 .a.b 这种复合选择器，这里把状态合成一个 class
+const boxClass = computed<string>((): string => {
+    if (props.disabled) {
+        return props.checked ? 'box-disabled-checked' : 'box-disabled'
+    }
+    return props.checked ? 'box-checked' : 'box-normal'
+})
 </script>
 
 <style scoped>

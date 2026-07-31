@@ -4,21 +4,14 @@
     </view>
 </template>
 
-<script lang="uts">
-export default {
-    name: "PreviewVideoPage",
-    data() {
-        return {
-            url: '',
-        }
-    },
+<script setup lang="uts">
+const url = ref<string>('')
 
-    onLoad(options: OnLoadOptions) {
-        const url = options['url'] ?? ''
-        console.log('onLoad option url', decodeURIComponent(url));
-        this.url = decodeURIComponent(url) ?? '';
-    }
-}
+onLoad((options: OnLoadOptions) => {
+    const urlValue = options['url'] ?? ''
+    console.log('onLoad option url', decodeURIComponent(urlValue));
+    url.value = decodeURIComponent(urlValue) ?? '';
+})
 </script>
 
 <style scoped>

@@ -27,35 +27,34 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { pickState } from "@/store.uts";
 import Message from "@/wfc/messages/message.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
 
-export default {
-    name: "MessageMultiSelectionActionView",
-    methods: {
-        deleteMultiMessage() {
-            store.deleteSelectedMessages();
-        },
+defineOptions({
+    name: "MessageMultiSelectionActionView"
+})
 
-        hideMultiSelectionActionView() {
-            store.toggleMessageMultiSelection(null);
-        },
+const deleteMultiMessage = () => {
+    store.deleteSelectedMessages();
+}
 
-        forwardOneByOne() {
-            const messages: Message[] = pickState.messages.slice(0);
-            forward(ForwardType.ONE_BY_ONE, messages);
-            store.toggleMessageMultiSelection(null);
-        },
+const hideMultiSelectionActionView = () => {
+    store.toggleMessageMultiSelection(null);
+}
 
-        forwardComposite() {
-            const messages: Message[] = pickState.messages.slice(0);
-            forward(ForwardType.COMPOSITE, messages);
-            store.toggleMessageMultiSelection(null);
-        },
-    },
+const forwardOneByOne = () => {
+    const messages: Message[] = pickState.messages.slice(0);
+    forward(ForwardType.ONE_BY_ONE, messages);
+    store.toggleMessageMultiSelection(null);
+}
+
+const forwardComposite = () => {
+    const messages: Message[] = pickState.messages.slice(0);
+    forward(ForwardType.COMPOSITE, messages);
+    store.toggleMessageMultiSelection(null);
 }
 </script>
 

@@ -16,68 +16,62 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { searchState } from "@/store.uts";
 import Message from "@/wfc/messages/message.uts";
 import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import Config from "@/config.uts";
 import { go2ConversationPage } from "@/common/nav.uts";
 
-export default {
-    name: "SearchConversationMessagePage",
-    data() {
-        return {
-            query: searchState.query as string,
-            conversationInfo: null as ConversationInfo | null,
-            messages: [] as Message[],
-        }
-    },
+defineOptions({
+    name: "SearchConversationMessagePage"
+})
 
-    mounted() {
-        const conversation = searchState.conversation
-        if (conversation != null) {
-            this.conversationInfo = store.getConversationInfo(conversation)
-        }
-        this.search();
-    },
+const query = ref<string>(searchState.query as string)
+const conversationInfo = ref<ConversationInfo | null>(null as ConversationInfo | null)
+const messages = ref<Message[]>([] as Message[])
 
-    beforeUnmount() {
-        searchState.conversation = null;
-    },
+const portrait = computed<string>((): string => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+})
 
-    computed: {
-        portrait(): string {
-            const info = this.conversationInfo
-            if (info == null) {
-                return Config.DEFAULT_PORTRAIT_URL
-            }
-            const target = store.ensureConversationTarget(info.conversation)
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-    },
-
-    methods: {
-        fromNameOf(msg: Message): string {
-            const from = msg._from
-            return from != null ? from._displayName : ''
-        },
-        search() {
-            const info = this.conversationInfo
-            if (info != null && this.query.trim() != '') {
-                this.messages = store.searchMessage(info.conversation, this.query);
-            } else {
-                this.messages = [];
-            }
-        },
-
-        onClickMessage(msg: Message) {
-            // TODO 跳转到具体的消息处
-            store.setCurrentConversation(msg.conversation);
-            go2ConversationPage();
-        },
-    },
+const fromNameOf = (msg: Message): string => {
+    const from = msg._from
+    return from != null ? from._displayName : ''
 }
+
+const search = () => {
+    const info = conversationInfo.value
+    if (info != null && query.value.trim() != '') {
+        messages.value = store.searchMessage(info.conversation, query.value);
+    } else {
+        messages.value = [];
+    }
+}
+
+const onClickMessage = (msg: Message) => {
+    // TODO 跳转到具体的消息处
+    store.setCurrentConversation(msg.conversation);
+    go2ConversationPage();
+}
+
+onMounted(() => {
+    const conversation = searchState.conversation
+    if (conversation != null) {
+        conversationInfo.value = store.getConversationInfo(conversation)
+    }
+    search();
+})
+
+onBeforeUnmount(() => {
+    searchState.conversation = null;
+})
 </script>
 
 <style scoped>

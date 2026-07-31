@@ -4,18 +4,16 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 
-export default {
-    name: "TestCustomMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-}
+defineOptions({
+    name: "TestCustomMessageContentView"
+})
+
+defineProps<{
+    message: Message
+}>()
 </script>
 
 <style scoped>

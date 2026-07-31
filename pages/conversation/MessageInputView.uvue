@@ -60,7 +60,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import TextMessageContent from "../../wfc/messages/textMessageContent.uts";
 import ConversationInfo from "../../wfc/model/conversationInfo.uts";
 import Message from "../../wfc/messages/message.uts";
@@ -94,395 +94,388 @@ class ExtItem {
     }
 }
 
-export default {
-    name: "MessageInputView",
-    components: {
-        AudioInputView,
-        PttAudioInputView,
-    },
-    props: {
-        conversationInfo: {
-            type: Object as PropType<ConversationInfo>,
-            required: true,
-        },
-    },
-    data() {
-        return {
-            emojiStickerList: emojiStickerConfig as EmojiStickerCategory[],
-            currentEmojiStickerIndex: 0,
-            hideSendButton: (Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8) as boolean,
-            showVoice: false,
-            showPtt: false,
-            isPttEnable: Config.ENABLE_PTT && pttClient.isEnable(),
-            extList: [
-                new ExtItem('相册', 'image', ''),
-                new ExtItem('语音通话', 'voip_a', ''),
-                new ExtItem('视频通话', 'voip_v', ''),
-                new ExtItem('拍摄', 'shot', ''),
-                new ExtItem('文件', 'file', ''),
-                new ExtItem('位置', 'location', ''),
-                new ExtItem('名片', 'userCard', ''),
-            ] as ExtItem[],
-            showExt: false,
-            showEmoji: false,
-            text: '',
-            keyboardHeight: 300,
-            currentKeyboardHeight: 0,
-            mentions: [] as UserInfo[],
-            groupMemberUserInfos: [] as UserInfo[],
-            safeAreaBottomHeight: 0,
-        };
-    },
+defineOptions({
+    name: "MessageInputView"
+})
 
-    created() {
-        const sysInfo = uni.getSystemInfoSync()
-        this.safeAreaBottomHeight = sysInfo.safeAreaInsets.bottom
-    },
+const props = defineProps<{
+    conversationInfo: ConversationInfo
+}>()
 
-    computed: {
-        quotedMessage(): Message | null {
-            return conversationState.quotedMessage
-        },
-        quotedMessageDigest(): string {
-            const quotedMessage = conversationState.quotedMessage
-            if (quotedMessage == null) {
-                return ''
+const emojiStickerList = ref<EmojiStickerCategory[]>(emojiStickerConfig as EmojiStickerCategory[])
+const currentEmojiStickerIndex = ref<number>(0)
+const hideSendButton = ref<boolean>((Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8) as boolean)
+const showVoice = ref<boolean>(false)
+const showPtt = ref<boolean>(false)
+const isPttEnable = ref<boolean>(Config.ENABLE_PTT && pttClient.isEnable())
+const extList = ref<ExtItem[]>([
+    new ExtItem('相册', 'image', ''),
+    new ExtItem('语音通话', 'voip_a', ''),
+    new ExtItem('视频通话', 'voip_v', ''),
+    new ExtItem('拍摄', 'shot', ''),
+    new ExtItem('文件', 'file', ''),
+    new ExtItem('位置', 'location', ''),
+    new ExtItem('名片', 'userCard', ''),
+] as ExtItem[])
+const showExt = ref<boolean>(false)
+const showEmoji = ref<boolean>(false)
+const text = ref<string>('')
+const keyboardHeight = ref<number>(300)
+const currentKeyboardHeight = ref<number>(0)
+const mentions = ref<UserInfo[]>([] as UserInfo[])
+const groupMemberUserInfos = ref<UserInfo[]>([] as UserInfo[])
+const safeAreaBottomHeight = ref<number>(0)
+
+const sysInfo = uni.getSystemInfoSync()
+safeAreaBottomHeight.value = sysInfo.safeAreaInsets.bottom
+
+const quotedMessage = computed<Message | null>((): Message | null => {
+    return conversationState.quotedMessage
+})
+
+const quotedMessageDigest = computed<string>((): string => {
+    const quotedMsg = conversationState.quotedMessage
+    if (quotedMsg == null) {
+        return ''
+    }
+    return quotedMsg.messageContent.digest(quotedMsg)
+})
+
+onMounted(() => {
+    if (props.conversationInfo.conversation.type == ConversationType.Group) {
+        groupMemberUserInfos.value = store.getGroupMemberUserInfos(props.conversationInfo.conversation.target, false, false);
+    }
+    restoreDraft();
+})
+
+onBeforeUnmount(() => {
+    storeDraft()
+})
+
+const onInput = (event: UniInputEvent) => {
+    let inserting = false;
+    if (event.detail.value.length > text.value.length) {
+        inserting = true;
+    }
+    text.value = event.detail.value;
+    const cursor = event.detail.cursor;
+    if (props.conversationInfo.conversation.type == ConversationType.Group) {
+        if (inserting && text.value.length > 0 && cursor > 0 && text.value.charAt(cursor - 1) == '@') {
+            const atAll = new UserInfo()
+            atAll.uid = '@all'
+            atAll.displayName = '所有人'
+            const target = store.ensureConversationTarget(props.conversationInfo.conversation)
+            atAll.portrait = target != null ? target.portrait : ''
+            atAll._displayName = '所有人'
+
+            const options = new PickUserOptions()
+            const users: UserInfo[] = [atAll]
+            options.users = users.concat(groupMemberUserInfos.value)
+            options.showCategoryLabel = false
+            options.successCB = (user: UserInfo) => {
+                text.value = text.value.substring(0, cursor - 1) + `@${user.displayName} ` + text.value.substring(cursor);
+                mentions.value.push(user);
             }
-            return quotedMessage.messageContent.digest(quotedMessage)
-        },
-    },
-
-    mounted() {
-        if (this.conversationInfo.conversation.type == ConversationType.Group) {
-            this.groupMemberUserInfos = store.getGroupMemberUserInfos(this.conversationInfo.conversation.target, false, false);
+            pickUser(options)
         }
-        this.restoreDraft();
-    },
+    }
+}
 
-    beforeUnmount() {
-        this.storeDraft()
-    },
+// 供会话页调用：撤回后重新编辑、@ 某人
+const insertText = (insert: string) => {
+    text.value = text.value + insert;
+}
 
-    methods: {
-        onInput(event: UniInputEvent) {
-            let inserting = false;
-            if (event.detail.value.length > this.text.length) {
-                inserting = true;
-            }
-            this.text = event.detail.value;
-            const cursor = event.detail.cursor;
-            if (this.conversationInfo.conversation.type == ConversationType.Group) {
-                if (inserting && this.text.length > 0 && cursor > 0 && this.text.charAt(cursor - 1) == '@') {
-                    const atAll = new UserInfo()
-                    atAll.uid = '@all'
-                    atAll.displayName = '所有人'
-                    const target = store.ensureConversationTarget(this.conversationInfo.conversation)
-                    atAll.portrait = target != null ? target.portrait : ''
-                    atAll._displayName = '所有人'
+const mention = (groupId: string, userId: string) => {
+    const userInfo = wfc.getUserInfo(userId, false, groupId);
+    mentions.value.push(userInfo);
+    text.value = text.value + '@' + userInfo.displayName + ' ';
+}
 
-                    const options = new PickUserOptions()
-                    const users: UserInfo[] = [atAll]
-                    options.users = users.concat(this.groupMemberUserInfos)
-                    options.showCategoryLabel = false
-                    options.successCB = (user: UserInfo) => {
-                        this.text = this.text.substring(0, cursor - 1) + `@${user.displayName} ` + this.text.substring(cursor);
-                        this.mentions.push(user);
-                    }
-                    pickUser(options)
-                }
-            }
-        },
-
-        // 供会话页调用：撤回后重新编辑、@ 某人
-        insertText(text: string) {
-            this.text = this.text + text;
-        },
-
-        mention(groupId: string, userId: string) {
-            const userInfo = wfc.getUserInfo(userId, false, groupId);
-            this.mentions.push(userInfo);
-            this.text = this.text + '@' + userInfo.displayName + ' ';
-        },
-
-        send() {
-            if (this.text != '') {
-                const textMessageContent = new TextMessageContent(this.text)
-                const quotedMessage = conversationState.quotedMessage;
-                if (quotedMessage != null) {
-                    const quoteInfo = QuoteInfo.init(quotedMessage.messageUid, quotedMessage.from, quotedMessage.messageContent.digest(quotedMessage));
-                    textMessageContent.quoteInfo = quoteInfo;
-                    store.quoteMessage(null);
-                }
-                if (this.conversationInfo.conversation.type == ConversationType.Group && this.mentions.length > 0) {
-                    // 匹配以@开始，后面跟着至少一个非空白字符，并且以空格或行尾结尾的字符串
-                    const regex = /@\S+(\s|$)/g;
-                    const matches = this.text.match(regex);
-                    if (matches != null) {
-                        for (let i = 0; i < matches.length; i++) {
-                            const match = (matches[i] ?? '').trim();
-                            if (match == '@所有人') {
-                                const index = this.mentions.findIndex((user: UserInfo): boolean => user.uid == '@all')
-                                if (index >= 0) {
-                                    textMessageContent.mentionedType = 2;
-                                    break
-                                }
-                            } else {
-                                const index = this.mentions.findIndex((user: UserInfo): boolean => user.displayName == match.substring(1));
-                                if (index >= 0) {
-                                    const uid = this.mentions[index].uid;
-                                    if (textMessageContent.mentionedTargets.indexOf(uid) == -1) {
-                                        textMessageContent.mentionedType = 1;
-                                        textMessageContent.mentionedTargets.push(uid);
-                                    }
-                                }
+const send = () => {
+    if (text.value != '') {
+        const textMessageContent = new TextMessageContent(text.value)
+        const quotedMsg = conversationState.quotedMessage;
+        if (quotedMsg != null) {
+            const quoteInfo = QuoteInfo.init(quotedMsg.messageUid, quotedMsg.from, quotedMsg.messageContent.digest(quotedMsg));
+            textMessageContent.quoteInfo = quoteInfo;
+            store.quoteMessage(null);
+        }
+        if (props.conversationInfo.conversation.type == ConversationType.Group && mentions.value.length > 0) {
+            // 匹配以@开始，后面跟着至少一个非空白字符，并且以空格或行尾结尾的字符串
+            const regex = /@\S+(\s|$)/g;
+            const matches = text.value.match(regex);
+            if (matches != null) {
+                for (let i = 0; i < matches.length; i++) {
+                    const match = (matches[i] ?? '').trim();
+                    if (match == '@所有人') {
+                        const index = mentions.value.findIndex((user: UserInfo): boolean => user.uid == '@all')
+                        if (index >= 0) {
+                            textMessageContent.mentionedType = 2;
+                            break
+                        }
+                    } else {
+                        const index = mentions.value.findIndex((user: UserInfo): boolean => user.displayName == match.substring(1));
+                        if (index >= 0) {
+                            const uid = mentions.value[index].uid;
+                            if (textMessageContent.mentionedTargets.indexOf(uid) == -1) {
+                                textMessageContent.mentionedType = 1;
+                                textMessageContent.mentionedTargets.push(uid);
                             }
                         }
                     }
                 }
-
-                wfc.sendConversationMessage(this.conversationInfo.conversation, textMessageContent);
-                this.text = '';
-                this.mentions = [];
-                Draft.setConversationDraft(this.conversationInfo.conversation, '', null);
             }
-        },
+        }
 
-        minimizeMessageInputView() {
-            this.showEmoji = false;
-            this.showExt = false;
-        },
+        wfc.sendConversationMessage(props.conversationInfo.conversation, textMessageContent);
+        text.value = '';
+        mentions.value = [];
+        Draft.setConversationDraft(props.conversationInfo.conversation, '', null);
+    }
+}
 
-        onInputFocus() {
-            this.showEmoji = false;
-            this.showExt = false;
-        },
+const minimizeMessageInputView = () => {
+    showEmoji.value = false;
+    showExt.value = false;
+}
 
-        toggleVoice() {
-            this.showVoice = !this.showVoice;
-            this.showPtt = false;
-            this.showEmoji = false;
-            this.showExt = false;
-        },
+const onInputFocus = () => {
+    showEmoji.value = false;
+    showExt.value = false;
+}
 
-        togglePtt() {
-            this.showPtt = !this.showPtt;
-            this.showVoice = false;
-            this.showEmoji = false;
-            this.showExt = false;
-        },
+const toggleVoice = () => {
+    showVoice.value = !showVoice.value;
+    showPtt.value = false;
+    showEmoji.value = false;
+    showExt.value = false;
+}
 
-        toggleEmoji() {
-            this.showEmoji = !this.showEmoji;
-            this.showExt = false;
-            this.showVoice = false;
-            this.showPtt = false;
-        },
+const togglePtt = () => {
+    showPtt.value = !showPtt.value;
+    showVoice.value = false;
+    showEmoji.value = false;
+    showExt.value = false;
+}
 
-        toggleExt() {
-            this.showExt = !this.showExt;
-            this.showEmoji = false;
-            this.showVoice = false;
-            this.showPtt = false;
-        },
+const toggleEmoji = () => {
+    showEmoji.value = !showEmoji.value;
+    showExt.value = false;
+    showVoice.value = false;
+    showPtt.value = false;
+}
 
-        onClickExt(ext: ExtItem) {
-            console.log('onClick ext', ext.tag);
-            // 选择相册/拍摄/文件等会离开当前面板去挑选内容，提前收起，避免面板一直占据底部空间，
-            // 导致发送后消息列表可视区域变小，看起来像“没有滚动到底部”
-            this.showExt = false;
-            switch (ext.tag) {
-                case 'image':
-                    this.chooseImage();
-                    break;
-                case 'shot':
-                    this.chooseVideo();
-                    break;
-                case 'file':
-                    this.chooseFile();
-                    break;
-                case 'voip_a':
-                    this.voip(true);
-                    break;
-                case 'voip_v':
-                    this.voip(false);
-                    break;
-                default:
-                    uni.showToast({
-                        title: 'TODO ' + ext.title,
-                        icon: 'none'
-                    } as ShowToastOptions)
-                    break;
-            }
-        },
+const toggleExt = () => {
+    showExt.value = !showExt.value;
+    showEmoji.value = false;
+    showVoice.value = false;
+    showPtt.value = false;
+}
 
-        voip(audioOnly: boolean) {
-            if (!Config.ENABLE_VOIP) {
+const onClickExt = (ext: ExtItem) => {
+    console.log('onClick ext', ext.tag);
+    // 选择相册/拍摄/文件等会离开当前面板去挑选内容，提前收起，避免面板一直占据底部空间，
+    // 导致发送后消息列表可视区域变小，看起来像“没有滚动到底部”
+    showExt.value = false;
+    switch (ext.tag) {
+        case 'image':
+            chooseImage();
+            break;
+        case 'shot':
+            chooseVideo();
+            break;
+        case 'file':
+            chooseFile();
+            break;
+        case 'voip_a':
+            voip(true);
+            break;
+        case 'voip_v':
+            voip(false);
+            break;
+        default:
+            uni.showToast({
+                title: 'TODO ' + ext.title,
+                icon: 'none'
+            } as ShowToastOptions)
+            break;
+    }
+}
+
+const voip = (audioOnly: boolean) => {
+    if (!Config.ENABLE_VOIP) {
+        uni.showToast({
+            title: '当前版本暂不支持音视频通话',
+            icon: 'none',
+        } as ShowToastOptions)
+        return
+    }
+    checkVoipPermissions(audioOnly).then((granted: boolean): void => {
+        if (!granted) {
+            return
+        }
+        const curSession = avEngineKit.currentCallSession()
+        if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
+            uni.showToast({
+                title: '音视频通话正在进行中...',
+                icon: 'none',
+            } as ShowToastOptions)
+            return
+        }
+        if (props.conversationInfo.conversation.type == ConversationType.Single) {
+            const callSession = avEngineKit.startSingleCall(props.conversationInfo.conversation.target, audioOnly)
+            if (callSession != null) {
+                navigateToPage('/pages/voip/Single', callSession)
+            } else {
                 uni.showToast({
-                    title: '当前版本暂不支持音视频通话',
+                    title: '发起通话失败',
                     icon: 'none',
                 } as ShowToastOptions)
-                return
             }
-            checkVoipPermissions(audioOnly).then((granted: boolean): void => {
-                if (!granted) {
-                    return
-                }
-                const curSession = avEngineKit.currentCallSession()
-                if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
-                    uni.showToast({
-                        title: '音视频通话正在进行中...',
-                        icon: 'none',
-                    } as ShowToastOptions)
-                    return
-                }
-                if (this.conversationInfo.conversation.type == ConversationType.Single) {
-                    const callSession = avEngineKit.startSingleCall(this.conversationInfo.conversation.target, audioOnly)
-					if (callSession != null) {
-                        navigateToPage('/pages/voip/Single', callSession)
-                    } else {
-                        uni.showToast({
-                            title: '发起通话失败',
-                            icon: 'none',
-                        } as ShowToastOptions)
-                    }
-                } else if (this.conversationInfo.conversation.type == ConversationType.Group) {
-                    this.showPickGroupMemberToVoipModal(audioOnly)
-                }
-            })
-        },
+        } else if (props.conversationInfo.conversation.type == ConversationType.Group) {
+            showPickGroupMemberToVoipModal(audioOnly)
+        }
+    })
+}
 
-        showPickGroupMemberToVoipModal(audioOnly: boolean) {
-            const options = new PickUsersOptions()
-            options.users = this.groupMemberUserInfos
-            options.confirmTitle = '确定'
-            options.showCategoryLabel = false
-            options.successCB = (users: UserInfo[]): void => {
-                const ids: string[] = []
-                for (let i = 0; i < users.length; i++) {
-                    ids.push(users[i].uid)
-                }
-                const callSession = avEngineKit.startMultiCall(this.conversationInfo.conversation.target, ids, audioOnly)
-                // 不加延时的话，选人弹窗关闭动画和跳转会互相干扰
-                setTimeout((): void => {
-                    if (callSession != null) {
-                        navigateToPage('/pages/voip/Multi', callSession)
-                    } else {
-                        uni.showToast({
-                            title: '发起通话失败',
-                            icon: 'none',
-                        } as ShowToastOptions)
-                    }
-                }, 50)
+const showPickGroupMemberToVoipModal = (audioOnly: boolean) => {
+    const options = new PickUsersOptions()
+    options.users = groupMemberUserInfos.value
+    options.confirmTitle = '确定'
+    options.showCategoryLabel = false
+    options.successCB = (users: UserInfo[]): void => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        const callSession = avEngineKit.startMultiCall(props.conversationInfo.conversation.target, ids, audioOnly)
+        // 不加延时的话，选人弹窗关闭动画和跳转会互相干扰
+        setTimeout((): void => {
+            if (callSession != null) {
+                navigateToPage('/pages/voip/Multi', callSession)
+            } else {
+                uni.showToast({
+                    title: '发起通话失败',
+                    icon: 'none',
+                } as ShowToastOptions)
             }
-            pickUsers(options)
-        },
+        }, 50)
+    }
+    pickUsers(options)
+}
 
-        onCategoryClick(i: number) {
-            this.currentEmojiStickerIndex = i;
-        },
+const onCategoryClick = (i: number) => {
+    currentEmojiStickerIndex.value = i;
+}
 
-        onClickEmoji(emoji: string) {
-            this.text = this.text + emoji;
-        },
+const onClickEmoji = (emoji: string) => {
+    text.value = text.value + emoji;
+}
 
-        onClickSticker(sticker: string) {
-            const stickerMsg = new StickerMessageContent('', sticker, 200, 200)
-            wfc.sendConversationMessage(this.conversationInfo.conversation, stickerMsg);
-        },
+const onClickSticker = (sticker: string) => {
+    const stickerMsg = new StickerMessageContent('', sticker, 200, 200)
+    wfc.sendConversationMessage(props.conversationInfo.conversation, stickerMsg);
+}
 
-        chooseImage() {
-            uni.chooseImage({
-                sourceType: ['album', 'camera'],
-                sizeType: ['original', 'compressed'],
-                success: (e) => {
-                    console.log('choose image', e.tempFilePaths.length);
-                    for (let i = 0; i < e.tempFilePaths.length; i++) {
-                        let path = e.tempFilePaths[i];
-                        if (path.startsWith('file://')) {
-                            path = path.substring('file://'.length);
-                        }
-                        store.sendFile(this.conversationInfo.conversation, path);
-                    }
-                },
-                fail: (err) => {
-                    console.log('choose image fail', err)
-                }
-            } as ChooseImageOptions)
-        },
-
-        chooseVideo() {
-            uni.chooseVideo({
-                sourceType: ['camera'],
-                success: (e) => {
-                    console.log('choose video', e.tempFilePath);
-                    let path = e.tempFilePath;
-                    if (path.startsWith('file://')) {
-                        path = path.substring('file://'.length);
-                    }
-                    store.sendFile(this.conversationInfo.conversation, path);
-                },
-                fail: (err) => {
-                    console.log('choose video fail', err)
-                }
-            } as ChooseVideoOptions)
-        },
-
-        chooseFile() {
-            wfc.chooseFile('all', (file: UTSJSONObject) => {
-                let path = file.getString('path') ?? '';
-                if (path == '') {
-                    return
-                }
+const chooseImage = () => {
+    uni.chooseImage({
+        sourceType: ['album', 'camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            console.log('choose image', e.tempFilePaths.length);
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                let path = e.tempFilePaths[i];
                 if (path.startsWith('file://')) {
                     path = path.substring('file://'.length);
                 }
-                const name = file.getString('name') ?? ''
-                const size = file.getNumber('size') ?? 0
-                store.sendFile(this.conversationInfo.conversation, path, name, size);
-            }, (err: number) => {
-                console.error('choose file error', err);
-            });
-        },
-
-        onKeyboardHeightChange(keyboardHeight: number, currentKeyboardHeight: number) {
-            this.keyboardHeight = keyboardHeight;
-            this.currentKeyboardHeight = currentKeyboardHeight;
-        },
-
-        cancelQuote() {
-            store.quoteMessage(null);
-        },
-
-        restoreDraft() {
-            const draft = Draft.getConversationDraftEx(this.conversationInfo);
-            store.quoteMessage(draft.quotedMessage);
-            if (this.text != '') {
-                console.log('inputting, ignore', draft.text)
-            } else {
-                this.text = draft.text;
+                store.sendFile(props.conversationInfo.conversation, path);
             }
         },
-
-        storeDraft() {
-            const conversationInfo = this.conversationInfo
-            const quotedMessage = conversationState.quotedMessage;
-            const draftText = this.text.trim();
-            const quoteInfo = quotedMessage != null
-                ? QuoteInfo.init(quotedMessage.messageUid, quotedMessage.from, quotedMessage.messageContent.digest(quotedMessage))
-                : null;
-
-            if (draftText.length == 0) {
-                if (conversationInfo.draft != '') {
-                    Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
-                }
-            } else {
-                if (draftText != conversationInfo.draft) {
-                    Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
-                }
-            }
-        },
-    },
+        fail: (err) => {
+            console.log('choose image fail', err)
+        }
+    } as ChooseImageOptions)
 }
+
+const chooseVideo = () => {
+    uni.chooseVideo({
+        sourceType: ['camera'],
+        success: (e) => {
+            console.log('choose video', e.tempFilePath);
+            let path = e.tempFilePath;
+            if (path.startsWith('file://')) {
+                path = path.substring('file://'.length);
+            }
+            store.sendFile(props.conversationInfo.conversation, path);
+        },
+        fail: (err) => {
+            console.log('choose video fail', err)
+        }
+    } as ChooseVideoOptions)
+}
+
+const chooseFile = () => {
+    wfc.chooseFile('all', (file: UTSJSONObject) => {
+        let path = file.getString('path') ?? '';
+        if (path == '') {
+            return
+        }
+        if (path.startsWith('file://')) {
+            path = path.substring('file://'.length);
+        }
+        const name = file.getString('name') ?? ''
+        const size = file.getNumber('size') ?? 0
+        store.sendFile(props.conversationInfo.conversation, path, name, size);
+    }, (err: number) => {
+        console.error('choose file error', err);
+    });
+}
+
+const onKeyboardHeightChange = (kbHeight: number, currentKbHeight: number) => {
+    keyboardHeight.value = kbHeight;
+    currentKeyboardHeight.value = currentKbHeight;
+}
+
+const cancelQuote = () => {
+    store.quoteMessage(null);
+}
+
+const restoreDraft = () => {
+    const draft = Draft.getConversationDraftEx(props.conversationInfo);
+    store.quoteMessage(draft.quotedMessage);
+    if (text.value != '') {
+        console.log('inputting, ignore', draft.text)
+    } else {
+        text.value = draft.text;
+    }
+}
+
+const storeDraft = () => {
+    const conversationInfo = props.conversationInfo
+    const quotedMsg = conversationState.quotedMessage;
+    const draftText = text.value.trim();
+    const quoteInfo = quotedMsg != null
+        ? QuoteInfo.init(quotedMsg.messageUid, quotedMsg.from, quotedMsg.messageContent.digest(quotedMsg))
+        : null;
+
+    if (draftText.length == 0) {
+        if (conversationInfo.draft != '') {
+            Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
+        }
+    } else {
+        if (draftText != conversationInfo.draft) {
+            Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
+        }
+    }
+}
+
+defineExpose({
+    insertText,
+    mention,
+    minimizeMessageInputView,
+    onKeyboardHeightChange,
+})
 </script>
 
 <style scoped>

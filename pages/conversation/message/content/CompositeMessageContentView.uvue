@@ -6,7 +6,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import CompositeMessageContent from "@/wfc/messages/compositeMessageContent.uts";
 import wfc from "@/wfc/client/wfc.uts";
@@ -14,44 +14,40 @@ import ConversationType from "@/wfc/model/conversationType.uts";
 import { navigateToPage } from "@/common/nav.uts";
 import { t } from "@/i18n/i18n.uts";
 
-export default {
-    name: "CompositeMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
+defineOptions({
+    name: "CompositeMessageContentView"
+})
 
-    computed: {
-        recordsText(): string {
-            return t('message.records')
-        },
-        title(): string {
-            return (this.message.messageContent as CompositeMessageContent).title;
-        },
-        content(): string {
-            const compositeMessageContent = this.message.messageContent as CompositeMessageContent;
-            const messages = compositeMessageContent.messages;
-            let str = '';
-            if (messages.length == 0) {
-                return str
-            }
-            const conversation = messages[0].conversation;
-            const groupId = conversation.type == ConversationType.Group ? conversation.target : '';
-            for (let i = 0; i < messages.length && i < 4; i++) {
-                str += wfc.getGroupMemberDisplayName(groupId, messages[i].from) + ': ' + messages[i].messageContent.digest(messages[i]);
-                str += '\n';
-            }
-            return str;
-        }
-    },
+const props = defineProps<{
+    message: Message
+}>()
 
-    methods: {
-        showCompositePage() {
-            navigateToPage('/pages/conversation/message/CompositeMessagePage', this.message);
-        }
+const recordsText = computed<string>((): string => {
+    return t('message.records')
+})
+
+const title = computed<string>((): string => {
+    return (props.message.messageContent as CompositeMessageContent).title;
+})
+
+const content = computed<string>((): string => {
+    const compositeMessageContent = props.message.messageContent as CompositeMessageContent;
+    const messages = compositeMessageContent.messages;
+    let str = '';
+    if (messages.length == 0) {
+        return str
     }
+    const conversation = messages[0].conversation;
+    const groupId = conversation.type == ConversationType.Group ? conversation.target : '';
+    for (let i = 0; i < messages.length && i < 4; i++) {
+        str += wfc.getGroupMemberDisplayName(groupId, messages[i].from) + ': ' + messages[i].messageContent.digest(messages[i]);
+        str += '\n';
+    }
+    return str;
+})
+
+const showCompositePage = () => {
+    navigateToPage('/pages/conversation/message/CompositeMessagePage', props.message);
 }
 </script>
 

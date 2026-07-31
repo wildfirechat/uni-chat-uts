@@ -10,91 +10,74 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import { PopupMenuItem } from './popupMenu.uts'
 
 /**
  * 长按弹出菜单，uni-app x 简化版（功能与原 chunLei-popups 一致：
  * 在 (x, y) 附近弹出菜单，点击 item 触发 tapPopup，点击遮罩关闭）
  */
-export default {
-    name: 'chunLei-popups',
-    props: {
-        maskBg: {
-            type: String,
-            default: 'rgba(0,0,0,0)'
-        },
-        direction: {
-            type: String,
-            default: 'column' // column row
-        },
-        x: {
-            type: Number,
-            default: 0
-        },
-        y: {
-            type: Number,
-            default: 0
-        },
-        modelValue: {
-            type: Boolean,
-            default: false
-        },
-        popData: {
-            type: Array as PropType<PopupMenuItem[]>,
-            default: (): PopupMenuItem[] => [] as PopupMenuItem[]
-        },
-        theme: {
-            type: String,
-            default: 'light' // light dark
-        },
-        dynamic: {
-            type: Boolean,
-            default: false
-        },
-        gap: {
-            type: Number,
-            default: 20
-        },
-        triangle: {
-            type: Boolean,
-            default: true
-        }
-    },
-    emits: ['update:modelValue', 'tapPopup'],
-    computed: {
-        popupsTop(): number {
-            const winHeight = uni.getSystemInfoSync().windowHeight
-            // 预估菜单高度
-            const menuHeight = this.direction == 'column' ? this.popData.length * 44 : 44
-            let top = this.y
-            if (top + menuHeight > winHeight - 20) {
-                top = winHeight - menuHeight - 20
-            }
-            return top < 20 ? 20 : top
-        },
-        popupsLeft(): number {
-            const winWidth = uni.getSystemInfoSync().windowWidth
-            const menuWidth = this.direction == 'column' ? 120 : this.popData.length * 80
-            let left = this.x
-            if (left + menuWidth > winWidth - 10) {
-                left = winWidth - menuWidth - 10
-            }
-            return left < 10 ? 10 : left
-        }
-    },
-    methods: {
-        tapMask() {
-            this.$emit('update:modelValue', false)
-        },
-        tapItem(item: PopupMenuItem) {
-            if (item.disabled) {
-                return
-            }
-            this.$emit('tapPopup', item)
-            this.$emit('update:modelValue', false)
-        }
+defineOptions({
+    name: 'chunLei-popups'
+})
+
+const props = withDefaults(defineProps<{
+    maskBg?: string
+    direction?: string // column row
+    x?: number
+    y?: number
+    modelValue?: boolean
+    popData?: PopupMenuItem[]
+    theme?: string // light dark
+    dynamic?: boolean
+    gap?: number
+    triangle?: boolean
+}>(), {
+    maskBg: 'rgba(0,0,0,0)',
+    direction: 'column',
+    x: 0,
+    y: 0,
+    modelValue: false,
+    popData: (): PopupMenuItem[] => [] as PopupMenuItem[],
+    theme: 'light',
+    dynamic: false,
+    gap: 20,
+    triangle: true
+})
+
+const emit = defineEmits(['update:modelValue', 'tapPopup'])
+
+const popupsTop = computed<number>((): number => {
+    const winHeight = uni.getSystemInfoSync().windowHeight
+    // 预估菜单高度
+    const menuHeight = props.direction == 'column' ? props.popData.length * 44 : 44
+    let top = props.y
+    if (top + menuHeight > winHeight - 20) {
+        top = winHeight - menuHeight - 20
     }
+    return top < 20 ? 20 : top
+})
+
+const popupsLeft = computed<number>((): number => {
+    const winWidth = uni.getSystemInfoSync().windowWidth
+    const menuWidth = props.direction == 'column' ? 120 : props.popData.length * 80
+    let left = props.x
+    if (left + menuWidth > winWidth - 10) {
+        left = winWidth - menuWidth - 10
+    }
+    return left < 10 ? 10 : left
+})
+
+const tapMask = () => {
+    emit('update:modelValue', false)
+}
+
+const tapItem = (item: PopupMenuItem) => {
+    if (item.disabled) {
+        return
+    }
+    emit('tapPopup', item)
+    emit('update:modelValue', false)
 }
 </script>
 

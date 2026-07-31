@@ -40,7 +40,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { conversationState, pickState } from "@/store.uts";
 import ForwardMessageView from "@/pages/conversation/message/forward/ForwardMessageView.uvue";
 import Conversation from "@/wfc/model/conversation.uts";
@@ -48,92 +48,89 @@ import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
-export default {
-    name: "ForwardMessageByPickConversationView",
-    props: {
-        forwardType: {
-            type: Number,
-            default: 0,
-        },
-        messages: {
-            type: Array as PropType<Message[]>,
-            required: true,
-        },
-    },
-    emits: ['forward-target-type'],
-    data() {
-        return {
-            query: '',
-        }
-    },
+defineOptions({
+    name: "ForwardMessageByPickConversationView"
+})
 
-    methods: {
-        portraitOf(conversationInfo: ConversationInfo): string {
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        displayNameOf(conversationInfo: ConversationInfo): string {
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            return target != null ? target._displayName : ''
-        },
-        portraitOfConversation(conversation: Conversation): string {
-            const target = store.ensureConversationTarget(conversation)
-            const portrait = target != null ? target.portrait : ''
-            return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        displayNameOfConversation(conversation: Conversation): string {
-            const target = store.ensureConversationTarget(conversation)
-            return target != null ? target._displayName : ''
-        },
-        onConversationItemClick(conversation: Conversation) {
-            store.pickOrUnpickConversation(conversation)
-        },
-        unpConversation(conversation: Conversation) {
-            store.pickOrUnpickConversation(conversation);
-        },
+const props = withDefaults(defineProps<{
+    forwardType?: number
+    messages: Message[]
+}>(), {
+    forwardType: 0,
+})
 
-        isConversationChecked(conversation: Conversation): boolean {
-            const index = pickState.conversations.findIndex((conv: Conversation): boolean => conv.equal(conversation));
-            return index >= 0;
-        },
+const emit = defineEmits(['forward-target-type'])
 
-        showForwardByCreateConversationModal() {
-            pickState.conversations = [];
-            this.$emit('forward-target-type', 'createConversation')
-        },
+const query = ref<string>('')
 
-        confirm() {
-            const pickedConversations = pickState.conversations.slice(0);
-            pickState.conversations = []
-            let extraMessageText = ''
-            const forwardMessageView = this.$refs['forwardMessageView']
-            if (forwardMessageView != null) {
-                const extra = (forwardMessageView as ComponentPublicInstance).$callMethod('getExtraText')
-                if (extra != null) {
-                    extraMessageText = '' + extra
-                }
-            }
-            store.forwardMessage(this.forwardType, pickedConversations, this.messages, extraMessageText)
-            uni.navigateBack({} as NavigateBackOptions);
-        },
-    },
+const forwardMessageViewRef = ref<ForwardMessageView | null>(null)
 
-    computed: {
-        pickedConversations(): Conversation[] {
-            return pickState.conversations
-        },
-        conversationInfos(): ConversationInfo[] {
-            if (this.query.trim() != '') {
-                return store.filterConversation(this.query)
-            } else {
-                return conversationState.conversationInfoList;
-            }
-        },
-    },
-
-    components: { ForwardMessageView },
+const portraitOf = (conversationInfo: ConversationInfo): string => {
+    const target = store.ensureConversationTarget(conversationInfo.conversation)
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
 }
+
+const displayNameOf = (conversationInfo: ConversationInfo): string => {
+    const target = store.ensureConversationTarget(conversationInfo.conversation)
+    return target != null ? target._displayName : ''
+}
+
+const portraitOfConversation = (conversation: Conversation): string => {
+    const target = store.ensureConversationTarget(conversation)
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const displayNameOfConversation = (conversation: Conversation): string => {
+    const target = store.ensureConversationTarget(conversation)
+    return target != null ? target._displayName : ''
+}
+
+const onConversationItemClick = (conversation: Conversation) => {
+    store.pickOrUnpickConversation(conversation)
+}
+
+const unpConversation = (conversation: Conversation) => {
+    store.pickOrUnpickConversation(conversation);
+}
+
+const isConversationChecked = (conversation: Conversation): boolean => {
+    const index = pickState.conversations.findIndex((conv: Conversation): boolean => conv.equal(conversation));
+    return index >= 0;
+}
+
+const showForwardByCreateConversationModal = () => {
+    pickState.conversations = [];
+    emit('forward-target-type', 'createConversation')
+}
+
+const confirm = () => {
+    const pickedConversations = pickState.conversations.slice(0);
+    pickState.conversations = []
+    let extraMessageText = ''
+    const forwardMessageView = forwardMessageViewRef.value
+    if (forwardMessageView != null) {
+        const extra = (forwardMessageView as ComponentPublicInstance).$callMethod('getExtraText')
+        if (extra != null) {
+            extraMessageText = '' + extra
+        }
+    }
+    store.forwardMessage(props.forwardType, pickedConversations, props.messages, extraMessageText)
+    uni.navigateBack({} as NavigateBackOptions);
+}
+
+const pickedConversations = computed<Conversation[]>((): Conversation[] => {
+    return pickState.conversations
+})
+
+const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] => {
+    if (query.value.trim() != '') {
+        return store.filterConversation(query.value)
+    } else {
+        return conversationState.conversationInfoList;
+    }
+})
 </script>
 
 <style scoped>

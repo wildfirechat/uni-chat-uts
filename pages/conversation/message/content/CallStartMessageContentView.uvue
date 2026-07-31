@@ -5,38 +5,35 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import CallStartMessageContent from "@/wfc/av/messages/callStartMessageContent.uts";
 
-export default {
-    name: "CallStartMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    computed: {
-        textContent(): string {
-            const voip = this.message.messageContent as CallStartMessageContent;
-            let desc: string
-            if (voip.status == 0) {
-                desc = '未接听';
-            } else if (voip.status == 1) {
-                desc = '通话中';
-            } else {
-                if (voip.connectTime > 0 && voip.endTime > voip.connectTime) {
-                    const duration = Math.round((voip.endTime - voip.connectTime) / 1000);
-                    desc = `通话时长 : ${duration}s`
-                } else {
-                    desc = voip.audioOnly ? '[语音通话]' : '[视频通话]';
-                }
-            }
-            return desc;
+defineOptions({
+    name: "CallStartMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const textContent = computed<string>((): string => {
+    const voip = props.message.messageContent as CallStartMessageContent;
+    let desc: string
+    if (voip.status == 0) {
+        desc = '未接听';
+    } else if (voip.status == 1) {
+        desc = '通话中';
+    } else {
+        if (voip.connectTime > 0 && voip.endTime > voip.connectTime) {
+            const duration = Math.round((voip.endTime - voip.connectTime) / 1000);
+            desc = `通话时长 : ${duration}s`
+        } else {
+            desc = voip.audioOnly ? '[语音通话]' : '[视频通话]';
         }
     }
-}
+    return desc;
+})
 </script>
 
 <style scoped>

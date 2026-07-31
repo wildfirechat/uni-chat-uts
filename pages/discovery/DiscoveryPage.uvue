@@ -23,45 +23,43 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store from "../../store.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-export default {
-    name: "DiscoveryPage",
-    methods: {
-        showChatroomList() {
-            uni.navigateTo({
-                url: '/pages/discovery/ChatroomListPage',
-                fail: (e) => {
-                    console.log(e)
-                }
-            } as NavigateToOptions);
-        },
-        showRobotConversation() {
-            const conversation = new Conversation(ConversationType.Single, "FireRobot", 0);
-            store.setCurrentConversation(conversation);
-            go2ConversationPage();
-        },
-        showChannelList() {
-            uni.navigateTo({
-                url: '/pages/contact/ChannelListPage',
-                fail: (e) => {
-                    console.log(e)
-                }
-            } as NavigateToOptions);
-        },
-        showDevGuide() {
-            uni.navigateTo({
-                url: '/pages/misc/WebViewPage?url=https://docs.wildfirechat.cn/',
-                fail: (e) => {
-                    console.log(e)
-                }
-            } as NavigateToOptions);
+const showChatroomList = () => {
+    uni.navigateTo({
+        url: '/pages/discovery/ChatroomListPage',
+        fail: (e) => {
+            console.log(e)
         }
-    }
+    } as NavigateToOptions);
+}
+
+const showRobotConversation = () => {
+    const conversation = new Conversation(ConversationType.Single, "FireRobot", 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
+}
+
+const showChannelList = () => {
+    uni.navigateTo({
+        url: '/pages/contact/ChannelListPage',
+        fail: (e) => {
+            console.log(e)
+        }
+    } as NavigateToOptions);
+}
+
+const showDevGuide = () => {
+    uni.navigateTo({
+        url: '/pages/misc/WebViewPage?url=https://docs.wildfirechat.cn/',
+        fail: (e) => {
+            console.log(e)
+        }
+    } as NavigateToOptions);
 }
 </script>
 

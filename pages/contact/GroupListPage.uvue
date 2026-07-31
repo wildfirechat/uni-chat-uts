@@ -3,13 +3,12 @@
         <GroupListView />
     </scroll-view>
 </template>
-<script lang="uts">
+<script setup lang="uts">
 import GroupListView from "./GroupListView.uvue";
 
-export default {
-    name: "GroupListPage",
-    components: { GroupListView },
-}
+defineOptions({
+    name: "GroupListPage"
+})
 </script>
 
 <style scoped>

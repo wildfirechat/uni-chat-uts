@@ -5,71 +5,70 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "../../../../wfc/messages/message.uts";
 import ImageMessageContent from "../../../../wfc/messages/imageMessageContent.uts";
 import Config from "../../../../config.uts";
 
-export default {
-    name: "ImageMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        },
-        isInCompositeView: {
-            type: Boolean,
-            default: false,
-        }
-    },
-    emits: ['previewCompositeMessage'],
-    computed: {
-        content(): ImageMessageContent {
-            return this.message.messageContent as ImageMessageContent
-        },
-        imageWidth(): number {
-            const iw = this.content.imageWidth
-            const ih = this.content.imageHeight
-            if (iw > 0 && ih > 0) {
-                const scale = Math.min(200 / iw, 200 / ih, 1)
-                return Math.floor(iw * scale)
-            }
-            return 120
-        },
-        imageHeight(): number {
-            const iw = this.content.imageWidth
-            const ih = this.content.imageHeight
-            if (iw > 0 && ih > 0) {
-                const scale = Math.min(200 / iw, 200 / ih, 1)
-                return Math.floor(ih * scale)
-            }
-            return 120
-        },
-        imageSrc(): string {
-            const content = this.content
-            if (content.remotePath != '') {
-                return content.remotePath
-            }
-            if (content.localPath != '') {
-                return content.localPath
-            }
-            if (content.thumbnail != '') {
-                return 'data:image/jpeg;base64,' + content.thumbnail
-            }
-            return Config.DEFAULT_THUMBNAIL_URL
-        }
-    },
-    methods: {
-        preview() {
-            if (this.isInCompositeView) {
-                this.$emit('previewCompositeMessage', this.message.messageUid);
-            } else {
-                uni.previewImage({
-                    urls: [this.content.remotePath]
-                } as PreviewImageOptions);
-            }
-        },
-    },
+defineOptions({
+    name: "ImageMessageContentView"
+})
+
+const props = withDefaults(defineProps<{
+    message: Message
+    isInCompositeView?: boolean
+}>(), {
+    isInCompositeView: false
+})
+
+const emit = defineEmits(['previewCompositeMessage'])
+
+const content = computed<ImageMessageContent>((): ImageMessageContent => {
+    return props.message.messageContent as ImageMessageContent
+})
+
+const imageWidth = computed<number>((): number => {
+    const iw = content.value.imageWidth
+    const ih = content.value.imageHeight
+    if (iw > 0 && ih > 0) {
+        const scale = Math.min(200 / iw, 200 / ih, 1)
+        return Math.floor(iw * scale)
+    }
+    return 120
+})
+
+const imageHeight = computed<number>((): number => {
+    const iw = content.value.imageWidth
+    const ih = content.value.imageHeight
+    if (iw > 0 && ih > 0) {
+        const scale = Math.min(200 / iw, 200 / ih, 1)
+        return Math.floor(ih * scale)
+    }
+    return 120
+})
+
+const imageSrc = computed<string>((): string => {
+    const messageContent = content.value
+    if (messageContent.remotePath != '') {
+        return messageContent.remotePath
+    }
+    if (messageContent.localPath != '') {
+        return messageContent.localPath
+    }
+    if (messageContent.thumbnail != '') {
+        return 'data:image/jpeg;base64,' + messageContent.thumbnail
+    }
+    return Config.DEFAULT_THUMBNAIL_URL
+})
+
+const preview = () => {
+    if (props.isInCompositeView) {
+        emit('previewCompositeMessage', props.message.messageUid);
+    } else {
+        uni.previewImage({
+            urls: [content.value.remotePath]
+        } as PreviewImageOptions);
+    }
 }
 </script>
 

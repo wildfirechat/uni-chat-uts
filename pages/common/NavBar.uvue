@@ -14,59 +14,51 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 /**
  * 自定义导航栏。
  * uni-app x 不支持原生 titleNView 按钮，原来配置在 pages.json 的标题栏按钮改用本组件实现。
  * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
  */
-export default {
-    name: "NavBar",
-    props: {
-        title: {
-            type: String,
-            default: ''
-        },
-        showBack: {
-            type: Boolean,
-            default: false
-        },
-        rightIcon1: {
-            type: String,
-            default: ''
-        },
-        rightIcon2: {
-            type: String,
-            default: ''
-        },
-    },
-    emits: ['right1Tap', 'right2Tap'],
-    data() {
-        return {
-            statusBarHeight: 0
-        }
-    },
-    created() {
-        const sysInfo = uni.getSystemInfoSync()
-        this.statusBarHeight = sysInfo.statusBarHeight
-    },
-    methods: {
-        onBack() {
-            if (this.showBack) {
-                uni.navigateBack({
-                    fail: (err) => {
-                        console.log('nav back err', err)
-                    }
-                } as NavigateBackOptions)
+defineOptions({
+    name: "NavBar"
+})
+
+const props = withDefaults(defineProps<{
+    title?: string
+    showBack?: boolean
+    rightIcon1?: string
+    rightIcon2?: string
+}>(), {
+    title: '',
+    showBack: false,
+    rightIcon1: '',
+    rightIcon2: ''
+})
+
+const emit = defineEmits(['right1Tap', 'right2Tap'])
+
+const statusBarHeight = ref<number>(0)
+
+const sysInfo = uni.getSystemInfoSync()
+statusBarHeight.value = sysInfo.statusBarHeight
+
+const onBack = () => {
+    if (props.showBack) {
+        uni.navigateBack({
+            fail: (err) => {
+                console.log('nav back err', err)
             }
-        },
-        onRight1Tap() {
-            this.$emit('right1Tap')
-        },
-        onRight2Tap() {
-            this.$emit('right2Tap')
-        }
+        } as NavigateBackOptions)
     }
+}
+
+const onRight1Tap = () => {
+    emit('right1Tap')
+}
+
+const onRight2Tap = () => {
+    emit('right2Tap')
 }
 </script>
 

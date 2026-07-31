@@ -4,24 +4,21 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 
-export default {
-    name: "TextMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    computed: {
-        textContent(): string {
-            // 原 web 版将 emoji 转为 <img> 走 v-html；native 直接渲染 unicode emoji
-            return this.message.messageContent.digest(this.message);
-        }
-    }
-}
+defineOptions({
+    name: "TextMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const textContent = computed<string>((): string => {
+    // 原 web 版将 emoji 转为 <img> 走 v-html；native 直接渲染 unicode emoji
+    return props.message.messageContent.digest(props.message);
+})
 </script>
 
 <style scoped>

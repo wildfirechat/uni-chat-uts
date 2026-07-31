@@ -13,7 +13,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import RichNotificationMessageContentView from "./RichNotificationMessageContentView.uvue";
 import ArticlesMessageContentView from "./ArticlesMessageContentView.uvue";
 import Message from "../../../wfc/messages/message.uts";
@@ -21,28 +21,24 @@ import { conversationState, pickState } from "../../../store.uts";
 import eventBus from "@/common/eventBus.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
-export default {
-    name: "ContextableNotificationMessageContentContainerView",
-    components: { ArticlesMessageContentView, RichNotificationMessageContentView },
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        }
-    },
-    computed: {
-        enableMessageMultiSelection(): boolean {
-            return conversationState.enableMessageMultiSelection
-        },
-        isMessageChecked(): boolean {
-            return pickState.messages.findIndex((m: Message): boolean => m.messageId == this.message.messageId) >= 0;
-        }
-    },
-    methods: {
-        openMessageContextMenu(event: UniTouchEvent) {
-            eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, this.message))
-        },
-    },
+defineOptions({
+    name: "ContextableNotificationMessageContentContainerView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const enableMessageMultiSelection = computed<boolean>((): boolean => {
+    return conversationState.enableMessageMultiSelection
+})
+
+const isMessageChecked = computed<boolean>((): boolean => {
+    return pickState.messages.findIndex((m: Message): boolean => m.messageId == props.message.messageId) >= 0;
+})
+
+const openMessageContextMenu = (event: UniTouchEvent) => {
+    eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, props.message))
 }
 </script>
 

@@ -5,7 +5,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
@@ -13,37 +13,33 @@ import RecallMessageNotification from "@/wfc/messages/notification/recallMessage
 import Config from "@/config.uts";
 import eventBus from "@/common/eventBus.uts";
 
-export default {
-    name: "RecallNotificationMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true
-        }
-    },
-    computed: {
-        reeditable(): boolean {
-            const delta = wfc.getServerDeltaTime();
-            const now = new Date().getTime();
-            const content = this.message.messageContent
-            if (!(content instanceof RecallMessageNotification)) {
-                return false
-            }
-            const recallMessageContent = content as RecallMessageNotification;
-            return recallMessageContent.originalContentType == MessageContentType.Text
-                && recallMessageContent.fromSelf
-                && now - (this.message.timestamp - delta) < Config.RECALL_REEDIT_TIME_LIMIT * 1000;
-        },
-    },
-    methods: {
-        reedit() {
-            const content = this.message.messageContent
-            if (content instanceof RecallMessageNotification) {
-                // 通过 eventBus 通知会话页把原文本填回输入框
-                eventBus.$emit('reeditMessage', (content as RecallMessageNotification).originalSearchableContent)
-            }
-        }
-    },
+defineOptions({
+    name: "RecallNotificationMessageContentView"
+})
+
+const props = defineProps<{
+    message: Message
+}>()
+
+const reeditable = computed<boolean>((): boolean => {
+    const delta = wfc.getServerDeltaTime();
+    const now = new Date().getTime();
+    const content = props.message.messageContent
+    if (!(content instanceof RecallMessageNotification)) {
+        return false
+    }
+    const recallMessageContent = content as RecallMessageNotification;
+    return recallMessageContent.originalContentType == MessageContentType.Text
+        && recallMessageContent.fromSelf
+        && now - (props.message.timestamp - delta) < Config.RECALL_REEDIT_TIME_LIMIT * 1000;
+})
+
+const reedit = () => {
+    const content = props.message.messageContent
+    if (content instanceof RecallMessageNotification) {
+        // 通过 eventBus 通知会话页把原文本填回输入框
+        eventBus.$emit('reeditMessage', (content as RecallMessageNotification).originalSearchableContent)
+    }
 }
 </script>
 

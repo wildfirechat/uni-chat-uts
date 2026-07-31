@@ -26,106 +26,109 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import Config from "../../config.uts";
 import organizationServerApi from "../../api/organizationServerApi.uts";
 import wfc from "../../wfc/client/wfc.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
-export default {
-    name: "OrganizationTreePage",
-    data() {
-        return {
-            subOrganizations: [] as UTSJSONObject[],
-            employees: [] as UTSJSONObject[],
-            currentOrganizationPathList: [] as UTSJSONObject[],
+defineOptions({
+    name: "OrganizationTreePage"
+})
+
+const subOrganizations = ref<UTSJSONObject[]>([] as UTSJSONObject[])
+const employees = ref<UTSJSONObject[]>([] as UTSJSONObject[])
+const currentOrganizationPathList = ref<UTSJSONObject[]>([] as UTSJSONObject[])
+
+const orgPortrait = (org: UTSJSONObject): string => {
+    const portrait = org.getString('portrait')
+    return portrait != null && portrait != '' ? portrait : Config.DEFAULT_DEPARTMENT_PORTRAIT_URL
+}
+
+const employeePortrait = (employee: UTSJSONObject): string => {
+    const portrait = employee.getString('portrait')
+    return portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const toJsonObjectList = (value: any | null): UTSJSONObject[] => {
+    const list: UTSJSONObject[] = []
+    if (value != null && value instanceof Array) {
+        const arr = value as Array<any>
+        for (let i = 0; i < arr.length; i++) {
+            const o = arr[i]
+            if (o instanceof UTSJSONObject) {
+                list.push(o as UTSJSONObject)
+            }
         }
-    },
-    mounted() {
-        const currentOrganization = contactState.currentOrganization
-        if (currentOrganization != null) {
-            this.loadAndShowOrganization(currentOrganization);
-        }
-    },
-    methods: {
-        orgPortrait(org: UTSJSONObject): string {
-            const portrait = org.getString('portrait')
-            return portrait != null && portrait != '' ? portrait : Config.DEFAULT_DEPARTMENT_PORTRAIT_URL
-        },
-        employeePortrait(employee: UTSJSONObject): string {
-            const portrait = employee.getString('portrait')
-            return portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
-        },
-        toJsonObjectList(value: any | null): UTSJSONObject[] {
-            const list: UTSJSONObject[] = []
-            if (value != null && value instanceof Array) {
-                const arr = value as Array<any>
-                for (let i = 0; i < arr.length; i++) {
-                    const o = arr[i]
-                    if (o instanceof UTSJSONObject) {
-                        list.push(o as UTSJSONObject)
-                    }
+    }
+    return list
+}
+
+const loadOrganizationPathStep = (orgId: number, pathList: UTSJSONObject[]) => {
+    organizationServerApi.getOrganizations([orgId])
+        .then((res): void => {
+            const orgs = toJsonObjectList(res)
+            if (orgs.length > 0) {
+                const org = orgs[0]
+                pathList.push(org)
+                const parentId = org.getNumber('parentId') ?? 0
+                if (parentId > 0) {
+                    loadOrganizationPathStep(parentId, pathList)
+                    return
                 }
             }
-            return list
-        },
-        loadAndShowOrganization(org: UTSJSONObject) {
-            const orgId = org.getNumber('id') ?? 0
-            organizationServerApi.getOrganizationEx(orgId)
-                .then((res): void => {
-                    if (res != null && res instanceof UTSJSONObject) {
-                        const obj = res as UTSJSONObject
-                        this.subOrganizations = this.toJsonObjectList(obj.get('subOrganizations'));
-                        this.employees = this.toJsonObjectList(obj.get('employees'));
-                    }
-                })
-                .catch((err): void => {
-                    console.log('getOrganizationEx error', err)
-                });
-            this.loadOrganizationPath(orgId)
-        },
-        // 逐级加载组织路径（替代原递归实现）
-        loadOrganizationPath(orgId: number) {
-            const pathList: UTSJSONObject[] = []
-            this.loadOrganizationPathStep(orgId, pathList)
-        },
-        loadOrganizationPathStep(orgId: number, pathList: UTSJSONObject[]) {
-            organizationServerApi.getOrganizations([orgId])
-                .then((res): void => {
-                    const orgs = this.toJsonObjectList(res)
-                    if (orgs.length > 0) {
-                        const org = orgs[0]
-                        pathList.push(org)
-                        const parentId = org.getNumber('parentId') ?? 0
-                        if (parentId > 0) {
-                            this.loadOrganizationPathStep(parentId, pathList)
-                            return
-                        }
-                    }
-                    this.currentOrganizationPathList = pathList.slice(0).reverse();
-                })
-                .catch((err): void => {
-                    console.log('loadOrganizationPath error', err)
-                    this.currentOrganizationPathList = pathList.slice(0).reverse();
-                })
-        },
-        showUserInfo(employee: UTSJSONObject) {
-            const employeeId = employee.getString('employeeId') ?? ''
-            wfc.getUserInfoEx(employeeId, false, (userInfo: UserInfo) => {
-                store.setCurrentFriend(userInfo);
-                uni.navigateTo({
-                    url: '/pages/contact/UserDetailPage',
-                    fail: (err) => {
-                        console.log('nav to UserDetailPage err', err);
-                    }
-                } as NavigateToOptions)
-            }, (err: number) => {
-                console.log('getUserInfoEx error', err)
-            })
-        },
-    },
+            currentOrganizationPathList.value = pathList.slice(0).reverse();
+        })
+        .catch((err): void => {
+            console.log('loadOrganizationPath error', err)
+            currentOrganizationPathList.value = pathList.slice(0).reverse();
+        })
 }
+
+// 逐级加载组织路径（替代原递归实现）
+const loadOrganizationPath = (orgId: number) => {
+    const pathList: UTSJSONObject[] = []
+    loadOrganizationPathStep(orgId, pathList)
+}
+
+const loadAndShowOrganization = (org: UTSJSONObject) => {
+    const orgId = org.getNumber('id') ?? 0
+    organizationServerApi.getOrganizationEx(orgId)
+        .then((res): void => {
+            if (res != null && res instanceof UTSJSONObject) {
+                const obj = res as UTSJSONObject
+                subOrganizations.value = toJsonObjectList(obj.get('subOrganizations'));
+                employees.value = toJsonObjectList(obj.get('employees'));
+            }
+        })
+        .catch((err): void => {
+            console.log('getOrganizationEx error', err)
+        });
+    loadOrganizationPath(orgId)
+}
+
+const showUserInfo = (employee: UTSJSONObject) => {
+    const employeeId = employee.getString('employeeId') ?? ''
+    wfc.getUserInfoEx(employeeId, false, (userInfo: UserInfo) => {
+        store.setCurrentFriend(userInfo);
+        uni.navigateTo({
+            url: '/pages/contact/UserDetailPage',
+            fail: (err) => {
+                console.log('nav to UserDetailPage err', err);
+            }
+        } as NavigateToOptions)
+    }, (err: number) => {
+        console.log('getUserInfoEx error', err)
+    })
+}
+
+onMounted(() => {
+    const currentOrganization = contactState.currentOrganization
+    if (currentOrganization != null) {
+        loadAndShowOrganization(currentOrganization);
+    }
+})
 </script>
 
 <style scoped>

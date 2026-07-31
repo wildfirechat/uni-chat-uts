@@ -12,60 +12,55 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import UserListView from "@/pages/user/UserListView.uvue";
 import store, { contactState } from "@/store.uts";
 import wfc from "@/wfc/client/wfc.uts";
-import Conversation from "@/wfc/model/conversation.uts";
 import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 
-export default {
-    name: "SingleConversationInfoPage",
-    data() {
-        return {
-            conversationInfo: null as ConversationInfo | null,
-            users: [] as UserInfo[],
-        }
-    },
-    onLoad(_options: OnLoadOptions) {
-        console.log('SingleConversationInfoPage onLoad')
-        const pageOptions = takePageOptions()
-        if (pageOptions != null && pageOptions instanceof ConversationInfo) {
-            const conversationInfo = pageOptions as ConversationInfo
-            this.conversationInfo = conversationInfo;
-            this.users = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+defineOptions({
+    name: "SingleConversationInfoPage"
+})
 
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            uni.setNavigationBarTitle({
-                title: target != null ? target._displayName : '',
-            } as SetNavigationBarTitleOptions);
-        }
-    },
-    components: { UserListView },
-    methods: {
-        showCreateConversationModal() {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            const targetUserInfo = wfc.getUserInfo(conversationInfo.conversation.target, false)
-            const options = new PickUsersOptions()
-            options.users = contactState.favContactList.concat(contactState.friendList)
-            options.initialCheckedUsers = [targetUserInfo]
-            options.uncheckableUsers = [targetUserInfo]
-            options.confirmTitle = '添加'
-            options.successCB = (users: UserInfo[]) => {
-                const newPickedUsers = users.slice(0);
-                newPickedUsers.push(targetUserInfo)
-                store.createConversation(newPickedUsers, null, null);
-            }
-            pickUsers(options)
-        },
-    },
-};
+const conversationInfo = ref<ConversationInfo | null>(null)
+const users = ref<UserInfo[]>([] as UserInfo[])
+
+onLoad((_options: OnLoadOptions) => {
+    console.log('SingleConversationInfoPage onLoad')
+    const pageOptions = takePageOptions()
+    if (pageOptions != null && pageOptions instanceof ConversationInfo) {
+        const info = pageOptions as ConversationInfo
+        conversationInfo.value = info;
+        users.value = store.getConversationMemberUsrInfos(info.conversation);
+
+        const target = store.ensureConversationTarget(info.conversation)
+        uni.setNavigationBarTitle({
+            title: target != null ? target._displayName : '',
+        } as SetNavigationBarTitleOptions);
+    }
+})
+
+const showCreateConversationModal = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    const targetUserInfo = wfc.getUserInfo(info.conversation.target, false)
+    const options = new PickUsersOptions()
+    options.users = contactState.favContactList.concat(contactState.friendList)
+    options.initialCheckedUsers = [targetUserInfo]
+    options.uncheckableUsers = [targetUserInfo]
+    options.confirmTitle = '添加'
+    options.successCB = (users: UserInfo[]) => {
+        const newPickedUsers = users.slice(0);
+        newPickedUsers.push(targetUserInfo)
+        store.createConversation(newPickedUsers, null, null);
+    }
+    pickUsers(options)
+}
 </script>
 
 <style scoped>

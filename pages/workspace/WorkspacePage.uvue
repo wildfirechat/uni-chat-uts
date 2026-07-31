@@ -2,41 +2,32 @@
     <web-view id="workspace-webview" class="webview" :src="url" @message="handlePostMessage"></web-view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import { WorkspaceBridge } from './bridgeServerImpl.uts'
 import Config from "../../config.uts";
 
-export default {
-    name: "WorkspacePage",
-    data() {
-        return {
-            url: Config.WORKSPACE_URL,
-            bridge: new WorkspaceBridge(),
+const url = ref<string>(Config.WORKSPACE_URL)
+const bridge = ref<WorkspaceBridge>(new WorkspaceBridge())
+
+onLoad((options: OnLoadOptions) => {
+    const urlValue = options['url'] ?? ''
+    if (urlValue != '') {
+        url.value = urlValue;
+    }
+})
+
+onReady(() => {
+    const webviewContext = uni.createWebviewContext('workspace-webview', getCurrentInstance()!.proxy!)
+    bridge.value.init(webviewContext);
+})
+
+const handlePostMessage = (event: UniWebViewMessageEvent) => {
+    const dataArr = event.detail.data
+    if (dataArr.length > 0) {
+        const obj = dataArr[0].getString('obj')
+        if (obj != null) {
+            bridge.value.messageFromWebView(obj)
         }
-    },
-
-    onLoad(options: OnLoadOptions) {
-        const url = options['url'] ?? ''
-        if (url != '') {
-            this.url = url;
-        }
-    },
-
-    onReady() {
-        const webviewContext = uni.createWebviewContext('workspace-webview', this)
-        this.bridge.init(webviewContext);
-    },
-
-    methods: {
-        handlePostMessage(event: UniWebViewMessageEvent) {
-            const dataArr = event.detail.data
-            if (dataArr.length > 0) {
-                const obj = dataArr[0].getString('obj')
-                if (obj != null) {
-                    this.bridge.messageFromWebView(obj)
-                }
-            }
-        },
     }
 }
 </script>

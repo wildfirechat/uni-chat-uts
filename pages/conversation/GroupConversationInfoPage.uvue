@@ -43,7 +43,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import UserListView from "@/pages/user/UserListView.uvue";
 import store, { contactState } from "@/store.uts";
 import wfc from "@/wfc/client/wfc.uts";
@@ -57,280 +57,274 @@ import appServerApi from "../../api/appServerApi.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 
-export default {
-    name: "GroupConversationInfoPage",
-    data() {
-        return {
-            conversationInfo: null as ConversationInfo | null,
-            groupMemberUserInfos: [] as UserInfo[],
-            filterQuery: '',
-            groupAnnouncement: '',
-            newGroupName: '',
-            newGroupAnnouncement: '',
-        }
-    },
-    onLoad(_options: OnLoadOptions) {
-        console.log('GroupConversationInfoPage onLoad')
-        const pageOptions = takePageOptions()
-        if (pageOptions != null && pageOptions instanceof ConversationInfo) {
-            const conversationInfo = pageOptions as ConversationInfo
-            this.conversationInfo = conversationInfo;
-            this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
+defineOptions({
+    name: "GroupConversationInfoPage"
+})
 
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            uni.setNavigationBarTitle({
-                title: target != null ? target._displayName : '',
-            } as SetNavigationBarTitleOptions);
+const conversationInfo = ref<ConversationInfo | null>(null)
+const groupMemberUserInfos = ref<UserInfo[]>([] as UserInfo[])
+const filterQuery = ref<string>('')
+const groupAnnouncement = ref<string>('')
+const newGroupName = ref<string>('')
+const newGroupAnnouncement = ref<string>('')
 
-            this.getGroupAnnouncement();
-        }
-    },
+const groupDisplayName = computed<string>((): string => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return ''
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    return target != null ? target._displayName : ''
+})
 
-    mounted() {
-        wfc.eventEmitter.on(EventType.UserInfosUpdate, this.onConversationMembersUpdate)
-        wfc.eventEmitter.on(EventType.GroupMembersUpdate, this.onConversationMembersUpdate)
-    },
+const isFavGroup = computed<boolean>((): boolean => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return false
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    return target != null ? target._isFav : false
+})
 
-    beforeUnmount() {
-        wfc.eventEmitter.off(EventType.UserInfosUpdate, this.onConversationMembersUpdate)
-        wfc.eventEmitter.off(EventType.GroupMembersUpdate, this.onConversationMembersUpdate)
-    },
-
-    methods: {
-        onConversationMembersUpdate(_args: Array<any | null>) {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo != null) {
-                this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
-            }
-        },
-
-        showCreateConversationModal() {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            const groupMemberUserInfos = store.getGroupMemberUserInfos(conversationInfo.conversation.target, false);
-            const options = new PickUsersOptions()
-            options.users = contactState.favContactList.concat(contactState.friendList)
-            options.initialCheckedUsers = groupMemberUserInfos
-            options.uncheckableUsers = groupMemberUserInfos
-            options.confirmTitle = '添加'
-            options.successCB = (users: UserInfo[]) => {
-                const ids: string[] = []
-                for (let i = 0; i < users.length; i++) {
-                    ids.push(users[i].uid)
-                }
-                wfc.addGroupMembers(conversationInfo.conversation.target, ids, '', [0], null, () => {
-                    this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
-                }, (err: number) => {
-                    uni.showToast({
-                        title: '邀请新成员失败 ' + err,
-                        icon: 'none',
-                    } as ShowToastOptions);
-                })
-            }
-            pickUsers(options)
-        },
-
-        showRemoveGroupMemberModal() {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            const groupMemberUserInfos = store.getGroupMemberUserInfos(conversationInfo.conversation.target, false, false);
-            const options = new PickUsersOptions()
-            options.users = groupMemberUserInfos
-            options.confirmTitle = '移除'
-            options.showCategoryLabel = false
-            options.successCB = (users: UserInfo[]) => {
-                const ids: string[] = []
-                for (let i = 0; i < users.length; i++) {
-                    ids.push(users[i].uid)
-                }
-                wfc.kickoffGroupMembers(conversationInfo.conversation.target, ids, [0], null, () => {
-                    this.groupMemberUserInfos = store.getConversationMemberUsrInfos(conversationInfo.conversation);
-                }, (err: number) => {
-                    uni.showToast({
-                        title: '踢除群成员失败' + err,
-                        icon: 'none',
-                    } as ShowToastOptions);
-                })
-            }
-            pickUsers(options)
-        },
-
-        getGroupAnnouncement() {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            appServerApi.getGroupAnnouncement(conversationInfo.conversation.target)
-                .then((result): void => {
-                    const text = result?.getString('text')
-                    if (text != null && text != '') {
-                        this.groupAnnouncement = text;
-                    } else {
-                        if (this.enableEditGroupNameOrAnnouncement) {
-                            this.groupAnnouncement = '点击编辑群公告';
-                        }
-                    }
-                })
-                .catch((err): void => {
-                    console.log('getGroupAnnouncement error', err)
-                })
-        },
-
-        updateGroupName() {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            const groupId = conversationInfo.conversation.target;
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            if (this.newGroupName == '' || (target != null && this.newGroupName == target._displayName)) {
-                return;
-            }
-
-            wfc.modifyGroupInfo(groupId, ModifyGroupInfoType.Modify_Group_Name, this.newGroupName, [0], null, () => {
-                if (target != null) {
-                    target._displayName = this.newGroupName;
-                }
-                uni.setNavigationBarTitle({
-                    title: this.newGroupName,
-                } as SetNavigationBarTitleOptions);
-            }, (err: number) => {
-                console.log('err', err)
-            })
-        },
-
-        updateGroupAnnouncement() {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            if (this.newGroupAnnouncement == '' || this.newGroupAnnouncement == this.groupAnnouncement) {
-                return;
-            }
-            appServerApi.updateGroupAnnouncement(wfc.getUserId(), conversationInfo.conversation.target, this.newGroupAnnouncement)
-                .then((result): void => {
-                    this.groupAnnouncement = this.newGroupAnnouncement;
-                })
-                .catch((err): void => {
-                    console.log('updateGroupAnnouncement error', err)
-                })
-        },
-
-        quitGroup(dismiss: boolean) {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            if (dismiss) {
-                store.dismissGroup(conversationInfo.conversation.target)
-            } else {
-                store.quitGroup(conversationInfo.conversation.target)
-            }
-            uni.switchTab({
-                url: '/pages/conversationList/ConversationListPage',
-            } as SwitchTabOptions);
-        },
-
-        onFavSwitchChange(e: UniSwitchChangeEvent) {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return
-            }
-            const groupId = conversationInfo.conversation.target
-            const fav = e.detail.value
-            wfc.setFavGroup(groupId, fav, () => {
-                const target = store.ensureConversationTarget(conversationInfo.conversation)
-                if (target != null) {
-                    target._isFav = fav;
-                }
-                store.reloadFavGroupList();
-            }, (err: number) => {
-                console.log('setFavGroup error', err);
-            })
-        }
-    },
-
-    components: { UserListView },
-
-    computed: {
-        groupDisplayName(): string {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return ''
-            }
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            return target != null ? target._displayName : ''
-        },
-        isFavGroup(): boolean {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return false
-            }
-            const target = store.ensureConversationTarget(conversationInfo.conversation)
-            return target != null ? target._isFav : false
-        },
-        enableAddGroupMember(): boolean {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return false
-            }
-            const selfUid = wfc.getUserId();
-            const groupInfo = wfc.getGroupInfo(conversationInfo.conversation.target, false);
-            //在group type为Restricted时，0 开放加入权限；1 只能群成员拉人入群；2 只能群管理拉人入群
-            if (groupInfo.type == GroupType.Restricted) {
-                if (groupInfo.joinType == 0 || groupInfo.joinType == 1) {
-                    return true;
-                } else if (groupInfo.joinType == 2) {
-                    const groupMember = wfc.getGroupMember(conversationInfo.conversation.target, selfUid);
-                    return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
-                }
-            }
+const enableAddGroupMember = computed<boolean>((): boolean => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return false
+    }
+    const selfUid = wfc.getUserId();
+    const groupInfo = wfc.getGroupInfo(info.conversation.target, false);
+    //在group type为Restricted时，0 开放加入权限；1 只能群成员拉人入群；2 只能群管理拉人入群
+    if (groupInfo.type == GroupType.Restricted) {
+        if (groupInfo.joinType == 0 || groupInfo.joinType == 1) {
             return true;
-        },
-
-        enableRemoveGroupMember(): boolean {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return false
-            }
-            const selfUid = wfc.getUserId();
-            const groupMember = wfc.getGroupMember(conversationInfo.conversation.target, selfUid);
+        } else if (groupInfo.joinType == 2) {
+            const groupMember = wfc.getGroupMember(info.conversation.target, selfUid);
             return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
-        },
-
-        enableEditGroupNameOrAnnouncement(): boolean {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return false
-            }
-            const selfUid = wfc.getUserId();
-            const groupMember = wfc.getGroupMember(conversationInfo.conversation.target, selfUid);
-            return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
-        },
-
-        users(): UserInfo[] {
-            if (this.filterQuery != '') {
-                return store.filterUsers(this.groupMemberUserInfos, this.filterQuery)
-            } else {
-                return this.groupMemberUserInfos;
-            }
-        },
-
-        isOwner(): boolean {
-            const conversationInfo = this.conversationInfo
-            if (conversationInfo == null) {
-                return false
-            }
-            const selfUid = wfc.getUserId();
-            const groupInfo = wfc.getGroupInfo(conversationInfo.conversation.target, false);
-            return groupInfo.owner == selfUid
         }
-    },
-};
+    }
+    return true;
+})
+
+const enableRemoveGroupMember = computed<boolean>((): boolean => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return false
+    }
+    const selfUid = wfc.getUserId();
+    const groupMember = wfc.getGroupMember(info.conversation.target, selfUid);
+    return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
+})
+
+const enableEditGroupNameOrAnnouncement = computed<boolean>((): boolean => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return false
+    }
+    const selfUid = wfc.getUserId();
+    const groupMember = wfc.getGroupMember(info.conversation.target, selfUid);
+    return groupMember.type == GroupMemberType.Manager || groupMember.type == GroupMemberType.Owner;
+})
+
+const users = computed<UserInfo[]>((): UserInfo[] => {
+    if (filterQuery.value != '') {
+        return store.filterUsers(groupMemberUserInfos.value, filterQuery.value)
+    } else {
+        return groupMemberUserInfos.value;
+    }
+})
+
+const isOwner = computed<boolean>((): boolean => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return false
+    }
+    const selfUid = wfc.getUserId();
+    const groupInfo = wfc.getGroupInfo(info.conversation.target, false);
+    return groupInfo.owner == selfUid
+})
+
+const onConversationMembersUpdate = (_args: Array<any | null>) => {
+    const info = conversationInfo.value
+    if (info != null) {
+        groupMemberUserInfos.value = store.getConversationMemberUsrInfos(info.conversation);
+    }
+}
+
+onLoad((_options: OnLoadOptions) => {
+    console.log('GroupConversationInfoPage onLoad')
+    const pageOptions = takePageOptions()
+    if (pageOptions != null && pageOptions instanceof ConversationInfo) {
+        const info = pageOptions as ConversationInfo
+        conversationInfo.value = info;
+        groupMemberUserInfos.value = store.getConversationMemberUsrInfos(info.conversation);
+
+        const target = store.ensureConversationTarget(info.conversation)
+        uni.setNavigationBarTitle({
+            title: target != null ? target._displayName : '',
+        } as SetNavigationBarTitleOptions);
+
+        getGroupAnnouncement();
+    }
+})
+
+onMounted(() => {
+    wfc.eventEmitter.on(EventType.UserInfosUpdate, onConversationMembersUpdate)
+    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onConversationMembersUpdate)
+})
+
+onBeforeUnmount(() => {
+    wfc.eventEmitter.off(EventType.UserInfosUpdate, onConversationMembersUpdate)
+    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onConversationMembersUpdate)
+})
+
+const showCreateConversationModal = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    const members = store.getGroupMemberUserInfos(info.conversation.target, false);
+    const options = new PickUsersOptions()
+    options.users = contactState.favContactList.concat(contactState.friendList)
+    options.initialCheckedUsers = members
+    options.uncheckableUsers = members
+    options.confirmTitle = '添加'
+    options.successCB = (users: UserInfo[]) => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        wfc.addGroupMembers(info.conversation.target, ids, '', [0], null, () => {
+            groupMemberUserInfos.value = store.getConversationMemberUsrInfos(info.conversation);
+        }, (err: number) => {
+            uni.showToast({
+                title: '邀请新成员失败 ' + err,
+                icon: 'none',
+            } as ShowToastOptions);
+        })
+    }
+    pickUsers(options)
+}
+
+const showRemoveGroupMemberModal = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    const members = store.getGroupMemberUserInfos(info.conversation.target, false, false);
+    const options = new PickUsersOptions()
+    options.users = members
+    options.confirmTitle = '移除'
+    options.showCategoryLabel = false
+    options.successCB = (users: UserInfo[]) => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        wfc.kickoffGroupMembers(info.conversation.target, ids, [0], null, () => {
+            groupMemberUserInfos.value = store.getConversationMemberUsrInfos(info.conversation);
+        }, (err: number) => {
+            uni.showToast({
+                title: '踢除群成员失败' + err,
+                icon: 'none',
+            } as ShowToastOptions);
+        })
+    }
+    pickUsers(options)
+}
+
+const getGroupAnnouncement = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    appServerApi.getGroupAnnouncement(info.conversation.target)
+        .then((result): void => {
+            const text = result?.getString('text')
+            if (text != null && text != '') {
+                groupAnnouncement.value = text;
+            } else {
+                if (enableEditGroupNameOrAnnouncement.value) {
+                    groupAnnouncement.value = '点击编辑群公告';
+                }
+            }
+        })
+        .catch((err): void => {
+            console.log('getGroupAnnouncement error', err)
+        })
+}
+
+const updateGroupName = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    const groupId = info.conversation.target;
+    const target = store.ensureConversationTarget(info.conversation)
+    if (newGroupName.value == '' || (target != null && newGroupName.value == target._displayName)) {
+        return;
+    }
+
+    wfc.modifyGroupInfo(groupId, ModifyGroupInfoType.Modify_Group_Name, newGroupName.value, [0], null, () => {
+        if (target != null) {
+            target._displayName = newGroupName.value;
+        }
+        uni.setNavigationBarTitle({
+            title: newGroupName.value,
+        } as SetNavigationBarTitleOptions);
+    }, (err: number) => {
+        console.log('err', err)
+    })
+}
+
+const updateGroupAnnouncement = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    if (newGroupAnnouncement.value == '' || newGroupAnnouncement.value == groupAnnouncement.value) {
+        return;
+    }
+    appServerApi.updateGroupAnnouncement(wfc.getUserId(), info.conversation.target, newGroupAnnouncement.value)
+        .then((result): void => {
+            groupAnnouncement.value = newGroupAnnouncement.value;
+        })
+        .catch((err): void => {
+            console.log('updateGroupAnnouncement error', err)
+        })
+}
+
+const quitGroup = (dismiss: boolean) => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    if (dismiss) {
+        store.dismissGroup(info.conversation.target)
+    } else {
+        store.quitGroup(info.conversation.target)
+    }
+    uni.switchTab({
+        url: '/pages/conversationList/ConversationListPage',
+    } as SwitchTabOptions);
+}
+
+const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    const groupId = info.conversation.target
+    const fav = e.detail.value
+    wfc.setFavGroup(groupId, fav, () => {
+        const target = store.ensureConversationTarget(info.conversation)
+        if (target != null) {
+            target._isFav = fav;
+        }
+        store.reloadFavGroupList();
+    }, (err: number) => {
+        console.log('setFavGroup error', err);
+    })
+}
 </script>
 
 <style scoped>

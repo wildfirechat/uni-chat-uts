@@ -5,51 +5,48 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 import MessageStatus from "../../../../wfc/messages/messageStatus.uts";
 import VideoMessageContent from "../../../../wfc/messages/videoMessageContent.uts";
 import Config from "../../../../config.uts";
 
-export default {
-    name: "VideoMessageContentView",
-    props: {
-        message: {
-            type: Object as PropType<Message>,
-            required: true,
-        },
-        isInCompositeView: {
-            type: Boolean,
-            default: false,
-        }
-    },
-    emits: ['previewCompositeMessage'],
-    computed: {
-        content(): VideoMessageContent {
-            return this.message.messageContent as VideoMessageContent
-        },
-        thumbnailUri(): string {
-            if (this.message.status == MessageStatus.Sending) {
-                return Config.DEFAULT_VIDEO_POSTER;
-            } else if (this.content.thumbnail != '') {
-                return 'data:image/jpeg;base64,' + this.content.thumbnail;
+defineOptions({
+    name: "VideoMessageContentView"
+})
+
+const props = withDefaults(defineProps<{
+    message: Message
+    isInCompositeView?: boolean
+}>(), {
+    isInCompositeView: false
+})
+
+const emit = defineEmits(['previewCompositeMessage'])
+
+const content = computed<VideoMessageContent>((): VideoMessageContent => {
+    return props.message.messageContent as VideoMessageContent
+})
+
+const thumbnailUri = computed<string>((): string => {
+    if (props.message.status == MessageStatus.Sending) {
+        return Config.DEFAULT_VIDEO_POSTER;
+    } else if (content.value.thumbnail != '') {
+        return 'data:image/jpeg;base64,' + content.value.thumbnail;
+    }
+    return Config.DEFAULT_VIDEO_POSTER;
+})
+
+const preview = () => {
+    if (props.isInCompositeView) {
+        emit('previewCompositeMessage', props.message.messageUid);
+    } else {
+        uni.navigateTo({
+            url: `/pages/misc/PreviewVideoPage?url=${encodeURIComponent(content.value.remotePath)}`,
+            fail: (e) => {
+                console.log('navigate to PreviewVideoPage error', e)
             }
-            return Config.DEFAULT_VIDEO_POSTER;
-        },
-    },
-    methods: {
-        preview() {
-            if (this.isInCompositeView) {
-                this.$emit('previewCompositeMessage', this.message.messageUid);
-            } else {
-                uni.navigateTo({
-                    url: `/pages/misc/PreviewVideoPage?url=${encodeURIComponent(this.content.remotePath)}`,
-                    fail: (e) => {
-                        console.log('navigate to PreviewVideoPage error', e)
-                    }
-                } as NavigateToOptions);
-            }
-        },
+        } as NavigateToOptions);
     }
 }
 </script>

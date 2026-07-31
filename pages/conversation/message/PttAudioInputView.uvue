@@ -11,112 +11,107 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import ConversationInfo from "../../../wfc/model/conversationInfo.uts";
 import pttClient from "../../../wfc/ptt/pttClient.uts";
 import TalkingCallback from "../../../wfc/ptt/talkingCallback.uts";
 import PttErrorCode from "../../../wfc/ptt/pttErrorCode.uts";
 
-export default {
-    name: 'PttAudioInputView',
-    props: {
-        conversationInfo: {
-            type: Object as PropType<ConversationInfo>,
-            required: true,
-        }
-    },
-    data() {
-        return {
-            popupToggle: false,
-            isTalking: false,
-            text: '按住对讲',
-            title: ' ',
-            recordTime: 0,
-            recordTimer: 0,
-            longPressClientY: 0,
-        }
-    },
-    beforeUnmount() {
-        if (this.isTalking) {
-            pttClient.releaseTalking(this.conversationInfo.conversation)
-        }
-        if (this.recordTimer != 0) {
-            clearInterval(this.recordTimer)
-            this.recordTimer = 0
-        }
-    },
-    methods: {
-        handleLongPress(e: UniTouchEvent) {
-            // 权限弹窗会打断长按手势，所以未授权时只申请权限，让用户授权后重新按住
-            if (!pttClient.isRecordPermissionGranted()) {
-                pttClient.requestRecordPermission((): void => {
-                    uni.showToast({
-                        title: '已获得录音权限，请重新按住对讲',
-                        icon: 'none',
-                    } as ShowToastOptions)
-                }, (): void => {
-                    uni.showToast({
-                        title: '需要录音权限才能对讲',
-                        icon: 'none',
-                    } as ShowToastOptions)
-                })
-                return
-            }
-            if (e.changedTouches.length > 0) {
-                this.longPressClientY = e.changedTouches[e.changedTouches.length - 1].clientY
-            }
-            this.popupToggle = true
-            this.title = '正在请求...'
-            this.text = '正在对讲'
+defineOptions({
+    name: 'PttAudioInputView'
+})
 
-            const callback = new TalkingCallback()
-            callback.onStartTalking = (): void => {
-                this.isTalking = true
-                this.title = '正在对讲'
-                this.text = '松开结束对讲'
-                this.recordTime = 0
-                this.recordTimer = setInterval((): void => {
-                    this.recordTime++
-                }, 1000)
-            }
-            callback.onTalkingEnd = (_reason: number): void => {
-                this.resetState()
-            }
-            callback.onRequestFail = (errorCode: number): void => {
-                this.resetState()
-                uni.showToast({
-                    title: PttErrorCode.desc(errorCode),
-                    icon: 'none',
-                } as ShowToastOptions)
-            }
-            pttClient.requestTalk(this.conversationInfo.conversation, 0, callback)
-        },
+const props = defineProps<{
+    conversationInfo: ConversationInfo
+}>()
 
-        // 对讲不支持上划取消，保留手势回调仅为和 AudioInputView 交互习惯保持一致
-        handleTouchMove(_e: UniTouchEvent) {
-            if (this.isTalking) {
-                this.title = '正在对讲'
-            }
-        },
+const popupToggle = ref<boolean>(false)
+const isTalking = ref<boolean>(false)
+const text = ref<string>('按住对讲')
+const title = ref<string>(' ')
+const recordTime = ref<number>(0)
+const recordTimer = ref<number>(0)
+const longPressClientY = ref<number>(0)
 
-        handleTouchEnd() {
-            if (this.isTalking) {
-                pttClient.releaseTalking(this.conversationInfo.conversation)
-            }
-            this.resetState()
-        },
+onBeforeUnmount(() => {
+    if (isTalking.value) {
+        pttClient.releaseTalking(props.conversationInfo.conversation)
+    }
+    if (recordTimer.value != 0) {
+        clearInterval(recordTimer.value)
+        recordTimer.value = 0
+    }
+})
 
-        resetState() {
-            if (this.recordTimer != 0) {
-                clearInterval(this.recordTimer)
-                this.recordTimer = 0
-            }
-            this.isTalking = false
-            this.popupToggle = false
-            this.text = '按住对讲'
-            this.title = ' '
-        },
-    },
+const handleLongPress = (e: UniTouchEvent) => {
+    // 权限弹窗会打断长按手势，所以未授权时只申请权限，让用户授权后重新按住
+    if (!pttClient.isRecordPermissionGranted()) {
+        pttClient.requestRecordPermission((): void => {
+            uni.showToast({
+                title: '已获得录音权限，请重新按住对讲',
+                icon: 'none',
+            } as ShowToastOptions)
+        }, (): void => {
+            uni.showToast({
+                title: '需要录音权限才能对讲',
+                icon: 'none',
+            } as ShowToastOptions)
+        })
+        return
+    }
+    if (e.changedTouches.length > 0) {
+        longPressClientY.value = e.changedTouches[e.changedTouches.length - 1].clientY
+    }
+    popupToggle.value = true
+    title.value = '正在请求...'
+    text.value = '正在对讲'
+
+    const callback = new TalkingCallback()
+    callback.onStartTalking = (): void => {
+        isTalking.value = true
+        title.value = '正在对讲'
+        text.value = '松开结束对讲'
+        recordTime.value = 0
+        recordTimer.value = setInterval((): void => {
+            recordTime.value++
+        }, 1000)
+    }
+    callback.onTalkingEnd = (_reason: number): void => {
+        resetState()
+    }
+    callback.onRequestFail = (errorCode: number): void => {
+        resetState()
+        uni.showToast({
+            title: PttErrorCode.desc(errorCode),
+            icon: 'none',
+        } as ShowToastOptions)
+    }
+    pttClient.requestTalk(props.conversationInfo.conversation, 0, callback)
+}
+
+// 对讲不支持上划取消，保留手势回调仅为和 AudioInputView 交互习惯保持一致
+const handleTouchMove = (_e: UniTouchEvent) => {
+    if (isTalking.value) {
+        title.value = '正在对讲'
+    }
+}
+
+const handleTouchEnd = () => {
+    if (isTalking.value) {
+        pttClient.releaseTalking(props.conversationInfo.conversation)
+    }
+    resetState()
+}
+
+const resetState = () => {
+    if (recordTimer.value != 0) {
+        clearInterval(recordTimer.value)
+        recordTimer.value = 0
+    }
+    isTalking.value = false
+    popupToggle.value = false
+    text.value = '按住对讲'
+    title.value = ' '
 }
 </script>
 

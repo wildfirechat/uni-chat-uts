@@ -84,7 +84,7 @@
     </view>
 </template>
 
-<script lang="uts">
+<script setup lang="uts">
 import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
 import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
 import CallSession from "@/wfc/av/engine/callSession.uts";
@@ -101,354 +101,347 @@ import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import store from "@/store.uts";
 import Config from "@/config.uts";
 
-export default {
-    name: "Multi",
-    data() {
-        return {
-            session: null as CallSession | null,
-            audioOnly: false,
-            callState: 0,
-            initiatorId: '',
-            participants: [] as ParticipantProfile[],
-            selfAudioMuted: false,
-            selfVideoMuted: false,
-            startTimestamp: 0,
-            currentTimestamp: 0,
-            timer: 0,
-            broadcastTimer: 0,
-            localVideoElement: null as UniNativeViewElement | null,
-            remoteVideoElements: new Map<string, UniNativeViewElement>(),
-        }
-    },
+defineOptions({
+    name: "Multi"
+})
 
-    onLoad(_options: OnLoadOptions) {
-        const pageOptions = takePageOptions()
-        if (pageOptions != null && pageOptions instanceof CallSession) {
-            const session = pageOptions as CallSession
-            this.session = session
-            this.callState = session.state
-            this.audioOnly = session.audioOnly
-            this.initiatorId = session.initiator
-            if (session.connectedTime > 0) {
-                this.startTimestamp = session.connectedTime
-            }
-        }
-    },
+const session = ref<CallSession | null>(null as CallSession | null)
+const audioOnly = ref<boolean>(false)
+const callState = ref<number>(0)
+const initiatorId = ref<string>('')
+const participants = ref<ParticipantProfile[]>([] as ParticipantProfile[])
+const selfAudioMuted = ref<boolean>(false)
+const selfVideoMuted = ref<boolean>(false)
+const startTimestamp = ref<number>(0)
+const currentTimestamp = ref<number>(0)
+const timer = ref<number>(0)
+const broadcastTimer = ref<number>(0)
+const localVideoElement = ref<UniNativeViewElement | null>(null as UniNativeViewElement | null)
+const remoteVideoElements = ref<Map<string, UniNativeViewElement>>(new Map<string, UniNativeViewElement>())
 
-    mounted() {
-        const curSession = avEngineKit.currentCallSession()
-        if (curSession == null || curSession.state == CallState.STATUS_IDLE) {
-            uni.navigateBack({
-                delta: 1,
-                fail: (err) => {
-                    console.log('nav back err', err)
-                }
-            } as NavigateBackOptions)
+const selfUserInfo = computed<UserInfo>((): UserInfo => {
+    return getUserInfo(wfc.getUserId(), false)
+})
+const manyParticipants = computed<boolean>((): boolean => {
+    return participants.value.length >= 4
+})
+const duration = computed<string>((): string => {
+    if (currentTimestamp.value <= 0) {
+        return '00:00'
+    }
+    const elapsed = Math.floor((currentTimestamp.value - startTimestamp.value) / 1000)
+    const min = Math.floor(elapsed / 60)
+    const sec = elapsed % 60
+    const minStr = min < 10 ? ('0' + min) : ('' + min)
+    const secStr = sec < 10 ? ('0' + sec) : ('' + sec)
+    return minStr + ':' + secStr
+})
+
+const setupVideoViews = () => {
+    if (audioOnly.value || session.value == null) {
+        return
+    }
+    nextTick((): void => {
+        const session = session.value
+        if (session == null) {
             return
         }
-        this.session = curSession
-        this.callState = curSession.state
-        this.audioOnly = curSession.audioOnly
-        this.selfAudioMuted = curSession.audioMuted
-        this.selfVideoMuted = curSession.videoMuted
-        this.initiatorId = curSession.initiator
-
-        this.setupSessionCallback()
-
-        const profiles = avEngineKit.getParticipantProfiles(curSession.callId)
-        this.participants = profiles
-
-        if (this.callState == CallState.STATUS_CONNECTED) {
-            this.onVoipConnected()
+        if (!selfVideoMuted.value) {
+            const element = localVideoElement.value
+            if (element != null) {
+                avEngineKit.setLocalVideoView(session.callId, element)
+            }
         }
-    },
+        participants.value.forEach((p: ParticipantProfile): void => {
+            if (!p.videoMuted && p.state == CallState.STATUS_CONNECTED) {
+                const element = remoteVideoElements.value.get(p.userId)
+                if (element != null) {
+                    avEngineKit.setRemoteVideoView(session.callId, p.userId, element)
+                }
+            }
+        })
+    })
+}
 
-    onBackPress(event: OnBackPressOptions): boolean {
-        return event.from != 'navigateBack'
-    },
-
-    beforeUnmount() {
-        if (this.timer != 0) {
-            clearInterval(this.timer)
-            this.timer = 0
+const broadcastMultiCallOngoing = () => {
+    const session = session.value
+    if (session == null || callState.value != CallState.STATUS_CONNECTED) {
+        return
+    }
+    const selfId = wfc.getUserId()
+    const targets: string[] = []
+    participants.value.forEach((p: ParticipantProfile): void => {
+        if (p.userId != selfId) {
+            targets.push(p.userId)
         }
-        if (this.broadcastTimer != 0) {
-            clearInterval(this.broadcastTimer)
-            this.broadcastTimer = 0
+    })
+    const content = new MultiCallOngoingMessageContent()
+    content.callId = session.callId
+    content.initiator = session.initiator
+    content.audioOnly = session.audioOnly
+    content.targets = targets
+    wfc.sendConversationMessage(session.conversation, content)
+}
+
+const onVoipConnected = () => {
+    if (timer.value == 0) {
+        if (startTimestamp.value == 0) {
+            startTimestamp.value = new Date().getTime()
         }
-    },
+        timer.value = setInterval((): void => {
+            currentTimestamp.value = new Date().getTime()
+        }, 1000)
+    }
+    setupVideoViews()
+}
 
-    methods: {
-        setupSessionCallback() {
-            const callback = new CallSessionCallback()
-            callback.didChangeState = (state: number): void => {
-                this.callState = state
-                if (state == CallState.STATUS_CONNECTED) {
-                    this.onVoipConnected()
-                    if (Config.ENABLE_MULTI_CALL_AUTO_JOIN && this.initiatorId == wfc.getUserId() && this.broadcastTimer == 0) {
-                        this.broadcastTimer = setInterval((): void => {
-                            this.broadcastMultiCallOngoing()
-                        }, 1000)
-                    }
-                } else if (state == CallState.STATUS_IDLE) {
-                    if (this.timer != 0) {
-                        clearInterval(this.timer)
-                        this.timer = 0
-                    }
-                }
-            }
-            callback.didChangeMode = (audioOnly: boolean): void => {
-                this.audioOnly = audioOnly
-            }
-            callback.didParticipantJoined = (userId: string, screenSharing: boolean): void => {
-                const session = this.session
-                if (session == null) {
-                    return
-                }
-                this.participants = this.participants.filter((p: ParticipantProfile): boolean => p.userId != userId)
-                const profile = avEngineKit.getParticipantProfile(session.callId, userId, screenSharing)
-                if (profile != null) {
-                    this.participants.push(profile)
-                }
-            }
-            callback.didParticipantLeft = (userId: string, _reason: number, _screenSharing: boolean): void => {
-                this.participants = this.participants.filter((p: ParticipantProfile): boolean => p.userId != userId)
-                this.remoteVideoElements.delete(userId)
-            }
-            callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
-                this.participants.forEach((p: ParticipantProfile): void => {
-                    if (p.userId == userId) {
-                        p.state = CallState.STATUS_CONNECTED
-                    }
-                })
-                if (this.callState == CallState.STATUS_CONNECTED) {
-                    this.setupVideoViews()
-                }
-            }
-            callback.didCallEndWithReason = (_reason: number): void => {
-                this.session = null
-            }
-            callback.didVideoMuted = (userId: string, muted: boolean): void => {
-                if (userId == wfc.getUserId()) {
-                    this.selfVideoMuted = muted
-                } else {
-                    this.participants.forEach((p: ParticipantProfile): void => {
-                        if (p.userId == userId) {
-                            p.videoMuted = muted
-                        }
-                    })
-                }
-                this.setupVideoViews()
-            }
-            callback.didChangeInitiator = (initiator: string): void => {
-                this.initiatorId = initiator
-                if (initiator == wfc.getUserId() && this.broadcastTimer == 0) {
-                    this.broadcastTimer = setInterval((): void => {
-                        this.broadcastMultiCallOngoing()
-                    }, 1000)
-                }
-            }
-            avEngineKit.setSessionCallback(callback)
-        },
+const userInfoOf = (userId: string): UserInfo => {
+    return getUserInfo(userId, false)
+}
 
-        userInfoOf(userId: string): UserInfo {
-            return getUserInfo(userId, false)
-        },
+const switchVideoType = (userId: string) => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    avEngineKit.setParticipantVideoType(session.callId, userId, false, VideoType.BIG_STREAM)
+}
 
-        switchVideoType(userId: string) {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            avEngineKit.setParticipantVideoType(session.callId, userId, false, VideoType.BIG_STREAM)
-        },
+const hangup = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    avEngineKit.endCall(session.callId)
+    session.value = null
+}
 
-        answer() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            checkVoipPermissions(session.audioOnly).then((granted: boolean): void => {
-                if (!granted) {
-                    this.hangup()
-                    return
-                }
-                avEngineKit.answerCall(session.callId, false)
-            })
-        },
+const answer = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    checkVoipPermissions(audioOnly.value).then((granted: boolean): void => {
+        if (!granted) {
+            hangup()
+            return
+        }
+        avEngineKit.answerCall(session.callId, false)
+    })
+}
 
-        hangup() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            avEngineKit.endCall(session.callId)
-            this.session = null
-        },
+const switchCamera = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    avEngineKit.switchCamera(session.callId)
+}
 
-        switchCamera() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            avEngineKit.switchCamera(session.callId)
-        },
+const mute = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    selfAudioMuted.value = !selfAudioMuted.value
+    avEngineKit.muteAudio(session.callId, selfAudioMuted.value)
+}
 
-        mute() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            this.selfAudioMuted = !this.selfAudioMuted
-            avEngineKit.muteAudio(session.callId, this.selfAudioMuted)
-        },
+const muteVideo = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    selfVideoMuted.value = !selfVideoMuted.value
+    avEngineKit.muteVideo(session.callId, selfVideoMuted.value)
+}
 
-        muteVideo() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            this.selfVideoMuted = !this.selfVideoMuted
-            avEngineKit.muteVideo(session.callId, this.selfVideoMuted)
-        },
+const invite = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    const groupMemberUserInfos = store.getGroupMemberUserInfos(session.conversation.target, false)
+    const excluded: UserInfo[] = [selfUserInfo.value]
+    participants.value.forEach((p: ParticipantProfile): void => {
+        excluded.push(userInfoOf(p.userId))
+    })
+    const options = new PickUsersOptions()
+    options.users = groupMemberUserInfos
+    options.initialCheckedUsers = excluded
+    options.uncheckableUsers = excluded
+    options.confirmTitle = '确定'
+    options.successCB = (users: UserInfo[]): void => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        avEngineKit.inviteNewParticipant(session.callId, ids)
+    }
+    pickUsers(options)
+}
 
-        invite() {
-            const session = this.session
-            if (session == null) {
-                return
-            }
-            const groupMemberUserInfos = store.getGroupMemberUserInfos(session.conversation.target, false)
-            const excluded: UserInfo[] = [this.selfUserInfo]
-            this.participants.forEach((p: ParticipantProfile): void => {
-                excluded.push(this.userInfoOf(p.userId))
-            })
-            const options = new PickUsersOptions()
-            options.users = groupMemberUserInfos
-            options.initialCheckedUsers = excluded
-            options.uncheckableUsers = excluded
-            options.confirmTitle = '确定'
-            options.successCB = (users: UserInfo[]): void => {
-                const ids: string[] = []
-                for (let i = 0; i < users.length; i++) {
-                    ids.push(users[i].uid)
-                }
-                avEngineKit.inviteNewParticipant(session.callId, ids)
-            }
-            pickUsers(options)
-        },
+// native-view 创建后（v-if/v-else 首次满足或重新满足时）触发；视图尚未创建时 setupVideoViews
+// 里对应的 element 为 null 会跳过，等 @init 触发后再补挂载，不再需要轮询重试
+const onLocalVideoViewInit = (e: UniNativeViewInitEvent) => {
+    localVideoElement.value = e.detail.element
+    setupVideoViews()
+}
 
-        // native-view 创建后（v-if/v-else 首次满足或重新满足时）触发；视图尚未创建时 setupVideoViews
-        // 里对应的 element 为 null 会跳过，等 @init 触发后再补挂载，不再需要轮询重试
-        onLocalVideoViewInit(e: UniNativeViewInitEvent) {
-            this.localVideoElement = e.detail.element
-            this.setupVideoViews()
-        },
+const onRemoteVideoViewInit = (e: UniNativeViewInitEvent, userId: string) => {
+    remoteVideoElements.value.set(userId, e.detail.element)
+    setupVideoViews()
+}
 
-        onRemoteVideoViewInit(e: UniNativeViewInitEvent, userId: string) {
-            this.remoteVideoElements.set(userId, e.detail.element)
-            this.setupVideoViews()
-        },
-
-        setupVideoViews() {
-            if (this.audioOnly || this.session == null) {
-                return
-            }
-            this.$nextTick((): void => {
-                const session = this.session
-                if (session == null) {
-                    return
-                }
-                if (!this.selfVideoMuted) {
-                    const element = this.localVideoElement
-                    if (element != null) {
-                        avEngineKit.setLocalVideoView(session.callId, element)
-                    }
-                }
-                this.participants.forEach((p: ParticipantProfile): void => {
-                    if (!p.videoMuted && p.state == CallState.STATUS_CONNECTED) {
-                        const element = this.remoteVideoElements.get(p.userId)
-                        if (element != null) {
-                            avEngineKit.setRemoteVideoView(session.callId, p.userId, element)
-                        }
-                    }
-                })
-            })
-        },
-
-        broadcastMultiCallOngoing() {
-            const session = this.session
-            if (session == null || this.callState != CallState.STATUS_CONNECTED) {
-                return
-            }
-            const selfId = wfc.getUserId()
-            const targets: string[] = []
-            this.participants.forEach((p: ParticipantProfile): void => {
-                if (p.userId != selfId) {
-                    targets.push(p.userId)
-                }
-            })
-            const content = new MultiCallOngoingMessageContent()
-            content.callId = session.callId
-            content.initiator = session.initiator
-            content.audioOnly = session.audioOnly
-            content.targets = targets
-            wfc.sendConversationMessage(session.conversation, content)
-        },
-
-        onVoipConnected() {
-            if (this.timer == 0) {
-                if (this.startTimestamp == 0) {
-                    this.startTimestamp = new Date().getTime()
-                }
-                this.timer = setInterval((): void => {
-                    this.currentTimestamp = new Date().getTime()
+const setupSessionCallback = () => {
+    const callback = new CallSessionCallback()
+    callback.didChangeState = (state: number): void => {
+        callState.value = state
+        if (state == CallState.STATUS_CONNECTED) {
+            onVoipConnected()
+            if (Config.ENABLE_MULTI_CALL_AUTO_JOIN && initiatorId.value == wfc.getUserId() && broadcastTimer.value == 0) {
+                broadcastTimer.value = setInterval((): void => {
+                    broadcastMultiCallOngoing()
                 }, 1000)
             }
-            this.setupVideoViews()
-        },
-
-        minimize() {
-            const session = this.session
-            if (session == null) {
-                return
+        } else if (state == CallState.STATUS_IDLE) {
+            if (timer.value != 0) {
+                clearInterval(timer.value)
+                timer.value = 0
             }
-            if (avEngineKit.checkOverlayPermission()) {
-                avEngineKit.minimize(session.callId)
-                uni.navigateBack({
-                    delta: 1,
-                    fail: (err) => {
-                        console.log('nav back err', err)
-                    }
-                } as NavigateBackOptions)
-            } else {
-                uni.showToast({
-                    title: '需要悬浮窗权限',
-                    icon: 'none',
-                } as ShowToastOptions)
+        }
+    }
+    callback.didChangeMode = (audioOnly: boolean): void => {
+        audioOnly.value = audioOnly
+    }
+    callback.didParticipantJoined = (userId: string, screenSharing: boolean): void => {
+        const session = session.value
+        if (session == null) {
+            return
+        }
+        participants.value = participants.value.filter((p: ParticipantProfile): boolean => p.userId != userId)
+        const profile = avEngineKit.getParticipantProfile(session.callId, userId, screenSharing)
+        if (profile != null) {
+            participants.value.push(profile)
+        }
+    }
+    callback.didParticipantLeft = (userId: string, _reason: number, _screenSharing: boolean): void => {
+        participants.value = participants.value.filter((p: ParticipantProfile): boolean => p.userId != userId)
+        remoteVideoElements.value.delete(userId)
+    }
+    callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
+        participants.value.forEach((p: ParticipantProfile): void => {
+            if (p.userId == userId) {
+                p.state = CallState.STATUS_CONNECTED
             }
-        },
-    },
-
-    computed: {
-        selfUserInfo(): UserInfo {
-            return getUserInfo(wfc.getUserId(), false)
-        },
-        manyParticipants(): boolean {
-            return this.participants.length >= 4
-        },
-        duration(): string {
-            if (this.currentTimestamp <= 0) {
-                return '00:00'
-            }
-            const elapsed = Math.floor((this.currentTimestamp - this.startTimestamp) / 1000)
-            const min = Math.floor(elapsed / 60)
-            const sec = elapsed % 60
-            const minStr = min < 10 ? ('0' + min) : ('' + min)
-            const secStr = sec < 10 ? ('0' + sec) : ('' + sec)
-            return minStr + ':' + secStr
-        },
-    },
+        })
+        if (callState.value == CallState.STATUS_CONNECTED) {
+            setupVideoViews()
+        }
+    }
+    callback.didCallEndWithReason = (_reason: number): void => {
+        session.value = null
+    }
+    callback.didVideoMuted = (userId: string, muted: boolean): void => {
+        if (userId == wfc.getUserId()) {
+            selfVideoMuted.value = muted
+        } else {
+            participants.value.forEach((p: ParticipantProfile): void => {
+                if (p.userId == userId) {
+                    p.videoMuted = muted
+                }
+            })
+        }
+        setupVideoViews()
+    }
+    callback.didChangeInitiator = (initiator: string): void => {
+        initiatorId.value = initiator
+        if (initiator == wfc.getUserId() && broadcastTimer.value == 0) {
+            broadcastTimer.value = setInterval((): void => {
+                broadcastMultiCallOngoing()
+            }, 1000)
+        }
+    }
+    avEngineKit.setSessionCallback(callback)
 }
+
+const minimize = () => {
+    const session = session.value
+    if (session == null) {
+        return
+    }
+    if (avEngineKit.checkOverlayPermission()) {
+        avEngineKit.minimize(session.callId)
+        uni.navigateBack({
+            delta: 1,
+            fail: (err) => {
+                console.log('nav back err', err)
+            }
+        } as NavigateBackOptions)
+    } else {
+        uni.showToast({
+            title: '需要悬浮窗权限',
+            icon: 'none',
+        } as ShowToastOptions)
+    }
+}
+
+onLoad((_options: OnLoadOptions) => {
+    const pageOptions = takePageOptions()
+    if (pageOptions != null && pageOptions instanceof CallSession) {
+        const session = pageOptions as CallSession
+        session.value = session
+        callState.value = session.state
+        audioOnly.value = session.audioOnly
+        initiatorId.value = session.initiator
+        if (session.connectedTime > 0) {
+            startTimestamp.value = session.connectedTime
+        }
+    }
+})
+
+onMounted(() => {
+    const curSession = avEngineKit.currentCallSession()
+    if (curSession == null || curSession.state == CallState.STATUS_IDLE) {
+        uni.navigateBack({
+            delta: 1,
+            fail: (err) => {
+                console.log('nav back err', err)
+            }
+        } as NavigateBackOptions)
+        return
+    }
+    session.value = curSession
+    callState.value = curSession.state
+    audioOnly.value = curSession.audioOnly
+    selfAudioMuted.value = curSession.audioMuted
+    selfVideoMuted.value = curSession.videoMuted
+    initiatorId.value = curSession.initiator
+
+    setupSessionCallback()
+
+    const profiles = avEngineKit.getParticipantProfiles(curSession.callId)
+    participants.value = profiles
+
+    if (callState.value == CallState.STATUS_CONNECTED) {
+        onVoipConnected()
+    }
+})
+
+onBackPress((event: OnBackPressOptions): boolean => {
+    return event.from != 'navigateBack'
+})
+
+onBeforeUnmount(() => {
+    if (timer.value != 0) {
+        clearInterval(timer.value)
+        timer.value = 0
+    }
+    if (broadcastTimer.value != 0) {
+        clearInterval(broadcastTimer.value)
+        broadcastTimer.value = 0
+    }
+})
 </script>
 
 <style scoped>

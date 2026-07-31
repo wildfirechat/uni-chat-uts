@@ -4,6 +4,25 @@
 > 范围：全部功能迁移，**音视频通话（voip/av engine）、对讲（ptt）除外**（用户明确暂不支持）。
 > 目标：UI 与功能与原 uni-app 版本保持一致。原 .js/.vue 文件在对应 .uts/.uvue 完成后删除（git 保留历史）。
 
+## 〇、组合式 API（蒸汽模式）迁移 ✅ 已完成
+
+> 蒸汽模式（Vapor）仅支持组合式 API，不支持选项式。全部 `.uvue` 的 `<script>` 块已从选项式
+> 迁移到 `<script setup lang="uts">`（模板与 style 未改动），`get_errors` 全项目 0 错误。
+
+迁移约定（后续新增/改动 .uvue 必须遵守）：
+
+- `export default { name }` → `defineOptions({ name })`；`components: {}` 注册不再需要（import 即注册）。
+- `props: { x: { type, default } }` → `withDefaults(defineProps<{...}>(), {...})`，模板里直接用，脚本里用 `props.x`。
+- `data()` → `ref<T>()`，脚本内访问用 `.value`，模板自动解包。
+- `computed` → `computed<T>((): T => ...)`，内部引用 ref/computed 需 `.value`。
+- `methods` → `const fn = () => {}`（箭头函数），定义在使用之前（UTS 静态"used before declaration"检查）。
+- `mounted/beforeUnmount/onLoad/onUnload/onShow/onHide/onBackPress` → `onMounted/onBeforeUnmount/onLoad/onUnload/onShow/onHide/onBackPress` 回调形式。
+- `watch` → `watch(ref, handler, { deep, immediate })`。
+- `this.$nextTick` → `nextTick`（自动导入）；`this.$emit` → `emit()`（`const emit = defineEmits([...])`）。
+- 子组件方法需父组件 `$callMethod` 调用时，子组件必须 `defineExpose({ methodName })`。
+- ref 泛型：数组 `ref<T[]>([] as T[])`；可空 `ref<T | null>(null as T | null)`；模板引用 `ref<ComponentPublicInstance | null>(null)`。
+- ref、computed、watch、生命周期、nextTick 等均为自动导入，无需 import。
+
 ## 一、总体架构决策（已定，不要反复）
 
 1. **就地迁移**：dev-unix 分支，`.js → .uts`、`.vue → .uvue`。
@@ -117,9 +136,10 @@
 - [x] me/MePage（头像上传 uploadMediaFile+modifyMyInfo）
 - [x] misc/WebViewPage、PreviewVideoPage
 - [x] search/SearchPortalPage（options 拆成4个 boolean props）、SearchResultView、SearchConversationMessagePage（SearchState 增加 conversation 字段）
+- [x] voip/Single.uvue、voip/Multi.uvue（页面脚本已迁移组合式 API；voip 入口隐藏，信令不接）
 - [ ] workspace/WorkspacePage、WorkspaceWebViewPage（nvue+JS bridge，待做，可先简化为 web-view+authCode）
 - [ ] misc/ApiTestPage（待做）
-- [-] pages/voip/**、PttAudioInputView、pick/PickerConversationPage、pick/CheckableOrganizationTreeView、contact/GroupDetailView(未路由)、test/*(未路由)、message/PreviewMessageView、MessageReceiptDetailView、DeleteMessageDialogView(未被引用则不迁)
+- [-] pick/PickerConversationPage、pick/CheckableOrganizationTreeView、contact/GroupDetailView(未路由)、test/*(未路由)、message/PreviewMessageView、MessageReceiptDetailView、DeleteMessageDialogView(未被引用则不迁)
 - [ ] 清理：删除旧 .js/.vue/.nvue、wfc/proto、wfc/av engine、wfc/ptt、pages/voip、emoji/、common/stringify-object.js、permission.js
 - 图标映射表：scratchpad/iconmap.json（class→unicode）
 
