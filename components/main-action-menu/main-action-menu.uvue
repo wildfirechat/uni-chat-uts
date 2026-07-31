@@ -1,6 +1,8 @@
 <template>
-    <view v-if="isActive" @touchmove.stop.prevent="onMove" @tap="hide" class="main-action-menu-root">
-        <view class="main-action-menu" :style="{ top: (height + 50) + 'px' }">
+    <view v-if="isActive" class="main-action-menu-root">
+        <!-- 遮罩自身承担关闭手势：鸿蒙上 fixed 定位的子节点不一定会把 tap 冒泡给父节点 -->
+        <view class="main-action-menu-background-model" @touchmove.stop.prevent="onMove" @tap="hide"></view>
+        <view class="main-action-menu" :style="{ top: (height + 50) + 'px' }" @tap.stop="onMenuTap">
             <view class="main-action-menu-top-arrow"></view>
             <view class="menu-list">
                 <view class="menu-item" @tap="go2CreateGroup">
@@ -17,7 +19,6 @@
                 </view>
             </view>
         </view>
-        <view class="main-action-menu-background-model"></view>
     </view>
 </template>
 
@@ -90,6 +91,9 @@ export default {
         onMove() {
             this.hide()
         },
+        // 点在菜单面板上不关闭菜单，只有菜单项自己会关闭
+        onMenuTap() {
+        },
         toggle() {
             if (this.isActive) {
                 this.hide();
@@ -140,6 +144,8 @@ export default {
     left: 0;
     right: 0;
     bottom: 0;
+    width: 100%;
+    height: 100%;
     z-index: 9997;
 }
 
@@ -153,12 +159,15 @@ export default {
 }
 
 .main-action-menu-background-model {
-    background-color: rgba(0, 0, 0, 0);
+    /* 鸿蒙上完全透明的节点可能不参与命中测试，用极低的不透明度保证能收到 tap */
+    background-color: rgba(0, 0, 0, 0.01);
     position: fixed;
     top: 0;
     bottom: 0;
     right: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
     z-index: 9998;
 }
 

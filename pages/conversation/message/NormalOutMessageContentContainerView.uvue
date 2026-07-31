@@ -3,7 +3,7 @@
         <view class="message-time-container" :class="{ checked: isMessageChecked }">
             <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
             <view class="message-content-container" :class="{ checked: isMessageChecked }">
-                <checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
+                <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
 
                 <view class="message-avatar-content-container">
                     <LoadingView v-if="message.status == 0 || isDownloading" />

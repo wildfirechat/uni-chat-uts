@@ -3,7 +3,7 @@
         <view class="message-time-container" :class="{ checked: isMessageChecked }">
             <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
             <view class="message-content-container" :class="{ checked: isMessageChecked }">
-                <checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
+                <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
                 <RichNotificationMessageContentView :message="message" v-if="message.messageContent.type == 12"
                     @longpress="openMessageContextMenu" />
                 <ArticlesMessageContentView :message="message" v-else-if="message.messageContent.type == 13"

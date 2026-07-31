@@ -5,7 +5,7 @@
                 <view v-if="showCategoryLabel" class="label" :style="{ paddingLeft: paddingLeft }">
                     <text class="label-text">{{ groupedUser.category.toUpperCase() }}</text>
                 </view>
-                <view v-for="(user, ui) in groupedUser.users" :key="ui">
+                <view class="user-item" v-for="(user, ui) in groupedUser.users" :key="ui">
                     <view class="content" :style="{ paddingLeft: paddingLeft }" @tap="clickUserItem(user)">
                         <image class="avatar" :src="user.portrait" />
                         <view class="name-container">
@@ -123,6 +123,11 @@ export default {
     padding: 5px 5px 5px 0;
     font-size: 13px;
     color: #333333;
+}
+
+/* 撑满一行，否则 contact-item 的 align-items: flex-start 会让整行只有内容宽，右侧空白点不到 */
+.user-item {
+    width: 100%;
 }
 
 .content {

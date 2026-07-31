@@ -11,7 +11,7 @@
                 <text class="section-label">最近聊天</text>
                 <view v-for="(conversationInfo, index) in conversationInfos" :key="index">
                     <view class="conversation-item" @tap="onConversationItemClick(conversationInfo.conversation)">
-                        <checkbox class="checkbox" :checked="isConversationChecked(conversationInfo.conversation)" />
+                        <round-checkbox class="checkbox" :checked="isConversationChecked(conversationInfo.conversation)" />
                         <view class="item-header">
                             <image class="avatar" :src="portraitOf(conversationInfo)" />
                         </view>

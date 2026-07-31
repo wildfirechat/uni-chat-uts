@@ -4,7 +4,7 @@
             <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
             <view class="message-avatar-content-container">
                 <view class="avatar-container">
-                    <checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
+                    <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
                     <image @tap="onClickUserPortrait" class="avatar" :src="fromPortrait" />
                 </view>
                 <!--消息内容 根据情况，if-else-->
