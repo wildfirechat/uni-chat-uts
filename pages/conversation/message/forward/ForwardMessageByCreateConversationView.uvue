@@ -4,12 +4,12 @@
             <view class="input-container">
                 <input class="search-input" type="text" placeholder="搜索" v-model="query" />
             </view>
-            <scroll-view class="user-list-container" direction="vertical">
-                <view class="back-pick-conversation" @tap="backPickConversation">
+            <list-view class="user-list-container" direction="vertical">
+                <list-item class="back-pick-conversation" @tap="backPickConversation">
                     <text class="back-pick-conversation-text">选择已有会话</text>
-                </view>
+                </list-item>
                 <CheckableUserListView :users="filteredUsers" :show-category-label="true" padding-left="15px" />
-            </scroll-view>
+            </list-view>
         </view>
         <view class="checked-user-list-container">
             <view class="panel-header">

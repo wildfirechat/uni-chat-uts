@@ -1,14 +1,14 @@
 <template>
     <view class="conversation-info">
-        <view class="conversation-action-container">
-            <view @tap="showCreateConversationModal" class="action-item">
+        <list-view class="member-list" direction="vertical">
+            <list-item @tap="showCreateConversationModal" class="action-item">
                 <view class="icon">
                     <text class="icon-text">+</text>
                 </view>
                 <text class="action-text">添加成员</text>
-            </view>
-        </view>
-        <UserListView :users="users" :show-category-label="false" padding-left="20px" />
+            </list-item>
+            <UserListView :users="users" :show-category-label="false" padding-left="20px" />
+        </list-view>
     </view>
 </template>
 
@@ -72,6 +72,10 @@ const showCreateConversationModal = () => {
     flex: 1;
     overflow: hidden;
     background-color: #ffffff;
+}
+
+.member-list {
+    flex: 1;
 }
 
 .action-item {

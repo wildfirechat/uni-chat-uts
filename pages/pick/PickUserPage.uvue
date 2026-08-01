@@ -4,11 +4,11 @@
             <view class="input-container">
                 <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery" />
             </view>
-            <scroll-view class="friend-list-container" direction="vertical">
+            <list-view class="friend-list-container" direction="vertical">
                 <CheckableUserListView :users="filteredUsers" :initial-checked-users="initialCheckedUsers"
                     :uncheckable-users="uncheckableUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
                     padding-left="20px" />
-            </scroll-view>
+            </list-view>
         </view>
         <view class="checked-contact-list-container">
             <view class="panel-header">

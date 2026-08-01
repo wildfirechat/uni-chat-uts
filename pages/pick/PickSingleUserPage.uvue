@@ -3,10 +3,10 @@
         <view class="input-container">
             <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery" />
         </view>
-        <scroll-view class="user-list-container" direction="vertical">
+        <list-view class="user-list-container" direction="vertical">
             <UserListView :users="filteredUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
                 :emit-click-event="true" @userClick="onClickUser" padding-left="20px" />
-        </scroll-view>
+        </list-view>
     </view>
 </template>
 
