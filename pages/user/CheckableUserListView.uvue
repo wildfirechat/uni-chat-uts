@@ -1,30 +1,28 @@
 <template>
-    <view class="checkable-user-list">
-        <view v-for="(groupedUser, gi) in groupedUsers" :key="gi">
-            <view class="contact-item">
-                <view v-if="showCategoryLabel" class="label" :style="{ paddingLeft: paddingLeft }">
-                    <text class="label-text">{{ groupedUser.category.toUpperCase() }}</text>
-                </view>
-                <view class="user-item" v-for="(user, ui) in groupedUser.users" :key="ui">
-                    <view class="content" :style="{ paddingLeft: paddingLeft }" :class="{ disabled: isUserUncheckable(user) }"
-                        @tap="clickUserItem(user)">
-                        <round-checkbox class="checkbox" :disabled="isUserUncheckable(user)" :checked="isUserChecked(user)" />
-                        <image class="avatar" :src="user.portrait" />
-                        <text class="user-name single-line">{{ displayNameOf(user) }}</text>
-                    </view>
-                </view>
-            </view>
+    <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" class="checkable-user-row-item">
+        <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft }">
+            <text class="label-text">{{ item.category.toUpperCase() }}</text>
         </view>
-    </view>
+        <view v-else class="content" :style="{ paddingLeft: paddingLeft }" :class="{ disabled: isUserUncheckable(item.user as UserInfo) }"
+            @tap="clickUserItem(item.user as UserInfo)">
+            <round-checkbox class="checkbox" :disabled="isUserUncheckable(item.user as UserInfo)" :checked="isUserChecked(item.user as UserInfo)" />
+            <image class="avatar" :src="(item.user as UserInfo).portrait" />
+            <text class="user-name single-line">{{ displayNameOf(item.user as UserInfo) }}</text>
+        </view>
+    </list-item>
+    <list-item v-if="hasMore" class="loading-row" @appear="appendNextBatch" @tap="appendNextBatch">
+        <text class="loading-text">加载中...</text>
+    </list-item>
 </template>
 
 <script setup lang="uts">
 import store, { pickState } from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
-class GroupedUsers {
+class FlatUserListItem {
     category = ''
-    users: UserInfo[] = []
+    isLabel = false
+    user: UserInfo | null = null
 }
 
 defineOptions({
@@ -75,30 +73,61 @@ const isUserChecked = (user: UserInfo): boolean => {
     return store.isUserPicked(user);
 }
 
-const groupedUsers = computed<GroupedUsers[]>((): GroupedUsers[] => {
-    const groupedUsers: GroupedUsers[] = [];
-    if (!props.showCategoryLabel) {
-        const all = new GroupedUsers()
-        all.category = ''
-        all.users = props.users
-        groupedUsers.push(all)
-        return groupedUsers;
-    }
-    let current: GroupedUsers | null = null;
-    let lastCategory = '';
-    for (let i = 0; i < props.users.length; i++) {
+const INITIAL_RENDER_USER_COUNT = 180
+const RENDER_BATCH_USER_COUNT = 220
+
+const renderUserCount = ref<number>(0)
+
+const hasMore = computed<boolean>((): boolean => {
+    return renderUserCount.value < props.users.length
+})
+
+const visibleFlatItems = computed<FlatUserListItem[]>((): FlatUserListItem[] => {
+    const items: FlatUserListItem[] = []
+    const total = renderUserCount.value < props.users.length ? renderUserCount.value : props.users.length
+    let lastCategory = ''
+
+    for (let i = 0; i < total; i++) {
         const user = props.users[i]
-        if (current == null || lastCategory != user._category) {
-            lastCategory = user._category;
-            current = new GroupedUsers();
-            current.category = user._category;
-            current.users = [user];
-            groupedUsers.push(current);
-        } else {
-            current.users.push(user);
+        const category = user._category
+        if (props.showCategoryLabel && lastCategory != category) {
+            lastCategory = category
+            const label = new FlatUserListItem()
+            label.category = category
+            label.isLabel = true
+            items.push(label)
         }
+
+        const row = new FlatUserListItem()
+        row.category = category
+        row.user = user
+        items.push(row)
     }
-    return groupedUsers;
+    return items
+})
+
+const appendNextBatch = () => {
+    if (!hasMore.value) {
+        return
+    }
+    const next = renderUserCount.value + RENDER_BATCH_USER_COUNT
+    renderUserCount.value = next < props.users.length ? next : props.users.length
+}
+
+const resetRenderWindow = () => {
+    if (props.users.length == 0) {
+        renderUserCount.value = 0
+        return
+    }
+    renderUserCount.value = props.users.length < INITIAL_RENDER_USER_COUNT ? props.users.length : INITIAL_RENDER_USER_COUNT
+}
+
+watch(() => props.users, (_newValue, _oldValue) => {
+    resetRenderWindow()
+}, { immediate: true })
+
+watch(() => props.showCategoryLabel, (_newValue, _oldValue) => {
+    resetRenderWindow()
 })
 
 onMounted(() => {
@@ -112,8 +141,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.checkable-user-list {
-    width: 100%;
+.checkable-user-row-item {
+    background-color: #ffffff;
 }
 
 .avatar {
@@ -126,13 +155,6 @@ onMounted(() => {
     margin-right: 10px;
 }
 
-.contact-item {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    background-color: #ffffff;
-}
-
 .label {
     width: 100%;
     background-color: #fafafa;
@@ -141,11 +163,6 @@ onMounted(() => {
 .label-text {
     padding: 5px 5px 5px 0;
     font-size: 13px;
-}
-
-/* 撑满一行，否则 contact-item 的 align-items: flex-start 会让整行只有内容宽，右侧空白点不到 */
-.user-item {
-    width: 100%;
 }
 
 .content {
@@ -166,5 +183,17 @@ onMounted(() => {
 
 .disabled {
     opacity: 0.6;
+}
+
+.loading-row {
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    background-color: #ffffff;
+}
+
+.loading-text {
+    color: #808080;
+    font-size: 12px;
 }
 </style>

@@ -1,12 +1,10 @@
 <template>
-    <view>
-        <view v-for="(organization, index) in rootOrganizations" :key="index" @tap="showOrganization(organization)">
-            <view class="organization-item">
-                <image class="avatar" :src="portraitOf(organization)" />
-                <text class="org-name single-line">{{ organization.getString('name') ?? '' }}</text>
-            </view>
+    <list-item v-for="(organization, index) in rootOrganizations" :key="index" @tap="showOrganization(organization)">
+        <view class="organization-item">
+            <image class="avatar" :src="portraitOf(organization)" />
+            <text class="org-name single-line">{{ organization.getString('name') ?? '' }}</text>
         </view>
-    </view>
+    </list-item>
 </template>
 
 <script setup lang="uts">

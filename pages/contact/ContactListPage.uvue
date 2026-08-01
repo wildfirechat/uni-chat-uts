@@ -1,38 +1,58 @@
 <template>
     <view class="page-container">
         <NavBar title="通讯录" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
-        <scroll-view class="contact-list" direction="vertical">
-            <view @tap="showNewFriends" class="category-item-container">
+        <list-view class="contact-list" direction="vertical" :scroll-into-view="scrollIntoViewId" :lower-threshold="200" @scrolltolower="onContactListToLower">
+            <list-item @tap="showNewFriends" class="category-item-container">
                 <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
                 <view class="category-item">
                     <text class="title">新的朋友</text>
                     <text class="desc unread" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
                 </view>
-            </view>
-            <view @tap="showGroups" class="category-item-container">
+            </list-item>
+            <list-item @tap="showGroups" class="category-item-container">
                 <image class="category-icon" src="/static/image/icon/ic_group_chat.png" />
                 <view class="category-item">
                     <text class="title">群聊</text>
                     <text class="desc">{{ favGroupCount }}</text>
                 </view>
-            </view>
-            <view @tap="showChannels" class="category-item-container">
+            </list-item>
+            <list-item @tap="showChannels" class="category-item-container">
                 <image class="category-icon" src="/static/image/icon/ic_channel_1.png" />
                 <view class="category-item">
                     <text class="title">频道</text>
                     <text class="desc">{{ channelCount }}</text>
                 </view>
-            </view>
+            </list-item>
             <OrganizationListView />
-            <UserListView :users="contactList" padding-left="10px" v-if="expandFriendList" />
-        </scroll-view>
+            <template v-if="expandFriendList">
+                <list-item v-for="(item, itemIndex) in contactListItems" :id="item.anchorId" :key="itemIndex" class="contact-user-row">
+                    <view v-if="item.isLabel" class="user-label" :style="{ paddingLeft: '10px' }">
+                        <text class="user-label-text">{{ item.category.toUpperCase() }}</text>
+                    </view>
+                    <view v-else class="user-item-content" :style="{ paddingLeft: '10px' }" @tap="showUserDetail(item.user as UserInfo)">
+                        <image class="avatar" :src="(item.user as UserInfo).portrait" />
+                        <view class="name-container">
+                            <text class="single-line user-name">{{ displayNameOf(item.user as UserInfo) }}</text>
+                            <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
+                        </view>
+                    </view>
+                </list-item>
+                <list-item v-if="hasMoreContacts" class="contact-loading-row">
+                    <text class="contact-loading-text">加载更多联系人...</text>
+                </list-item>
+            </template>
+        </list-view>
+        <view v-if="expandFriendList && quickIndexCategories.length > 0" class="quick-index-bar">
+            <view v-for="(category, ci) in quickIndexCategories" :key="ci" class="quick-index-item" @tap="jumpToCategory(category)">
+                <text class="quick-index-text" :class="{ active: category == quickIndexActiveCategory }">{{ quickIndexTag(category) }}</text>
+            </view>
+        </view>
         <main-action-menu ref="mainActionMenu"></main-action-menu>
     </view>
 </template>
 <script setup lang="uts">
-import { contactState } from "../../store.uts";
+import store, { contactState } from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
-import UserListView from "../user/UserListView.uvue";
 import OrganizationListView from "./OrganizationListView.uvue";
 import NavBar from "../common/NavBar.uvue";
 
@@ -59,9 +79,203 @@ const expandFriendList = computed<boolean>((): boolean => {
     return contactState.expandFriendList
 })
 
-const contactList = computed<UserInfo[]>((): UserInfo[] => {
+const allContacts = computed<UserInfo[]>((): UserInfo[] => {
     return contactState.favContactList.concat(contactState.friendList)
 })
+
+class ContactListItem {
+    anchorId = ''
+    category = ''
+    isLabel = false
+    user: UserInfo | null = null
+}
+
+class ContactSection {
+    category = ''
+    anchorId = ''
+    users: UserInfo[] = []
+}
+
+const scrollIntoViewId = ref<string>('')
+const quickIndexActiveCategory = ref<string>('')
+const visibleCountsBySection = ref<number[]>([] as number[])
+const activeSectionIndex = ref<number>(0)
+
+const CONTACT_INITIAL_RENDER_COUNT = 120
+const CONTACT_RENDER_BATCH_SIZE = 220
+const QUICK_INDEX_PRELOAD_COUNT = 120
+
+const anchorIdForCategory = (category: string): string => {
+    if (category == '☆ 星标朋友') {
+        return 'contact-label-star'
+    }
+    if (category == '#') {
+        return 'contact-label-hash'
+    }
+    return 'contact-label-' + category.toLowerCase()
+}
+
+const contactSections = computed<ContactSection[]>((): ContactSection[] => {
+    const sections: ContactSection[] = []
+    let current: ContactSection | null = null
+    let lastCategory = ''
+    for (let i = 0; i < allContacts.value.length; i++) {
+        const user = allContacts.value[i]
+        const category = user._category
+        if (current == null || category != lastCategory) {
+            lastCategory = category
+            current = new ContactSection()
+            current.category = category
+            current.anchorId = anchorIdForCategory(category)
+            sections.push(current)
+        }
+        current.users.push(user)
+    }
+    return sections
+})
+
+const hasMoreContacts = computed<boolean>((): boolean => {
+    const sections = contactSections.value
+    const visibleCounts = visibleCountsBySection.value
+    for (let i = 0; i < sections.length; i++) {
+        const visibleCount = i < visibleCounts.length ? visibleCounts[i] : 0
+        if (visibleCount < sections[i].users.length) {
+            return true
+        }
+    }
+    return false
+})
+
+const contactListItems = computed<ContactListItem[]>((): ContactListItem[] => {
+    const items: ContactListItem[] = []
+    const sections = contactSections.value
+    const visibleCounts = visibleCountsBySection.value
+    for (let i = 0; i < sections.length; i++) {
+        const section = sections[i]
+        const labelItem = new ContactListItem()
+        labelItem.anchorId = section.anchorId
+        labelItem.category = section.category
+        labelItem.isLabel = true
+        items.push(labelItem)
+
+        const visibleCount = i < visibleCounts.length ? visibleCounts[i] : 0
+        const total = visibleCount < section.users.length ? visibleCount : section.users.length
+        for (let j = 0; j < total; j++) {
+            const userItem = new ContactListItem()
+            userItem.anchorId = 'contact-user-' + i + '-' + j
+            userItem.category = section.category
+            userItem.user = section.users[j]
+            items.push(userItem)
+        }
+    }
+    return items
+})
+
+const quickIndexCategories = computed<string[]>((): string[] => {
+    const categories: string[] = []
+    const sections = contactSections.value
+    for (let i = 0; i < sections.length; i++) {
+        categories.push(sections[i].category)
+    }
+    return categories
+})
+
+const sectionIndexByCategory = computed<Map<string, number>>((): Map<string, number> => {
+    const map = new Map<string, number>()
+    const sections = contactSections.value
+    for (let i = 0; i < sections.length; i++) {
+        map.set(sections[i].category, i)
+    }
+    return map
+})
+
+const quickIndexTag = (category: string): string => {
+    if (category == '☆ 星标朋友') {
+        return '☆'
+    }
+    return category.toUpperCase()
+}
+
+const jumpToCategory = (category: string) => {
+    quickIndexActiveCategory.value = category
+    const sectionIndex = sectionIndexByCategory.value.get(category)
+    if (sectionIndex == null) {
+        return
+    }
+    activeSectionIndex.value = sectionIndex
+    const sections = contactSections.value
+    const visibleCounts = visibleCountsBySection.value.slice(0)
+    const section = sections[sectionIndex]
+    const currentVisibleCount = sectionIndex < visibleCounts.length ? visibleCounts[sectionIndex] : 0
+    const desiredVisibleCount = QUICK_INDEX_PRELOAD_COUNT < section.users.length ? QUICK_INDEX_PRELOAD_COUNT : section.users.length
+    if (desiredVisibleCount > currentVisibleCount) {
+        visibleCounts[sectionIndex] = desiredVisibleCount
+        visibleCountsBySection.value = visibleCounts
+    }
+    const targetId = anchorIdForCategory(category)
+    // Toggle value to force re-scroll when tapping the same category repeatedly.
+    scrollIntoViewId.value = ''
+    setTimeout(() => {
+        scrollIntoViewId.value = targetId
+    }, 16)
+}
+
+const resetVisibleSections = () => {
+    const sections = contactSections.value
+    const visibleCounts: number[] = []
+    let remain = CONTACT_INITIAL_RENDER_COUNT
+    for (let i = 0; i < sections.length; i++) {
+        const sectionLen = sections[i].users.length
+        if (remain > 0) {
+            const count = remain < sectionLen ? remain : sectionLen
+            visibleCounts.push(count)
+            remain -= count
+        } else {
+            visibleCounts.push(0)
+        }
+    }
+    visibleCountsBySection.value = visibleCounts
+}
+
+watch(contactSections, (_newValue, _oldValue) => {
+    resetVisibleSections()
+    activeSectionIndex.value = 0
+    quickIndexActiveCategory.value = ''
+    scrollIntoViewId.value = ''
+}, { immediate: true })
+
+const onContactListToLower = () => {
+    if (!hasMoreContacts.value) {
+        return
+    }
+    const sections = contactSections.value
+    const visibleCounts = visibleCountsBySection.value.slice(0)
+    let remain = CONTACT_RENDER_BATCH_SIZE
+
+    const appendFrom = (startIndex: number): number => {
+        let consumed = 0
+        for (let i = startIndex; i < sections.length && consumed < remain; i++) {
+            const sectionTotal = sections[i].users.length
+            const sectionShown = i < visibleCounts.length ? visibleCounts[i] : 0
+            if (sectionShown >= sectionTotal) {
+                continue
+            }
+            const add = (remain - consumed) < (sectionTotal - sectionShown) ? (remain - consumed) : (sectionTotal - sectionShown)
+            visibleCounts[i] = sectionShown + add
+            consumed += add
+        }
+        return consumed
+    }
+
+    const consumedInTail = appendFrom(activeSectionIndex.value)
+    remain -= consumedInTail
+    if (remain > 0 && activeSectionIndex.value > 0) {
+        const consumedInHead = appendFrom(0)
+        remain -= consumedInHead
+    }
+
+    visibleCountsBySection.value = visibleCounts
+}
 
 const mainActionMenu = ref<ComponentPublicInstance | null>(null)
 
@@ -116,6 +330,29 @@ const showChannels = () => {
         }
     } as NavigateToOptions);
 }
+
+const displayNameOf = (user: UserInfo): string => {
+    if (user._displayName != '') {
+        return user._displayName
+    }
+    if (user.friendAlias != '') {
+        return user.friendAlias
+    }
+    if (user.displayName != '') {
+        return user.displayName
+    }
+    return '用户'
+}
+
+const showUserDetail = (user: UserInfo) => {
+    store.setCurrentFriend(user)
+    uni.navigateTo({
+        url: '/pages/contact/UserDetailPage',
+        fail: (err) => {
+            console.log('nav to UserDetailPage err', err);
+        }
+    } as NavigateToOptions)
+}
 </script>
 
 <style scoped>
@@ -128,6 +365,37 @@ const showChannels = () => {
 
 .contact-list {
     flex: 1;
+}
+
+.quick-index-bar {
+    position: absolute;
+    right: 3px;
+    top: 110px;
+    bottom: 16px;
+    width: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.quick-index-item {
+    height: 15px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.quick-index-text {
+    font-size: 10px;
+    color: #8e8e8e;
+    line-height: 1;
+}
+
+.quick-index-text.active {
+    color: #2b61ff;
+    font-weight: 600;
 }
 
 .category-item-container {
@@ -167,4 +435,64 @@ const showChannels = () => {
 .desc.unread {
     color: #ff0000;
 }
+
+.contact-user-row {
+    background-color: #ffffff;
+}
+
+.user-label {
+    width: 100%;
+    background-color: #fafafa;
+}
+
+.user-label-text {
+    padding: 5px 5px 5px 0;
+    font-size: 13px;
+    color: #333333;
+}
+
+.user-item-content {
+    padding: 10px 5px 10px 0;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    align-items: center;
+    position: relative;
+    border-bottom: 1px solid #f4f4f4;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+}
+
+.name-container {
+    padding-left: 10px;
+    flex: 1;
+}
+
+.user-name {
+    font-size: 15px;
+    text-align: left;
+}
+
+.user-online-status {
+    color: #808080;
+    font-size: 10px;
+    text-align: left;
+}
+
+.contact-loading-row {
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    background-color: #ffffff;
+}
+
+.contact-loading-text {
+    font-size: 12px;
+    color: #808080;
+}
+
 </style>
