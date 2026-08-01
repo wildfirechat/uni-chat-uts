@@ -12,7 +12,8 @@
                 </view>
                 <view class="content">
                     <text class="draft single-line" v-if="shouldShowDraft"><text class="draft-label">[草稿]</text>{{ draft }}</text>
-                    <text class="last-message-desc single-line" v-else><text v-if="unreadMention > 0" class="mention">[有人@我]</text>{{ lastMessageContent }}</text>
+                    <text v-if="unreadMention > 0" class="mention">[有人@我]</text>
+                    <text class="last-message-desc single-line">{{ lastMessageContent }}</text>
                     <text v-if="conversationInfo.isSilent" class="icomoon silent-icon">&#xf39a;</text>
                 </view>
             </view>
