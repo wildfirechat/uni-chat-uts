@@ -38,6 +38,12 @@
             }
         },
         {
+            "path": "pages/conversation/message/GroupMessageReceiptPage",
+            "style": {
+                "navigationBarTitleText": "消息已读详情"
+            }
+        },
+        {
             "path": "pages/conversation/SingleConversationInfoPage",
             "style": {
                 "navigationBarTitleText": "单人会话信息"

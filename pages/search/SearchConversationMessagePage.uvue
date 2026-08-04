@@ -56,8 +56,9 @@ const search = () => {
 }
 
 const onClickMessage = (msg: Message) => {
-    // TODO 跳转到具体的消息处
     store.setCurrentConversation(msg.conversation);
+    // 会话页 onShow 时消费，定位并高亮该消息
+    store.requestLocateMessage(msg.messageId);
     go2ConversationPage();
 }
 

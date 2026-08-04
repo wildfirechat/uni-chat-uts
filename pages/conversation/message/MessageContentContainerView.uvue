@@ -9,6 +9,7 @@
         <FileMessageContentView :message="message" v-else-if="message.messageContent.type == 5" />
         <VideoMessageContentView :message="message" v-else-if="message.messageContent.type == 6" />
         <StickerMessageContentView :message="message" v-else-if="message.messageContent.type == 7" />
+        <LinkMessageContentView :message="message" v-else-if="message.messageContent.type == 8" />
         <CompositeMessageContentView :message="message" v-else-if="message.messageContent.type == 11" />
         <CallStartMessageContentView :message="message" v-else-if="message.messageContent.type == 400" />
         <ConferenceInviteMessageContentView :message="message" v-else-if="message.messageContent.type == 408" />

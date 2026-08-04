@@ -34,6 +34,9 @@
             </list-item>
             <UserListView :users="users" :show-category-label="false" padding-left="20px" />
         </list-view>
+        <view @tap="clearMessages" class="quit-group-item">
+            <text class="quit-group-text">清空聊天记录</text>
+        </view>
         <view @tap="quitGroup(false)" class="quit-group-item">
             <text class="quit-group-text">退出群组</text>
         </view>
@@ -56,6 +59,7 @@ import EventType from "../../wfc/client/wfcEvent.uts";
 import appServerApi from "../../api/appServerApi.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+import { clearConversationMessages } from "@/common/conversationActions.uts";
 
 defineOptions({
     name: "GroupConversationInfoPage"
@@ -291,6 +295,14 @@ const updateGroupAnnouncement = () => {
         .catch((err): void => {
             console.log('updateGroupAnnouncement error', err)
         })
+}
+
+const clearMessages = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    clearConversationMessages(info.conversation)
 }
 
 const quitGroup = (dismiss: boolean) => {

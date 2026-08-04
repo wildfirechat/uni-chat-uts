@@ -9,6 +9,7 @@
 import Message from "../../../../wfc/messages/message.uts";
 import ImageMessageContent from "../../../../wfc/messages/imageMessageContent.uts";
 import Config from "../../../../config.uts";
+import { conversationState } from "../../../../store.uts";
 
 defineOptions({
     name: "ImageMessageContentView"
@@ -64,11 +65,30 @@ const imageSrc = computed<string>((): string => {
 const preview = () => {
     if (props.isInCompositeView) {
         emit('previewCompositeMessage', props.message.messageUid);
-    } else {
-        uni.previewImage({
-            urls: [content.value.remotePath]
-        } as PreviewImageOptions);
+        return
     }
+    // 会话内的图片消息串成一组，支持左右滑动切换
+    const currentUrl = content.value.remotePath
+    const urls: string[] = []
+    const msgs = conversationState.currentConversationMessageList
+    for (let i = 0; i < msgs.length; i++) {
+        const c = msgs[i].messageContent
+        if (c instanceof ImageMessageContent) {
+            const path = (c as ImageMessageContent).remotePath
+            if (path != '') {
+                urls.push(path)
+            }
+        }
+    }
+    let current = urls.indexOf(currentUrl)
+    if (current < 0) {
+        urls.push(currentUrl)
+        current = urls.length - 1
+    }
+    uni.previewImage({
+        urls: urls,
+        current: current,
+    } as PreviewImageOptions);
 }
 </script>
 

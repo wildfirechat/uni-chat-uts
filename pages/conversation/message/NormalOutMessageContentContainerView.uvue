@@ -35,6 +35,7 @@ import { gte } from "@/wfc/util/longUtil.uts";
 import QuoteMessageView from "@/pages/conversation/message/QuoteMessageView.uvue";
 import Config from "@/config.uts";
 import eventBus from "@/common/eventBus.uts";
+import { navigateToPage } from "@/common/nav.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
 defineOptions({
@@ -93,7 +94,11 @@ const openMessageContextMenu = (event: UniTouchEvent) => {
 }
 
 const showMessageReceiptDetail = () => {
-    // TODO 消息已读详情页面（与原版本一致，原版本亦未实现）
+    // 仅群会话有已读详情，单聊只有已读/未读两种状态
+    if (props.message.conversation.type != ConversationType.Group) {
+        return
+    }
+    navigateToPage('/pages/conversation/message/GroupMessageReceiptPage', props.message)
 }
 
 const enableMessageMultiSelection = computed<boolean>((): boolean => {

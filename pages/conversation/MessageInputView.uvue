@@ -62,11 +62,13 @@
 
 <script setup lang="uts">
 import TextMessageContent from "../../wfc/messages/textMessageContent.uts";
+import CardMessageContent from "../../wfc/messages/cardMessageContent.uts";
+import TypingMessageContent from "../../wfc/messages/typingMessageContent.uts";
 import ConversationInfo from "../../wfc/model/conversationInfo.uts";
 import Message from "../../wfc/messages/message.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 import wfc from "../../wfc/client/wfc.uts";
-import store, { conversationState } from "../../store.uts";
+import store, { conversationState, contactState } from "../../store.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import emojiStickerConfig, { EmojiStickerCategory } from "./emojiStickerConfig.uts";
 import StickerMessageContent from "../../wfc/messages/stickerMessageContent.uts";
@@ -153,6 +155,23 @@ onBeforeUnmount(() => {
     storeDraft()
 })
 
+// 与原生保持一致，10s 内最多发一条 typing 消息
+const TYPING_INTERVAL = 10 * 1000
+let lastTypingTime = 0
+
+const notifyTyping = (typingType: number) => {
+    const conversation = props.conversationInfo.conversation
+    if (conversation.type != ConversationType.Single && conversation.type != ConversationType.Group) {
+        return
+    }
+    const now = new Date().getTime()
+    if (now - lastTypingTime <= TYPING_INTERVAL) {
+        return
+    }
+    lastTypingTime = now
+    wfc.sendConversationMessage(conversation, new TypingMessageContent(typingType))
+}
+
 const onInput = (event: UniInputEvent) => {
     let inserting = false;
     if (event.detail.value.length > text.value.length) {
@@ -160,6 +179,9 @@ const onInput = (event: UniInputEvent) => {
     }
     text.value = event.detail.value;
     const cursor = event.detail.cursor;
+    if (inserting) {
+        notifyTyping(TypingMessageContent.TYPING_TEXT);
+    }
     if (props.conversationInfo.conversation.type == ConversationType.Group) {
         if (inserting && text.value.length > 0 && cursor > 0 && text.value.charAt(cursor - 1) == '@') {
             const atAll = new UserInfo()
@@ -251,6 +273,9 @@ const toggleVoice = () => {
     showPtt.value = false;
     showEmoji.value = false;
     showExt.value = false;
+    if (showVoice.value) {
+        notifyTyping(TypingMessageContent.TYPING_VOICE);
+    }
 }
 
 const togglePtt = () => {
@@ -284,7 +309,7 @@ const onClickExt = (ext: ExtItem) => {
             chooseImage();
             break;
         case 'shot':
-            chooseVideo();
+            shoot();
             break;
         case 'file':
             chooseFile();
@@ -294,6 +319,9 @@ const onClickExt = (ext: ExtItem) => {
             break;
         case 'voip_v':
             voip(false);
+            break;
+        case 'userCard':
+            pickUserCard();
             break;
         default:
             uni.showToast({
@@ -366,6 +394,85 @@ const showPickGroupMemberToVoipModal = (audioOnly: boolean) => {
     pickUsers(options)
 }
 
+// 名片：选联系人 → 二次确认 → 发送个人名片
+const pickUserCard = () => {
+    let users = contactState.favContactList.concat(contactState.friendList)
+    if (props.conversationInfo.conversation.type == ConversationType.Single) {
+        const target = props.conversationInfo.conversation.target
+        users = users.filter((u: UserInfo): boolean => u.uid != target)
+    }
+    if (users.length == 0) {
+        uni.showToast({
+            title: '没有可发送的联系人',
+            icon: 'none',
+        } as ShowToastOptions)
+        return
+    }
+    const options = new PickUserOptions()
+    options.users = users
+    options.showCategoryLabel = false
+    options.successCB = (user: UserInfo) => {
+        // 不加延时的话，选人页面关闭动画和弹窗会互相干扰
+        setTimeout((): void => {
+            confirmSendUserCard(user)
+        }, 50)
+    }
+    pickUser(options)
+}
+
+const confirmSendUserCard = (user: UserInfo) => {
+    const name = user._displayName != '' ? user._displayName : user.displayName
+    uni.showModal({
+        title: '发送名片',
+        content: '发送 ' + name + ' 的名片？',
+        success: (res) => {
+            if (!res.confirm) {
+                return
+            }
+            const cardMessageContent = new CardMessageContent(0, user.uid, user.displayName, user.portrait, wfc.getUserId())
+            cardMessageContent.name = user.name
+            wfc.sendConversationMessage(props.conversationInfo.conversation, cardMessageContent)
+        }
+    } as ShowModalOptions)
+}
+
+const shoot = () => {
+    uni.showActionSheet({
+        itemList: ['拍照', '录像'],
+        success: (res) => {
+            if (res.tapIndex == 0) {
+                takePhoto()
+            } else {
+                chooseVideo()
+            }
+        },
+        fail: (err) => {
+            console.log('show shoot action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+const takePhoto = () => {
+    notifyTyping(TypingMessageContent.TYPING_CAMERA);
+    uni.chooseImage({
+        count: 1,
+        sourceType: ['camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                let path = e.tempFilePaths[i];
+                if (path.startsWith('file://')) {
+                    path = path.substring('file://'.length);
+                }
+                store.sendFile(props.conversationInfo.conversation, path);
+            }
+        },
+        fail: (err) => {
+            console.log('take photo fail', err)
+        }
+    } as ChooseImageOptions)
+}
+
 const onCategoryClick = (i: number) => {
     currentEmojiStickerIndex.value = i;
 }
@@ -400,6 +507,7 @@ const chooseImage = () => {
 }
 
 const chooseVideo = () => {
+    notifyTyping(TypingMessageContent.TYPING_CAMERA);
     uni.chooseVideo({
         sourceType: ['camera'],
         success: (e) => {
@@ -417,6 +525,7 @@ const chooseVideo = () => {
 }
 
 const chooseFile = () => {
+    notifyTyping(TypingMessageContent.TYPING_FILE);
     wfc.chooseFile('all', (file: UTSJSONObject) => {
         let path = file.getString('path') ?? '';
         if (path == '') {

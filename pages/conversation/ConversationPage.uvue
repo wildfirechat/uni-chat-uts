@@ -8,10 +8,12 @@
         <view v-else class="conversation-content-container">
             <view class="message-list-container">
                 <scroll-view class="message-list" direction="vertical" :scroll-top="scrollTop"
-                    :refresher-enabled="true" :refresher-triggered="triggered" :refresher-threshold="45"
-                    @refresherrefresh="onRefresh" @refresherrestore="onRestore" @refresherabort="onAbort"
-                    @touchstart="onTouchStart" @touchmove="onTouchMove">
+                    :scroll-into-view="scrollIntoView" :refresher-enabled="true" :refresher-triggered="triggered"
+                    :refresher-threshold="45" @refresherrefresh="onRefresh" @refresherrestore="onRestore"
+                    @refresherabort="onAbort" @scrolltolower="onScrollToLower" @touchstart="onTouchStart"
+                    @touchmove="onTouchMove">
                     <view v-for="(message, index) in messageList" :id="'id-' + message.messageId" :key="index"
+                        class="message-item" :class="{ highlight: message.messageId == highlightMessageId }"
                         @tap="clickMessageItem(message)">
                         <NotificationMessageContentView :message="message" v-if="isNotificationMessage(message)" />
                         <RecallNotificationMessageContentView :message="message"
@@ -22,6 +24,18 @@
                         <NormalInMessageContentView :message="message" v-else />
                     </view>
                 </scroll-view>
+                <view v-if="showUnreadLabel" class="unread-label-container">
+                    <view v-if="unreadMentionCount > 0" class="unread-label" @tap="locateFirstUnreadMention">
+                        <text class="unread-label-text">有 {{ unreadMentionCount }} 条@我的消息</text>
+                    </view>
+                    <view v-if="showUnreadCountLabel" class="unread-label" @tap="locateFirstUnread">
+                        <text class="unread-label-text">{{ unreadCount }} 条未读消息</text>
+                    </view>
+                    <text class="unread-label-close icomoon" @tap="hideUnreadLabel">&#xf12a;</text>
+                </view>
+                <view v-if="hasMoreNewMessages" class="back-to-latest" @tap="backToLatest">
+                    <text class="back-to-latest-text">回到最新消息</text>
+                </view>
             </view>
             <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
                 :x="contextMenuX" :y="contextMenuY" direction="column" theme="dark" :triangle="false" :dynamic="true" />
@@ -45,10 +59,8 @@ import NotificationMessageContent from "@/wfc/messages/notification/notification
 import RichNotificationMessageContent from "../../wfc/messages/notification/richNotificationMessageContent.uts";
 import ArticlesMessageContent from "../../wfc/messages/articlesMessageContent.uts";
 import TextMessageContent from "@/wfc/messages/textMessageContent.uts";
-import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
-import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
-import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
 import SoundMessageContent from "@/wfc/messages/soundMessageContent.uts";
+import TypingMessageContent from "@/wfc/messages/typingMessageContent.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 import Message from "@/wfc/messages/message.uts";
 import ConversationInfo from "@/wfc/model/conversationInfo.uts";
@@ -62,6 +74,7 @@ import { copyText } from "@/pages/util/clipboard.uts";
 import { PopupMenuItem } from "@/components/chunLei-popups/popupMenu.uts";
 import { navigateToPage } from "@/common/nav.uts";
 import { forward } from "@/common/forward.uts";
+import { isSavableMessage, isSaveToAlbumMessage, saveMessageMedia } from "@/common/mediaSaver.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import eventBus from "@/common/eventBus.uts";
 import { getTouchPoint } from "@/common/touch.uts";
@@ -87,8 +100,16 @@ const contextMenuMessage = ref<Message | null>(null)
 
 const keyboardHeight = ref<number>(0)
 const scrollTop = ref<number>(0)
+const scrollIntoView = ref<string>('')
 const triggered = ref<boolean>(false)
 const freshing = ref<boolean>(false)
+const loadingNewMessages = ref<boolean>(false)
+
+// 与原生一致：未读数超过 10 条才显示顶部提示条
+const UNREAD_LABEL_MIN_COUNT = 10
+const UNREAD_LABEL_MAX_COUNT = 300
+const unreadLabelDismissed = ref<boolean>(false)
+let highlightClearTimer = 0
 
 // onUnload 时会清空 store 里的当前会话，而此时页面关闭动画才刚开始，页面仍在渲染，
 // 直接渲染 store 数据会导致整个页面瞬间变白(白屏动画滑出后才看到会话列表)。
@@ -111,6 +132,33 @@ const enableMessageMultiSelection = computed<boolean>((): boolean => {
     return conversationState.enableMessageMultiSelection
 })
 
+const highlightMessageId = computed<number>((): number => {
+    return conversationState.highlightMessageId
+})
+
+const hasMoreNewMessages = computed<boolean>((): boolean => {
+    return conversationState.hasMoreNewMessages
+})
+
+const unreadCount = computed<number>((): number => {
+    return conversationState.enterUnreadCount
+})
+
+const unreadMentionCount = computed<number>((): number => {
+    return conversationState.enterUnreadMentionCount
+})
+
+const showUnreadCountLabel = computed<boolean>((): boolean => {
+    return unreadCount.value > UNREAD_LABEL_MIN_COUNT && unreadCount.value < UNREAD_LABEL_MAX_COUNT
+})
+
+const showUnreadLabel = computed<boolean>((): boolean => {
+    if (unreadLabelDismissed.value) {
+        return false
+    }
+    return unreadMentionCount.value > 0 || showUnreadCountLabel.value
+})
+
 const conversationTitle = computed<string>((): string => {
     const info = conversationInfo.value;
     if (info == null) {
@@ -125,7 +173,46 @@ const targetUserOnlineStateDesc = computed<string>((): string => {
     return info != null ? info.conversation._targetOnlineStateDesc : '';
 })
 
+// 「对方正在输入」，与原生 ConversationFragment#updateTypingStatusTitle 对齐
+const typingDesc = computed<string>((): string => {
+    const user = conversationState.inputtingUser
+    const info = conversationInfo.value
+    if (user == null || info == null) {
+        return ''
+    }
+    const conversationType = info.conversation.type
+    if (conversationType != ConversationType.Single && conversationType != ConversationType.Group) {
+        return ''
+    }
+    let desc: string
+    switch (conversationState.inputtingTypingType) {
+        case TypingMessageContent.TYPING_VOICE:
+            desc = '正在录音'
+            break;
+        case TypingMessageContent.TYPING_CAMERA:
+            desc = '正在拍照'
+            break;
+        case TypingMessageContent.TYPING_LOCATION:
+            desc = '正在发送位置'
+            break;
+        case TypingMessageContent.TYPING_FILE:
+            desc = '正在发送文件'
+            break;
+        default:
+            desc = '正在输入'
+            break;
+    }
+    if (conversationType == ConversationType.Group) {
+        const name = user._displayName != '' ? user._displayName : user.displayName
+        return (name != '' ? name : '有人') + ' ' + desc
+    }
+    return '对方' + desc
+})
+
 const navTitle = computed<string>((): string => {
+    if (typingDesc.value != '') {
+        return typingDesc.value
+    }
     return targetUserOnlineStateDesc.value != ''
         ? conversationTitle.value + `(${targetUserOnlineStateDesc.value})`
         : conversationTitle.value
@@ -177,9 +264,14 @@ onUnload(() => {
     closingMessageList.value = conversationState.currentConversationMessageList;
     closing.value = true;
 
+    if (highlightClearTimer != 0) {
+        clearTimeout(highlightClearTimer);
+        highlightClearTimer = 0;
+    }
     store.setCurrentConversationInfo(null);
     eventBus.$off('openMessageContextMenu', onOpenMessageContextMenu)
     eventBus.$off('reeditMessage', onReeditMessage)
+    eventBus.$off('locateMessage', onLocateMessageEvent)
 })
 
 onMounted(() => {
@@ -207,7 +299,28 @@ onMounted(() => {
 
     eventBus.$on('openMessageContextMenu', onOpenMessageContextMenu);
     eventBus.$on('reeditMessage', onReeditMessage);
+    eventBus.$on('locateMessage', onLocateMessageEvent);
 })
+
+// 从搜索结果等页面跳转过来时，定位到指定消息
+onShow(() => {
+    const messageId = store.takePendingLocateMessageId()
+    if (messageId != 0) {
+        setTimeout(() => {
+            store.locateMessage(messageId, onLocated)
+        }, 300)
+    }
+})
+
+const onLocateMessageEvent = (data: any | null) => {
+    if (data == null) {
+        return
+    }
+    const messageId = parseInt('' + data)
+    if (messageId > 0) {
+        store.locateMessage(messageId, onLocated)
+    }
+}
 
 const onOpenMessageContextMenu = (data: any | null) => {
     if (data instanceof OpenMessageContextMenuEvent) {
@@ -271,9 +384,7 @@ const isCopyable = (message: Message): boolean => {
 }
 
 const isDownloadAble = (message: Message): boolean => {
-    return message.messageContent instanceof ImageMessageContent
-        || message.messageContent instanceof FileMessageContent
-        || message.messageContent instanceof VideoMessageContent;
+    return isSavableMessage(message);
 }
 
 const isForwardable = (message: Message): boolean => {
@@ -403,7 +514,7 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
         items.push(new PopupMenuItem('复制', 'copy'))
     }
     if (isDownloadAble(message)) {
-        items.push(new PopupMenuItem('下载', 'download'))
+        items.push(new PopupMenuItem(isSaveToAlbumMessage(message) ? '保存到相册' : '保存到本地', 'save'))
     }
     items.push(new PopupMenuItem('本地删除', 'delete'))
     items.push(new PopupMenuItem('远程删除', 'deleteRemote'))
@@ -452,6 +563,9 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
         case 'copy':
             copy(message);
             break;
+        case 'save':
+            saveMessageMedia(message);
+            break;
         default:
             uni.showToast({
                 title: 'TODO ' + t.title,
@@ -460,6 +574,61 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
             break;
     }
     eventBus.$emit('contextMenuClosed', null)
+}
+
+const hideUnreadLabel = () => {
+    unreadLabelDismissed.value = true
+}
+
+// 定位成功后滚动到目标消息并高亮 3s，与原生 checkAndHighlightMessage 对齐
+const onLocated = (found: boolean) => {
+    if (!found) {
+        uni.showToast({
+            title: '未找到该消息',
+            icon: 'none'
+        } as ShowToastOptions)
+        return
+    }
+    const messageId = conversationState.highlightMessageId
+    setTimeout(() => {
+        scrollIntoView.value = 'id-' + messageId
+    }, 100)
+    if (highlightClearTimer != 0) {
+        clearTimeout(highlightClearTimer)
+    }
+    highlightClearTimer = setTimeout(() => {
+        highlightClearTimer = 0
+        store.clearHighlightMessage()
+        scrollIntoView.value = ''
+    }, 3000)
+}
+
+const locateFirstUnread = () => {
+    hideUnreadLabel()
+    store.locateFirstUnreadMessage(unreadCount.value, onLocated)
+}
+
+const locateFirstUnreadMention = () => {
+    hideUnreadLabel()
+    store.locateFirstUnreadMentionMessage(unreadCount.value, onLocated)
+}
+
+const backToLatest = () => {
+    store.backToLatestMessages()
+    scrollIntoView.value = ''
+    scrollToBottom()
+}
+
+const onScrollToLower = () => {
+    if (!conversationState.hasMoreNewMessages || loadingNewMessages.value) {
+        return
+    }
+    loadingNewMessages.value = true
+    store.loadConversationNewMessages(() => {
+        loadingNewMessages.value = false
+    }, () => {
+        loadingNewMessages.value = false
+    })
 }
 
 const onRefresh = () => {
@@ -522,6 +691,58 @@ const onAbort = () => {
 
 .message-list {
     flex: 1;
+}
+
+.message-item {
+    background-color: transparent;
+}
+
+.message-item.highlight {
+    background-color: #ffe9a8;
+}
+
+.unread-label-container {
+    position: absolute;
+    top: 10px;
+    right: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.unread-label {
+    margin-left: 8px;
+    padding: 6px 10px;
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+}
+
+.unread-label-text {
+    font-size: 12px;
+    color: #3B62E0;
+}
+
+.unread-label-close {
+    padding: 6px 8px;
+    font-size: 14px;
+    color: #808080;
+}
+
+.back-to-latest {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    padding: 6px 12px;
+    border-radius: 14px;
+    border: 1px solid #e0e0e0;
+    background-color: #ffffff;
+}
+
+.back-to-latest-text {
+    font-size: 12px;
+    color: #3B62E0;
 }
 
 .message-input-container {

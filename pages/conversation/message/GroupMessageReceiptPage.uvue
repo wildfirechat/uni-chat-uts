@@ -1,0 +1,147 @@
+<template>
+    <view class="receipt-page">
+        <view class="tab-bar">
+            <view class="tab" @tap="switchTab(0)">
+                <text class="tab-text" :class="{ active: currentTab == 0 }">未读({{ unreadUsers.length }})</text>
+                <view class="tab-indicator" :class="{ active: currentTab == 0 }"></view>
+            </view>
+            <view class="tab" @tap="switchTab(1)">
+                <text class="tab-text" :class="{ active: currentTab == 1 }">已读({{ readUsers.length }})</text>
+                <view class="tab-indicator" :class="{ active: currentTab == 1 }"></view>
+            </view>
+        </view>
+        <list-view class="user-list" direction="vertical">
+            <UserListView :users="currentUsers" :show-category-label="false" padding-left="20px" />
+        </list-view>
+        <view v-if="currentUsers.length == 0" class="empty-container">
+            <text class="empty-text">{{ emptyTip }}</text>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+import UserListView from "@/pages/user/UserListView.uvue";
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Message from "@/wfc/messages/message.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { gte } from "@/wfc/util/longUtil.uts";
+import { takePageOptions } from "@/common/nav.uts";
+
+defineOptions({
+    name: "GroupMessageReceiptPage"
+})
+
+const currentTab = ref<number>(0)
+const readUsers = ref<UserInfo[]>([] as UserInfo[])
+const unreadUsers = ref<UserInfo[]>([] as UserInfo[])
+
+const currentUsers = computed<UserInfo[]>((): UserInfo[] => {
+    return currentTab.value == 0 ? unreadUsers.value : readUsers.value
+})
+
+const emptyTip = computed<string>((): string => {
+    return currentTab.value == 0 ? '全部已读' : '暂无人已读'
+})
+
+onLoad((_options: OnLoadOptions) => {
+    const pageOptions = takePageOptions()
+    if (pageOptions == null || !(pageOptions instanceof Message)) {
+        return
+    }
+    loadReceipt(pageOptions as Message)
+})
+
+const loadReceipt = (message: Message) => {
+    const groupId = message.conversation.target
+    const members = store.getGroupMemberUserInfos(groupId, true)
+    const readEntries = wfc.getConversationRead(message.conversation)
+    const selfUid = wfc.getUserId()
+
+    const read: UserInfo[] = []
+    const unread: UserInfo[] = []
+    for (let i = 0; i < members.length; i++) {
+        const member = members[i]
+        // 自己发的消息，自己算已读
+        if (message.from == selfUid && member.uid == selfUid) {
+            read.push(member)
+            continue
+        }
+        const readDt = readEntries.get(member.uid) ?? 0
+        if (readDt > 0 && gte(readDt, message.timestamp)) {
+            read.push(member)
+        } else {
+            unread.push(member)
+        }
+    }
+    readUsers.value = read
+    unreadUsers.value = unread
+}
+
+const switchTab = (tab: number) => {
+    currentTab.value = tab
+}
+</script>
+
+<style scoped>
+.receipt-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+}
+
+.tab-bar {
+    display: flex;
+    flex-direction: row;
+    height: 44px;
+    border-bottom: 1px solid #ececec;
+}
+
+.tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.tab-text {
+    font-size: 15px;
+    color: #666666;
+}
+
+.tab-text.active {
+    color: #3B62E0;
+}
+
+.tab-indicator {
+    margin-top: 6px;
+    width: 30px;
+    height: 2px;
+    background-color: transparent;
+}
+
+.tab-indicator.active {
+    background-color: #3B62E0;
+}
+
+.user-list {
+    flex: 1;
+}
+
+.empty-container {
+    position: absolute;
+    top: 100px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.empty-text {
+    font-size: 14px;
+    color: #b4b4b4;
+}
+</style>

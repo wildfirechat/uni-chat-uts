@@ -50,6 +50,7 @@ import VideoMessageContent from "./wfc/messages/videoMessageContent.uts";
 import FileMessageContent from "./wfc/messages/fileMessageContent.uts";
 import SoundMessageContent from "./wfc/messages/soundMessageContent.uts";
 import CompositeMessageContent from "./wfc/messages/compositeMessageContent.uts";
+import TypingMessageContent from "./wfc/messages/typingMessageContent.uts";
 import ArticlesMessageContent from "./wfc/messages/articlesMessageContent.uts";
 import LeaveChannelChatMessageContent from "./wfc/messages/leaveChannelChatMessageContent.uts";
 import EnterChannelChatMessageContent from "./wfc/messages/enterChannelChatMessageContent.uts";
@@ -63,6 +64,9 @@ import { pinyinOf, pinyinEntryOf } from "./common/pinyin.uts";
 import { clear, getItem, setItem } from "./pages/util/storageHelper.uts";
 import Config from "./config.uts";
 import ForwardType from "./pages/conversation/message/forward/ForwardType.uts";
+
+// 消息定位时，目标消息前后各加载的消息条数
+const MESSAGE_LOAD_AROUND_COUNT = 10
 
 /**
  * 媒体预览项
@@ -115,6 +119,35 @@ export class ConversationState {
     get currentConversationOldestMessageUid(): string { return this._currentConversationOldestMessageUid.value }
     set currentConversationOldestMessageUid(value: string) { this._currentConversationOldestMessageUid.value = value }
 
+    // 消息定位模式下，已加载的最新一条消息 id；用于向下翻页
+    private _currentConversationNewestMessageId = ref<number>(0);
+    get currentConversationNewestMessageId(): number { return this._currentConversationNewestMessageId.value }
+    set currentConversationNewestMessageId(value: number) { this._currentConversationNewestMessageId.value = value }
+
+    // 为 true 表示当前消息列表底部之后还有更新的消息（消息定位后进入的状态）
+    private _hasMoreNewMessages = ref<boolean>(false);
+    get hasMoreNewMessages(): boolean { return this._hasMoreNewMessages.value }
+    set hasMoreNewMessages(value: boolean) { this._hasMoreNewMessages.value = value }
+
+    // 需要高亮的消息 id，0 表示无
+    private _highlightMessageId = ref<number>(0);
+    get highlightMessageId(): number { return this._highlightMessageId.value }
+    set highlightMessageId(value: number) { this._highlightMessageId.value = value }
+
+    // 待定位的消息 id（如从搜索结果跳转过来），会话页 onShow 时消费
+    private _pendingLocateMessageId = ref<number>(0);
+    get pendingLocateMessageId(): number { return this._pendingLocateMessageId.value }
+    set pendingLocateMessageId(value: number) { this._pendingLocateMessageId.value = value }
+
+    // 进入会话时的未读数，用于顶部「N 条未读」提示条
+    private _enterUnreadCount = ref<number>(0);
+    get enterUnreadCount(): number { return this._enterUnreadCount.value }
+    set enterUnreadCount(value: number) { this._enterUnreadCount.value = value }
+
+    private _enterUnreadMentionCount = ref<number>(0);
+    get enterUnreadMentionCount(): number { return this._enterUnreadMentionCount.value }
+    set enterUnreadMentionCount(value: number) { this._enterUnreadMentionCount.value = value }
+
     private _currentConversationRead = ref<Map<string, number> | null>(null);
     get currentConversationRead(): Map<string, number> | null { return this._currentConversationRead.value }
     set currentConversationRead(value: Map<string, number> | null) { this._currentConversationRead.value = value }
@@ -126,6 +159,10 @@ export class ConversationState {
     private _inputtingUser = ref<UserInfo | null>(null);
     get inputtingUser(): UserInfo | null { return this._inputtingUser.value }
     set inputtingUser(value: UserInfo | null) { this._inputtingUser.value = value }
+
+    private _inputtingTypingType = ref<number>(0);
+    get inputtingTypingType(): number { return this._inputtingTypingType.value }
+    set inputtingTypingType(value: number) { this._inputtingTypingType.value = value }
 
     private _inputClearTimer = ref<number>(0);
     get inputClearTimer(): number { return this._inputClearTimer.value }
@@ -181,9 +218,16 @@ export class ConversationState {
         this.currentConversationMessageList = [];
         this.currentConversationOldestMessageId = 0;
         this.currentConversationOldestMessageUid = '0';
+        this.currentConversationNewestMessageId = 0;
+        this.hasMoreNewMessages = false;
+        this.highlightMessageId = 0;
+        this.pendingLocateMessageId = 0;
+        this.enterUnreadCount = 0;
+        this.enterUnreadMentionCount = 0;
         this.currentConversationRead = null;
         this.isMessageReceiptEnable = false;
         this.inputtingUser = null;
+        this.inputtingTypingType = 0;
         this.inputClearTimer = 0;
         this.shouldAutoScrollToBottom = true;
         this.previewMediaItems = [];
@@ -592,13 +636,14 @@ class Store {
                         const userInfo = wfc.getUserInfo(msg.from, false, groupId).clone()
                         userInfo._displayName = wfc.getGroupMemberDisplayNameEx(userInfo);
                         conversationState.inputtingUser = userInfo;
+                        conversationState.inputtingTypingType = (msg.messageContent as TypingMessageContent).typingType;
 
                         if (conversationState.inputClearTimer != 0) {
                             clearTimeout(conversationState.inputClearTimer);
                         }
                         conversationState.inputClearTimer = setTimeout(() => {
                             conversationState.inputtingUser = null;
-                        }, 3000)
+                        }, 5000)
                     } else {
                         if (conversationState.inputClearTimer != 0) {
                             clearTimeout(conversationState.inputClearTimer);
@@ -608,6 +653,12 @@ class Store {
                     }
 
                     if (!this._isDisplayMessage(msg) || msg.messageContent.type == MessageContentType.RecallMessage_Notification) {
+                        return;
+                    }
+
+                    // 消息定位模式下，列表底部不是最新消息，直接追加会造成消息断层，
+                    // 交给向下翻页（loadConversationNewMessages）加载
+                    if (conversationState.hasMoreNewMessages) {
                         return;
                     }
 
@@ -727,6 +778,11 @@ class Store {
             const currentConversationInfo = conversationState.currentConversationInfo
             if (currentConversationInfo == null || !message.conversation.equal(currentConversationInfo.conversation)) {
                 console.log('not current conv')
+                return;
+            }
+            // 定位到历史消息后又发了新消息，直接回到最新消息，避免消息断层
+            if (conversationState.hasMoreNewMessages) {
+                this.backToLatestMessages();
                 return;
             }
             const index = conversationState.currentConversationMessageList.findIndex((m: Message): boolean => m.messageId == message.messageId);
@@ -1089,6 +1145,11 @@ class Store {
             conversationState.currentConversationMessageList = [];
             conversationState.currentConversationOldestMessageId = 0;
             conversationState.currentConversationOldestMessageUid = '0';
+            conversationState.currentConversationNewestMessageId = 0;
+            conversationState.hasMoreNewMessages = false;
+            conversationState.highlightMessageId = 0;
+            conversationState.enterUnreadCount = 0;
+            conversationState.enterUnreadMentionCount = 0;
             conversationState.currentConversationRead = null;
             conversationState.enableMessageMultiSelection = false;
 
@@ -1122,6 +1183,13 @@ class Store {
         conversationState.currentConversationMessageList = [];
         conversationState.currentConversationOldestMessageId = 0;
         conversationState.currentConversationOldestMessageUid = '0';
+        conversationState.currentConversationNewestMessageId = 0;
+        conversationState.hasMoreNewMessages = false;
+        conversationState.highlightMessageId = 0;
+        // 未读数会在进入会话后被清掉，这里先记下来，供顶部「N 条未读 / 有人@我」提示条使用
+        const unreadCount = conversationInfo.unreadCount;
+        conversationState.enterUnreadCount = unreadCount.unread + unreadCount.unreadMention + unreadCount.unreadMentionAll;
+        conversationState.enterUnreadMentionCount = unreadCount.unreadMention + unreadCount.unreadMentionAll;
         this._loadCurrentConversationMessages();
 
         conversationState.currentConversationRead = wfc.getConversationRead(conversationInfo.conversation);
@@ -1458,11 +1526,18 @@ class Store {
         }
         const conversation = currentConversationInfo.conversation;
         wfc.getMessagesV2(conversation, 0, true, 20, '', (msgs: Message[]) => {
+            // 已经进入消息定位模式（如从搜索结果跳过来），不要用最新消息覆盖定位结果
+            if (conversationState.highlightMessageId != 0 || conversationState.hasMoreNewMessages) {
+                return;
+            }
             conversationState.currentConversationMessageList = msgs;
             this._patchCurrentConversationMessages();
             if (msgs.length > 0) {
                 conversationState.currentConversationOldestMessageId = msgs[0].messageId;
+                conversationState.currentConversationNewestMessageId = msgs[msgs.length - 1].messageId;
             }
+            // 加载的是最新的消息，底部之后不会再有更新的消息
+            conversationState.hasMoreNewMessages = false;
             for (let i = 0; i < msgs.length; i++) {
                 if (gt(msgs[i].messageUid, 0)) {
                     conversationState.currentConversationOldestMessageUid = msgs[0].messageUid;
@@ -1472,6 +1547,194 @@ class Store {
         }, (err: number) => {
             console.error('_loadCurrentConversationMessages error', err);
         });
+    }
+
+    /**
+     * 定位到指定消息：加载该消息前后各 MESSAGE_LOAD_AROUND_COUNT 条，并高亮该消息。
+     * 定位后列表底部不再是最新消息，需要向下翻页（loadConversationNewMessages）。
+     */
+    locateMessage(messageId: number, resultCB: ((found: boolean) => void) | null = null): void {
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo == null) {
+            resultCB?.(false);
+            return;
+        }
+        const conversation = currentConversationInfo.conversation;
+        const targetMessage = wfc.getMessageById(messageId);
+        if (targetMessage == null) {
+            resultCB?.(false);
+            return;
+        }
+        const count = MESSAGE_LOAD_AROUND_COUNT;
+        wfc.getMessagesV2(conversation, messageId, true, count, '', (olderMsgs: Message[]) => {
+            wfc.getMessagesV2(conversation, messageId, false, count, '', (newerMsgs: Message[]) => {
+                const nowConversationInfo = conversationState.currentConversationInfo
+                if (nowConversationInfo == null || !conversation.equal(nowConversationInfo.conversation)) {
+                    resultCB?.(false);
+                    return;
+                }
+                // getMessagesV2 是否包含 fromIndex 消息本身各平台不一致，统一按 messageId 去重
+                const msgs: Message[] = [];
+                const addedIds = new Set<number>();
+                const appendMsg = (m: Message) => {
+                    if (!addedIds.has(m.messageId)) {
+                        addedIds.add(m.messageId);
+                        msgs.push(m);
+                    }
+                }
+                for (let i = 0; i < olderMsgs.length; i++) {
+                    appendMsg(olderMsgs[i]);
+                }
+                appendMsg(targetMessage);
+                for (let i = 0; i < newerMsgs.length; i++) {
+                    appendMsg(newerMsgs[i]);
+                }
+                msgs.sort((m1: Message, m2: Message): number => m1.messageId - m2.messageId);
+
+                conversationState.currentConversationMessageList = msgs;
+                this._patchCurrentConversationMessages();
+                conversationState.currentConversationOldestMessageId = msgs[0].messageId;
+                conversationState.currentConversationOldestMessageUid = '0';
+                for (let i = 0; i < msgs.length; i++) {
+                    if (gt(msgs[i].messageUid, 0)) {
+                        conversationState.currentConversationOldestMessageUid = msgs[i].messageUid;
+                        break;
+                    }
+                }
+                conversationState.currentConversationNewestMessageId = msgs[msgs.length - 1].messageId;
+                conversationState.hasMoreNewMessages = newerMsgs.length >= count;
+                conversationState.shouldAutoScrollToBottom = false;
+                conversationState.highlightMessageId = messageId;
+                resultCB?.(true);
+            }, (err: number) => {
+                console.error('locateMessage load newer error', err);
+                resultCB?.(false);
+            });
+        }, (err: number) => {
+            console.error('locateMessage load older error', err);
+            resultCB?.(false);
+        });
+    }
+
+    /**
+     * 定位到第一条未读消息。unreadCount 为进入会话时的未读数
+     */
+    locateFirstUnreadMessage(unreadCount: number, resultCB: ((found: boolean) => void) | null = null): void {
+        this._locateUnreadMessage(unreadCount, false, resultCB);
+    }
+
+    /**
+     * 定位到第一条未读的 @ 消息
+     */
+    locateFirstUnreadMentionMessage(unreadCount: number, resultCB: ((found: boolean) => void) | null = null): void {
+        this._locateUnreadMessage(unreadCount, true, resultCB);
+    }
+
+    // 门面层没有 getFirstUnreadMessageId，这里用「未读数 = 从最新往前数第几条」反推首条未读消息
+    _locateUnreadMessage(unreadCount: number, mentionOnly: boolean, resultCB: ((found: boolean) => void) | null): void {
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo == null || unreadCount <= 0) {
+            resultCB?.(false);
+            return;
+        }
+        const conversation = currentConversationInfo.conversation;
+        wfc.getMessagesV2(conversation, 0, true, unreadCount, '', (msgs: Message[]) => {
+            let target: Message | null = null;
+            for (let i = 0; i < msgs.length; i++) {
+                const m = msgs[i]
+                if (!mentionOnly) {
+                    target = m;
+                    break;
+                }
+                if (m.status == MessageStatus.Mentioned || m.status == MessageStatus.AllMentioned) {
+                    target = m;
+                    break;
+                }
+            }
+            const targetMessage = target;
+            if (targetMessage == null) {
+                resultCB?.(false);
+                return;
+            }
+            this.locateMessage(targetMessage.messageId, resultCB);
+        }, (err: number) => {
+            console.error('_locateUnreadMessage error', err);
+            resultCB?.(false);
+        });
+    }
+
+    /**
+     * 消息定位模式下向下翻页，加载更新的消息
+     */
+    loadConversationNewMessages(loadedCB: () => void, completeCB: () => void): void {
+        const currentConversationInfo = conversationState.currentConversationInfo
+        if (currentConversationInfo == null || !conversationState.hasMoreNewMessages) {
+            completeCB();
+            return;
+        }
+        const conversation = currentConversationInfo.conversation;
+        const fromIndex = conversationState.currentConversationNewestMessageId;
+        wfc.getMessagesV2(conversation, fromIndex, false, 20, '', (msgs: Message[]) => {
+            const nowConversationInfo = conversationState.currentConversationInfo
+            if (nowConversationInfo == null || !conversation.equal(nowConversationInfo.conversation)) {
+                completeCB();
+                return;
+            }
+            const oldList = conversationState.currentConversationMessageList;
+            const newMsgs = msgs.filter((m: Message): boolean => {
+                return oldList.findIndex((cm: Message): boolean => cm.messageId == m.messageId) == -1;
+            });
+            if (newMsgs.length == 0) {
+                conversationState.hasMoreNewMessages = false;
+                // 已经追到最新消息，恢复新消息自动滚到底部
+                conversationState.shouldAutoScrollToBottom = true;
+                completeCB();
+                return;
+            }
+            let lastTimestamp = oldList.length > 0 ? oldList[oldList.length - 1].timestamp : 0;
+            for (let i = 0; i < newMsgs.length; i++) {
+                this._patchMessage(newMsgs[i], lastTimestamp);
+                lastTimestamp = newMsgs[i].timestamp;
+            }
+            conversationState.currentConversationMessageList = oldList.concat(newMsgs);
+            conversationState.currentConversationNewestMessageId = newMsgs[newMsgs.length - 1].messageId;
+            conversationState.hasMoreNewMessages = msgs.length >= 20;
+            if (!conversationState.hasMoreNewMessages) {
+                conversationState.shouldAutoScrollToBottom = true;
+            }
+            loadedCB();
+        }, (err: number) => {
+            console.error('loadConversationNewMessages error', err);
+            completeCB();
+        });
+    }
+
+    /**
+     * 退出消息定位模式，回到最新消息
+     */
+    backToLatestMessages(): void {
+        // 先退出定位模式，否则 _loadCurrentConversationMessages 会因为定位保护而不生效
+        conversationState.highlightMessageId = 0;
+        conversationState.hasMoreNewMessages = false;
+        conversationState.shouldAutoScrollToBottom = true;
+        this._loadCurrentConversationMessages();
+    }
+
+    clearHighlightMessage(): void {
+        conversationState.highlightMessageId = 0;
+    }
+
+    /**
+     * 请求会话页定位到某条消息（会话页 onShow 时消费）
+     */
+    requestLocateMessage(messageId: number): void {
+        conversationState.pendingLocateMessageId = messageId;
+    }
+
+    takePendingLocateMessageId(): number {
+        const messageId = conversationState.pendingLocateMessageId;
+        conversationState.pendingLocateMessageId = 0;
+        return messageId;
     }
 
     _patchCurrentConversationMessages(): void {

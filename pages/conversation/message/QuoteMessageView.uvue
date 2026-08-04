@@ -18,6 +18,7 @@ import Message from "@/wfc/messages/message.uts";
 import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
 import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
 import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
+import eventBus from "@/common/eventBus.uts";
 
 defineOptions({
     name: "QuoteMessageView",
@@ -83,7 +84,13 @@ const onMessageClick = () => {
         case MessageContentType.Image:
             store.previewMessage(props.quotedMessage, false);
             break;
+        case MessageContentType.RecallMessage_Notification:
+            break;
         default:
+            // 定位到被引用的原消息
+            if (props.quotedMessage.messageId > 0) {
+                eventBus.$emit('locateMessage', props.quotedMessage.messageId)
+            }
             break
     }
 }
