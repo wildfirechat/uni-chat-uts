@@ -1,0 +1,19 @@
+/**
+ * 选择/拍摄得到的临时文件地址，各平台形态不一样：
+ *
+ * - Android/iOS: `file:///storage/...`，去掉 scheme 后就是可直接读写的绝对路径；
+ * - Harmony: 相机(cameraPicker)和相册原图返回的是媒体库 uri，形如
+ *   `file://media/Photo/12/IMG_xxx/IMG_xxx.jpg`，`media` 是 authority 不是目录，
+ *   去掉 scheme 会得到 `media/Photo/...` 这种不存在的路径，文件读取/上传随即失败。
+ *   wfc SDK(marswrapper) 内部用 fs.copy 处理这种 uri，必须原样传给它。
+ *
+ * 判断规则与 uni-app x 运行时的 getFsPath 一致：去掉 `file://` 之后仍以 `/` 开头
+ * (也就是 `file:///`)的才是真实路径，否则保留原始 uri。
+ */
+export function toLocalFilePath(path: string): string {
+    if (!path.startsWith('file://')) {
+        return path
+    }
+    const rest = path.substring('file://'.length)
+    return rest.startsWith('/') ? rest : path
+}

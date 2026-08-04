@@ -1,0 +1,146 @@
+/**
+ * 媒体消息的保存能力：图片/视频保存到相册，文件下载到本地后用系统应用打开（可另存）。
+ */
+import Message from "../wfc/messages/message.uts";
+import ImageMessageContent from "../wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "../wfc/messages/videoMessageContent.uts";
+import FileMessageContent from "../wfc/messages/fileMessageContent.uts";
+import StickerMessageContent from "../wfc/messages/stickerMessageContent.uts";
+
+function toast(title: string): void {
+    uni.showToast({
+        title: title,
+        icon: 'none',
+    } as ShowToastOptions)
+}
+
+/**
+ * 消息是否可保存（图片/视频/贴纸 → 相册，文件 → 本地）
+ */
+export function isSavableMessage(message: Message): boolean {
+    const content = message.messageContent
+    return content instanceof ImageMessageContent
+        || content instanceof VideoMessageContent
+        || content instanceof StickerMessageContent
+        || content instanceof FileMessageContent
+}
+
+export function isSaveToAlbumMessage(message: Message): boolean {
+    const content = message.messageContent
+    return content instanceof ImageMessageContent
+        || content instanceof VideoMessageContent
+        || content instanceof StickerMessageContent
+}
+
+/**
+ * 保存图片/视频到相册
+ */
+export function saveMessageMediaToAlbum(message: Message): void {
+    const content = message.messageContent
+    let url = ''
+    let isVideo = false
+    if (content instanceof ImageMessageContent) {
+        url = (content as ImageMessageContent).remotePath
+    } else if (content instanceof StickerMessageContent) {
+        url = (content as StickerMessageContent).remotePath
+    } else if (content instanceof VideoMessageContent) {
+        url = (content as VideoMessageContent).remotePath
+        isVideo = true
+    }
+    if (url == '') {
+        toast('文件地址为空，无法保存')
+        return
+    }
+
+    uni.showLoading({
+        title: '保存中...',
+    } as ShowLoadingOptions)
+    uni.downloadFile({
+        url: url,
+        success: (res) => {
+            const filePath = res.tempFilePath
+            if (isVideo) {
+                uni.saveVideoToPhotosAlbum({
+                    filePath: filePath,
+                    success: (_) => {
+                        uni.hideLoading()
+                        toast('已保存到相册')
+                    },
+                    fail: (err) => {
+                        uni.hideLoading()
+                        console.log('saveVideoToPhotosAlbum fail', err)
+                        toast('保存失败')
+                    }
+                } as SaveVideoToPhotosAlbumOptions)
+            } else {
+                uni.saveImageToPhotosAlbum({
+                    filePath: filePath,
+                    success: (_) => {
+                        uni.hideLoading()
+                        toast('已保存到相册')
+                    },
+                    fail: (err) => {
+                        uni.hideLoading()
+                        console.log('saveImageToPhotosAlbum fail', err)
+                        toast('保存失败')
+                    }
+                } as SaveImageToPhotosAlbumOptions)
+            }
+        },
+        fail: (err) => {
+            uni.hideLoading()
+            console.log('download media fail', err)
+            toast('下载失败')
+        }
+    } as DownloadFileOptions)
+}
+
+/**
+ * 保存文件到本地：下载后交给系统应用打开，由系统完成另存
+ */
+export function saveMessageFile(message: Message): void {
+    const content = message.messageContent
+    if (!(content instanceof FileMessageContent)) {
+        return
+    }
+    const fileContent = content as FileMessageContent
+    if (fileContent.remotePath == '') {
+        toast('文件地址为空，无法保存')
+        return
+    }
+    uni.showLoading({
+        title: '下载中...',
+    } as ShowLoadingOptions)
+    uni.downloadFile({
+        url: fileContent.remotePath,
+        success: (res) => {
+            uni.hideLoading()
+            uni.openDocument({
+                filePath: res.tempFilePath,
+                success: (_) => {
+                    console.log('open document success')
+                },
+                fail: (err) => {
+                    console.log('open document fail', err)
+                    toast('已下载到 ' + res.tempFilePath)
+                }
+            } as OpenDocumentOptions)
+        },
+        fail: (err) => {
+            uni.hideLoading()
+            console.log('download file fail', err)
+            toast('下载失败')
+        }
+    } as DownloadFileOptions)
+}
+
+/**
+ * 长按菜单「保存」的统一入口
+ */
+export function saveMessageMedia(message: Message): void {
+    if (isSaveToAlbumMessage(message)) {
+        saveMessageMediaToAlbum(message)
+    } else {
+        saveMessageFile(message)
+    }
+}

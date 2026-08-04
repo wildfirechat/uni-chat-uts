@@ -22,6 +22,7 @@ import Config from "../../config.uts";
 import MessageContentMediaType from "../../wfc/messages/messageContentMediaType.uts";
 import ModifyMyInfoType from "../../wfc/model/modifyMyInfoType.uts";
 import ModifyMyInfoEntry from "../../wfc/model/modifyMyInfoEntry.uts";
+import { toLocalFilePath } from "../../common/filePath.uts";
 
 const portrait = computed<string>((): string => {
     const user = contactState.selfUserInfo
@@ -82,10 +83,7 @@ const updatePortrait = () => {
         success: (e) => {
             console.log('choose image', e.tempFilePaths.length);
             for (let i = 0; i < e.tempFilePaths.length; i++) {
-                let filePath = e.tempFilePaths[i];
-                if (filePath.startsWith('file://')) {
-                    filePath = filePath.substring('file://'.length);
-                }
+                const filePath = toLocalFilePath(e.tempFilePaths[i]);
                 wfc.uploadMediaFile(filePath, MessageContentMediaType.Portrait, (remoteUrl: string) => {
                     console.log('upload success', remoteUrl);
                     wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_Portrait, remoteUrl)], () => {

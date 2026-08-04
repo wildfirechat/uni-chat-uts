@@ -1,0 +1,51 @@
+/**
+ * 会话信息页共用的会话操作，避免单聊/群聊会话信息页重复实现。
+ */
+import Conversation from "../wfc/model/conversation.uts";
+import wfc from "../wfc/client/wfc.uts";
+
+/**
+ * 清空聊天记录：先选清空范围（仅本机 / 本机和服务器），再二次确认
+ */
+export function clearConversationMessages(conversation: Conversation): void {
+    uni.showActionSheet({
+        itemList: ['清空本机聊天记录', '清空本机和服务器聊天记录'],
+        success: (res) => {
+            const clearRemote = res.tapIndex == 1
+            uni.showModal({
+                title: '清空聊天记录',
+                content: clearRemote ? '本机和服务器的聊天记录都将被清空，且不可恢复' : '本机聊天记录将被清空，且不可恢复',
+                confirmColor: '#ff0000',
+                success: (modalRes) => {
+                    if (!modalRes.confirm) {
+                        return
+                    }
+                    if (clearRemote) {
+                        wfc.clearRemoteConversationMessages(conversation, () => {
+                            wfc.clearMessages(conversation)
+                            uni.showToast({
+                                title: '已清空',
+                                icon: 'none',
+                            } as ShowToastOptions)
+                        }, (err: number) => {
+                            console.log('clearRemoteConversationMessages error', err)
+                            uni.showToast({
+                                title: '清空服务器聊天记录失败 ' + err,
+                                icon: 'none',
+                            } as ShowToastOptions)
+                        })
+                    } else {
+                        wfc.clearMessages(conversation)
+                        uni.showToast({
+                            title: '已清空',
+                            icon: 'none',
+                        } as ShowToastOptions)
+                    }
+                }
+            } as ShowModalOptions)
+        },
+        fail: (err) => {
+            console.log('show clear messages action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}

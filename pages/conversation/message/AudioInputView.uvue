@@ -15,6 +15,7 @@
 import wfc from "../../../wfc/client/wfc.uts";
 import ConversationInfo from "../../../wfc/model/conversationInfo.uts";
 import SoundMessageContent from "../../../wfc/messages/soundMessageContent.uts";
+import { toLocalFilePath } from "../../../common/filePath.uts";
 
 defineOptions({
     name: 'AudioInputView'
@@ -48,10 +49,7 @@ onMounted(() => {
                     icon: 'none'
                 } as ShowToastOptions);
             } else {
-                let filePath = res.tempFilePath;
-                if (filePath.startsWith('file://')) {
-                    filePath = filePath.substring('file://'.length);
-                }
+                const filePath = toLocalFilePath(res.tempFilePath);
                 const soundMessageContent = new SoundMessageContent(filePath, '', recordTime.value)
                 wfc.sendConversationMessage(props.conversationInfo.conversation, soundMessageContent);
             }

@@ -110,6 +110,7 @@ const UNREAD_LABEL_MIN_COUNT = 10
 const UNREAD_LABEL_MAX_COUNT = 300
 const unreadLabelDismissed = ref<boolean>(false)
 let highlightClearTimer = 0
+let keyboardHeightChangeId = 0
 
 // onUnload 时会清空 store 里的当前会话，而此时页面关闭动画才刚开始，页面仍在渲染，
 // 直接渲染 store 数据会导致整个页面瞬间变白(白屏动画滑出后才看到会话列表)。
@@ -258,6 +259,14 @@ watch(messageList, (_newList: Message[], _old: Message[]) => {
 watch(currentVoiceMessage, (_n: Message | null, _o: Message | null) => {
 }, { immediate: true })
 
+// keyboardHeight 是记住的键盘高度(表情/更多面板复用它)，currentHeight 是当前键盘实际高度，收起时为 0
+const notifyKeyboardHeight = (currentHeight: number) => {
+    const inputView = messageInputView.value
+    if (inputView != null) {
+        (inputView as ComponentPublicInstance).$callMethod('onKeyboardHeightChange', keyboardHeight.value, currentHeight);
+    }
+}
+
 onUnload(() => {
     // 先冻结渲染，再清空 store，避免关闭动画期间页面变白
     closingConversationInfo.value = conversationState.currentConversationInfo;
@@ -267,6 +276,10 @@ onUnload(() => {
     if (highlightClearTimer != 0) {
         clearTimeout(highlightClearTimer);
         highlightClearTimer = 0;
+    }
+    if (keyboardHeightChangeId != 0) {
+        uni.offKeyboardHeightChange(keyboardHeightChangeId);
+        keyboardHeightChangeId = 0;
     }
     store.setCurrentConversationInfo(null);
     eventBus.$off('openMessageContextMenu', onOpenMessageContextMenu)
@@ -285,15 +298,15 @@ onMounted(() => {
     if (savedKeyboardHeight != '') {
         keyboardHeight.value = parseInt(savedKeyboardHeight);
     }
-    uni.onKeyboardHeightChange((res) => {
+    // 表情/更多面板高度沿用记住的键盘高度，进页面时先同步一次
+    notifyKeyboardHeight(0);
+    keyboardHeightChangeId = uni.onKeyboardHeightChange((res) => {
         if (keyboardHeight.value != res.height && res.height > 0) {
             keyboardHeight.value = res.height;
             setItem('keyboardHeight', '' + keyboardHeight.value)
         }
-        const inputView = messageInputView.value
-        if (inputView != null && res.height > 0) {
-            (inputView as ComponentPublicInstance).$callMethod('onKeyboardHeightChange', keyboardHeight.value, res.height);
-        }
+        // 键盘收起(height == 0)也要通知，输入框需要据此撤掉顶起用的 padding
+        notifyKeyboardHeight(res.height);
         scrollToBottom();
     });
 

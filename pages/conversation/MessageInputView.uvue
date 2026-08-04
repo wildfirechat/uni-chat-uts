@@ -1,6 +1,6 @@
 <template>
     <view>
-        <view class="wf-message-input-container" :style="{ paddingBottom: safeAreaBottomHeight + 'px' }">
+        <view class="wf-message-input-container" :style="{ paddingBottom: inputPaddingBottom + 'px' }">
             <view class="wf-message-input-toolbar">
                 <text class="wf-input-button-icon wxfont" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
                 <text v-if="isPttEnable" class="wf-input-button-icon wxfont" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
@@ -14,7 +14,7 @@
                     <view class="wf-input-text-container">
                         <textarea class="wf-input-textarea" @focus="onInputFocus" @input="onInput" :value="text"
                             placeholder="" :hold-keyboard="true" confirm-type="send" @confirm="send" :maxlength="-1"
-                            :auto-height="true" />
+                            :auto-height="true" :adjust-position="adjustPosition" />
                     </view>
                     <view v-if="quotedMessage != null" class="quote-message-container">
                         <text class="quoted-message single-line">{{ quotedMessageDigest }}</text>
@@ -83,6 +83,7 @@ import CallState from "../../wfc/av/engine/callState.uts";
 import checkVoipPermissions from "../../wfc/av/voipUtil.uts";
 import pttClient from "../../wfc/ptt/pttClient.uts";
 import { navigateToPage } from "../../common/nav.uts";
+import { toLocalFilePath } from "../../common/filePath.uts";
 
 class ExtItem {
     title = ''
@@ -131,6 +132,22 @@ const safeAreaBottomHeight = ref<number>(0)
 
 const sysInfo = uni.getSystemInfoSync()
 safeAreaBottomHeight.value = sysInfo.safeAreaInsets.bottom
+
+// 鸿蒙上 textarea 聚焦时，框架会把 KeyboardAvoidMode 设为 OFFSET，整个页面(含页面内自定义导航栏)
+// 被键盘顶出屏幕，且顶起高度按光标算，输入框仍会被挡住一部分。
+// 这里关掉系统避让，改为手动把输入区抬到键盘上方，等效 Android 的 softinputMode: adjustResize。
+const adjustPosition = ref<boolean>(true)
+// #ifdef APP-HARMONY
+adjustPosition.value = false
+// #endif
+
+// 关掉了系统避让时，键盘弹出期间用等高的 padding 顶起输入区；其余情况只留底部安全区
+const inputPaddingBottom = computed<number>((): number => {
+    if (!adjustPosition.value && currentKeyboardHeight.value > 0) {
+        return currentKeyboardHeight.value
+    }
+    return safeAreaBottomHeight.value
+})
 
 const quotedMessage = computed<Message | null>((): Message | null => {
     return conversationState.quotedMessage
@@ -269,6 +286,8 @@ const onInputFocus = () => {
 }
 
 const toggleVoice = () => {
+    // 语音/表情/更多面板都是占据键盘位置的，切过去时先收起键盘，否则两者会同时占底部空间
+    uni.hideKeyboard();
     showVoice.value = !showVoice.value;
     showPtt.value = false;
     showEmoji.value = false;
@@ -279,6 +298,7 @@ const toggleVoice = () => {
 }
 
 const togglePtt = () => {
+    uni.hideKeyboard();
     showPtt.value = !showPtt.value;
     showVoice.value = false;
     showEmoji.value = false;
@@ -286,6 +306,7 @@ const togglePtt = () => {
 }
 
 const toggleEmoji = () => {
+    uni.hideKeyboard();
     showEmoji.value = !showEmoji.value;
     showExt.value = false;
     showVoice.value = false;
@@ -293,6 +314,7 @@ const toggleEmoji = () => {
 }
 
 const toggleExt = () => {
+    uni.hideKeyboard();
     showExt.value = !showExt.value;
     showEmoji.value = false;
     showVoice.value = false;
@@ -460,11 +482,7 @@ const takePhoto = () => {
         sizeType: ['original', 'compressed'],
         success: (e) => {
             for (let i = 0; i < e.tempFilePaths.length; i++) {
-                let path = e.tempFilePaths[i];
-                if (path.startsWith('file://')) {
-                    path = path.substring('file://'.length);
-                }
-                store.sendFile(props.conversationInfo.conversation, path);
+                store.sendFile(props.conversationInfo.conversation, toLocalFilePath(e.tempFilePaths[i]));
             }
         },
         fail: (err) => {
@@ -493,11 +511,7 @@ const chooseImage = () => {
         success: (e) => {
             console.log('choose image', e.tempFilePaths.length);
             for (let i = 0; i < e.tempFilePaths.length; i++) {
-                let path = e.tempFilePaths[i];
-                if (path.startsWith('file://')) {
-                    path = path.substring('file://'.length);
-                }
-                store.sendFile(props.conversationInfo.conversation, path);
+                store.sendFile(props.conversationInfo.conversation, toLocalFilePath(e.tempFilePaths[i]));
             }
         },
         fail: (err) => {
@@ -512,11 +526,7 @@ const chooseVideo = () => {
         sourceType: ['camera'],
         success: (e) => {
             console.log('choose video', e.tempFilePath);
-            let path = e.tempFilePath;
-            if (path.startsWith('file://')) {
-                path = path.substring('file://'.length);
-            }
-            store.sendFile(props.conversationInfo.conversation, path);
+            store.sendFile(props.conversationInfo.conversation, toLocalFilePath(e.tempFilePath));
         },
         fail: (err) => {
             console.log('choose video fail', err)
@@ -527,12 +537,9 @@ const chooseVideo = () => {
 const chooseFile = () => {
     notifyTyping(TypingMessageContent.TYPING_FILE);
     wfc.chooseFile('all', (file: UTSJSONObject) => {
-        let path = file.getString('path') ?? '';
+        const path = toLocalFilePath(file.getString('path') ?? '');
         if (path == '') {
             return
-        }
-        if (path.startsWith('file://')) {
-            path = path.substring('file://'.length);
         }
         const name = file.getString('name') ?? ''
         const size = file.getNumber('size') ?? 0
@@ -543,7 +550,10 @@ const chooseFile = () => {
 }
 
 const onKeyboardHeightChange = (kbHeight: number, currentKbHeight: number) => {
-    keyboardHeight.value = kbHeight;
+    // kbHeight 是记住的键盘高度，用作表情/更多面板高度，还没记住过(为 0)时保留默认值
+    if (kbHeight > 0) {
+        keyboardHeight.value = kbHeight;
+    }
     currentKeyboardHeight.value = currentKbHeight;
 }
 
