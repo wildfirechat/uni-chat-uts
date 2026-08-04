@@ -1,0 +1,80 @@
+/**
+ * 语音转文字（ASR）。对齐 flutter `conversation/conversation_controller.dart` 的
+ * `_performSpeechToText` / `_makeAsrRequest`。
+ *
+ * **不走 IM 协议栈，也不需要动原生插件** —— 客户端把语音消息的 remoteUrl POST 给
+ * [Config.ASR_SERVER]，服务端按 SSE（`data: xxx` 逐行）把识别结果吐回来。
+ *
+ * 与 flutter 的一处差异：flutter 用 `http.Request.send()` 拿到流，边收边把片段拼进气泡；
+ * uni-app x 的 `uni.request` 没有流式回调，只能等整个响应体到齐再一次性解析，
+ * 所以转写结果是**一次性出现**而不是逐字蹦出来。对短语音（≤60s）观感差别不大。
+ */
+import Config from "../config.uts";
+
+/** ASR 是否可用。服务地址置空时，消息长按菜单里不显示「语音转文字」。 */
+export function isAsrEnabled(): boolean {
+    return Config.ASR_SERVER.trim() != ''
+}
+
+/**
+ * 把 SSE 风格的响应体拼成一整段文本。
+ *
+ * 服务端每行形如 `data: 这是一段识别结果`，空行是心跳。与 flutter 的分片处理同构：
+ * 去掉 `\r`、去掉 `data:` 前缀，非空的拼起来。
+ */
+function parseSseText(body: string): string {
+    const lines = body.split('\n')
+    let text = ''
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].replace('\r', '').trim()
+        if (line == '') {
+            continue
+        }
+        const chunk = line.startsWith('data:') ? line.substring(5).trim() : line
+        if (chunk != '') {
+            text += chunk
+        }
+    }
+    return text
+}
+
+/**
+ * 识别一段语音。
+ *
+ * @param audioUrl 语音消息的 remoteUrl
+ * @param successCB 识别出的文本（可能为空串，表示服务端没识别出内容）
+ * @param failCB 网络或服务端错误
+ */
+export function speechToText(audioUrl: string, successCB: ((text: string) => void) | null, failCB: ((err: string) => void) | null): void {
+    if (!isAsrEnabled()) {
+        failCB?.('asr server not configured')
+        return
+    }
+    uni.request<string>({
+        url: Config.ASR_SERVER,
+        method: 'POST',
+        // 响应是 SSE 文本，不是 JSON，必须按文本收，否则各端解析行为不一致
+        responseType: 'text',
+        header: {
+            'content-type': 'application/json',
+            'Accept': '*/*'
+        } as UTSJSONObject,
+        data: {
+            url: audioUrl,
+            noReuse: false,
+            noLlm: false
+        } as UTSJSONObject,
+        success: (res) => {
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+                console.log('asr request error, status code', res.statusCode)
+                failCB?.('status code ' + res.statusCode)
+                return
+            }
+            successCB?.(parseSseText(res.data ?? ''))
+        },
+        fail: (err) => {
+            console.log('asr request fail', err)
+            failCB?.(err.errMsg)
+        }
+    } as RequestOptions<string>)
+}

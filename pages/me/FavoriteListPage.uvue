@@ -47,8 +47,8 @@
  * 收藏是 app server 的独立业务（`/fav/*`），不走 IM 协议栈，模型见 wfc/model/favoriteItem.uts。
  *
  * 与 flutter 的差异：
- * - flutter 的「打开」会按类型跳到图片预览 / 合并转发详情页，这里只做**转发**和**删除**
- *   —— 预览要接会话页那套渲染器，属于 M3 的活。
+ * - 「打开」按类型分流（见 [openItem]），但合并转发的收藏打不开 ——
+ *   [FavoriteItem.buildContent] 没还原 Composite 的 payload。
  * - 分类是**客户端过滤**（服务端 `/fav/list` 不支持按类型查），所以某一页全被滤掉时
  *   会自动接着拉下一页，和 flutter 的处理一致。
  *
@@ -58,8 +58,14 @@ import appServerApi from "@/api/appServerApi.uts";
 import FavoriteItem from "@/wfc/model/favoriteItem.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 import UnknownMessageContent from "@/wfc/messages/unknownMessageContent.uts";
+import TextMessageContent from "@/wfc/messages/textMessageContent.uts";
+import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
+import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
+import LinkMessageContent from "@/wfc/messages/linkMessageContent.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
+import { saveMessageFile } from "@/common/mediaSaver.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, FONT_LG, fontClass, fontSizeIndex } from "@/common/layoutScale.uts";
 import { dateFormat } from "@/pages/util/helper.uts";
@@ -115,10 +121,11 @@ const tabs = computed<CategoryTab[]>((): CategoryTab[] => {
 })
 
 const sheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
+    const openSheetItem = new ActionSheetItem(t('common.open'), 'open')
     const forwardItem = new ActionSheetItem(t('common.forward'), 'forward')
     const deleteItem = new ActionSheetItem(t('common.delete'), 'delete')
     deleteItem.danger = true
-    return [forwardItem, deleteItem]
+    return [openSheetItem, forwardItem, deleteItem]
 })
 
 onLoad(() => {
@@ -245,7 +252,9 @@ const onSheetSelect = (tag: string) => {
     if (item == null) {
         return
     }
-    if (tag == 'forward') {
+    if (tag == 'open') {
+        openItem(item!)
+    } else if (tag == 'forward') {
         const message = item.toMessage()
         if (message.messageContent instanceof UnknownMessageContent) {
             uni.showToast({
@@ -258,6 +267,67 @@ const onSheetSelect = (tag: string) => {
     } else if (tag == 'delete') {
         confirmDelete(item)
     }
+}
+
+/**
+ * 打开一条收藏。对齐 flutter `pc/pc_favorite_list_widget.dart` 的 `_openItem`。
+ *
+ * 与 flutter 的两处差异：
+ * - flutter 对文件只 toast 一个文件名，这里直接走下载（本项目已有 saveMessageFile，比 toast 有用）
+ * - flutter 对链接也是 toast url，这里跳 WebViewPage
+ * 合并转发仍然打不开 —— [FavoriteItem.buildContent] 没还原 Composite 的 payload，
+ * 拿到的是 UnknownMessageContent，会落到下面的「不支持的类型」。
+ */
+const openItem = (item: FavoriteItem) => {
+    const message = item.toMessage()
+    const content = message.messageContent
+    if (content instanceof ImageMessageContent) {
+        const url = (content as ImageMessageContent).remotePath
+        if (url != '') {
+            uni.previewImage({
+                urls: [url],
+                current: 0
+            } as PreviewImageOptions)
+            return
+        }
+    } else if (content instanceof VideoMessageContent) {
+        const url = (content as VideoMessageContent).remotePath
+        if (url != '') {
+            uni.navigateTo({
+                url: '/pages/misc/PreviewVideoPage?url=' + encodeURIComponent(url),
+                fail: (err) => {
+                    console.log('nav to PreviewVideoPage err', err)
+                }
+            } as NavigateToOptions)
+            return
+        }
+    } else if (content instanceof FileMessageContent) {
+        saveMessageFile(message)
+        return
+    } else if (content instanceof LinkMessageContent) {
+        const url = (content as LinkMessageContent).url
+        if (url != '') {
+            uni.navigateTo({
+                url: '/pages/misc/WebViewPage?url=' + encodeURIComponent(url),
+                fail: (err) => {
+                    console.log('nav to WebViewPage err', err)
+                }
+            } as NavigateToOptions)
+            return
+        }
+    } else if (content instanceof TextMessageContent) {
+        // 文本收藏没有可跳的页面，用弹窗展示全文（flutter 是 toast，长文本会被截断）
+        uni.showModal({
+            title: t('fav.fav'),
+            content: (content as TextMessageContent).content,
+            showCancel: false
+        } as ShowModalOptions)
+        return
+    }
+    uni.showToast({
+        title: t('common.unsupported_type'),
+        icon: 'none'
+    } as ShowToastOptions)
 }
 
 const confirmDelete = (item: FavoriteItem) => {

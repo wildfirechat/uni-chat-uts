@@ -1,0 +1,45 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <conversation-links v-if="conversation != null" :conversation="conversation!" />
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会话链接页。对齐 flutter `conversation/conversation_links_screen.dart` 的 ConversationLinksScreen。
+ *
+ * 页面本身只是个壳，内容全在 [conversation-links](../../components/conversation-links/conversation-links.uvue)，
+ * 与会话内搜索页的「链接」标签共用同一份实现。
+ *
+ * 会话通过 [searchState.conversation] 传入（与 SearchConversationMessagePage 同一约定）——
+ * uni 的页面传参只能带字符串，Conversation 走 query 要序列化两次，不如走全局 state。
+ */
+import Conversation from "@/wfc/model/conversation.uts";
+import { searchState } from "@/store.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "ConversationLinksPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const conversation = ref<Conversation | null>(null as Conversation | null)
+
+onLoad(() => {
+    uni.setNavigationBarTitle({
+        title: t('conversation.chat_links')
+    } as SetNavigationBarTitleOptions)
+    conversation.value = searchState.conversation
+})
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+</style>

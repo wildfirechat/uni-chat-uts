@@ -3,6 +3,12 @@
         <NavBar title="野火" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
         <text v-if="connectionStatusDesc != ''" class="connection-status"
             :style="{ color: c.textSecondary, fontSize: fontPx(13) }">{{ connectionStatusDesc }}</text>
+        <!-- 「PC 已登录」横幅，对齐 flutter home/conversation_list_widget.dart 的 StatusNotificationHeader -->
+        <view v-if="pcOnlineDesc != ''" class="pc-online-banner"
+            :style="{ backgroundColor: c.conversationBg }" @tap="showPcOnlineDevices">
+            <text class="pc-online-text" :style="{ color: c.textSecondary, fontSize: fontPx(13) }">{{ pcOnlineDesc }}</text>
+            <text class="icomoon pc-online-arrow" :style="{ color: c.textSecondary }">&#xf3d3;</text>
+        </view>
         <list-view class="conversation-list" direction="vertical">
             <list-item class="conversation-item"
                 v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
@@ -30,8 +36,10 @@ import organizationServerApi from "../../api/organizationServerApi.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import { getTouchPoint } from "../../common/touch.uts";
 import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
+import PCOnlineType from "../../wfc/model/pcOnlineType.uts";
 import { colors, AppColors } from "../../common/theme.uts";
 import { fontPx } from "../../common/layoutScale.uts";
+import { t, t1 } from "../../i18n/i18n.uts";
 
 defineOptions({
     name: 'ConversationListPage'
@@ -79,6 +87,44 @@ const connectionStatusDesc = computed<string>((): string => {
     }
     return desc;
 })
+
+/**
+ * 「PC 已登录」横幅文案。只在已连接且确实有其他端在线时才出现；
+ * 多端在线时按类型去重后用 `/` 连起来（与 flutter 的 `.toSet().join('/')` 一致）。
+ */
+const pcOnlineDesc = computed<string>((): string => {
+    if (miscState.connectionStatus != ConnectionStatus.ConnectionStatusConnected) {
+        return ''
+    }
+    const infos = miscState.pcOnlineInfos
+    if (infos.length == 0) {
+        return ''
+    }
+    const names: string[] = []
+    for (let i = 0; i < infos.length; i++) {
+        let name = t('pc.pc_client')
+        if (infos[i].type == PCOnlineType.Web_Online) {
+            name = t('pc.web_client')
+        } else if (infos[i].type == PCOnlineType.WX_Online) {
+            name = t('pc.mini_program')
+        } else if (infos[i].type == PCOnlineType.Pad_Online) {
+            name = t('pc.pad_client')
+        }
+        if (names.indexOf(name) < 0) {
+            names.push(name)
+        }
+    }
+    return t1('pc.logged_in', names.join('/'))
+})
+
+const showPcOnlineDevices = () => {
+    uni.navigateTo({
+        url: '/pages/me/PcOnlineDevicesPage',
+        fail: (err) => {
+            console.log('nav to PcOnlineDevicesPage err', err)
+        }
+    } as NavigateToOptions)
+}
 
 const unread = computed<number>((): number => {
     let count = 0;
@@ -236,6 +282,30 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
 .connection-status {
     text-align: center;
     padding: 5px 0;
+}
+
+/* 组件/页面各自声明一遍图标字体：字体本身是 App.uvue loadFontFace 全局加载的，
+ * 被样式隔离挡住的只是 class 本身 */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.pc-online-banner {
+    width: 100%;
+    height: 40px;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.pc-online-text {
+    flex: 1;
+}
+
+.pc-online-arrow {
+    font-size: 16px;
+    flex-shrink: 0;
 }
 
 .conversation-list {

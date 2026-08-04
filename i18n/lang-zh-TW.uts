@@ -130,6 +130,7 @@ export default {
         "mark_as_read": "標記為已讀",
         "search_chat_content": "查找聊天內容",
         "chat_files": "會話文件",
+        "chat_links": "會話鏈接",
         "clear_chat_history": "清空聊天記錄"
     },
     "fav": {
@@ -149,7 +150,9 @@ export default {
         "tag_voice": "[語音]",
         "tag_file": "[文件]",
         "tag_link": "[鏈接]",
-        "tag_composite": "[聊天記錄]"
+        "tag_composite": "[聊天記錄]",
+        "fav_success": "已收藏",
+        "fav_fail": "收藏失敗：{0}"
     },
     "voip": {
         "desc": "音視頻通話",
@@ -165,7 +168,18 @@ export default {
         "new_user": "新用戶",
         "view_all": "查看全部",
         "message_history": "聊天記錄",
-        "search_message_history": "搜索聊天記錄..."
+        "search_message_history": "搜索聊天記錄...",
+        "tab_all": "全部",
+        "tab_file": "文件",
+        "tab_media": "圖片與視頻",
+        "tab_link": "鏈接",
+        "tab_date": "日期",
+        "no_result": "無搜索結果",
+        "no_links": "暫無鏈接",
+        "history_title": "搜索歷史",
+        "clear_all": "清空",
+        "locate_to_chat": "定位到聊天位置",
+        "message_not_found": "未找到該消息"
     },
     "file_record": {
         "no_more": "沒有更多文件",
@@ -304,6 +318,14 @@ export default {
         "open_dir": "打開目錄",
         "draft": "草稿",
         "save": "存儲",
+        "year_month": "{0}年{1}",
+        "week_1": "一",
+        "week_2": "二",
+        "week_3": "三",
+        "week_4": "四",
+        "week_5": "五",
+        "week_6": "六",
+        "week_7": "日",
         "month_1": "一月",
         "month_2": "二月",
         "month_3": "三月",
@@ -321,6 +343,31 @@ export default {
         "download": "下載",
         "operate_fail": "操作失敗：{0}",
         "unsupported_type": "不支持的類型"
+    },
+    "pc": {
+        "online_devices": "已登錄設備",
+        "no_pc_online": "當前沒有其他設備登錄",
+        "device_count": "{0} 個設備已登錄",
+        "logged_in": "{0} 已登錄",
+        "pc_client": "PC 客戶端",
+        "web_client": "Web 客戶端",
+        "mini_program": "小程序",
+        "pad_client": "Pad 客戶端",
+        "unknown_device": "未知設備",
+        "login_time": "登錄時間：",
+        "kick": "下線",
+        "kick_confirm": "確定讓該設備下線？",
+        "kicked": "已強制下線",
+        "mobile_mute": "手機靜音",
+        "mobile_mute_desc": "PC端登錄時，手機端關閉通知提醒"
+    },
+    "asr": {
+        "speech_to_text": "轉文字",
+        "converting": "轉換中...",
+        "convert_fail": "轉換失敗",
+        "fail": "語音轉文字失敗",
+        "success": "轉文字成功",
+        "audio_not_available": "音頻文件不可用"
     },
     "misc": {
         "beijing": "北京",

@@ -1,12 +1,20 @@
 <template>
-    <view class="audio-message-container"
-        :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }" @tap="playVoice">
-        <text v-if="message.direction == 0" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
-        <view class="volume-container" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">
-            <text v-if="!isPlaying" class="icomoon volume-icon">&#xf3ba;</text>
-            <text v-if="isPlaying" class="icomoon volume-icon">&#xf210;</text>
+    <view class="audio-message-wrapper">
+        <view class="audio-message-container"
+            :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }" @tap="playVoice">
+            <text v-if="message.direction == 0" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
+            <view class="volume-container" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">
+                <text v-if="!isPlaying" class="icomoon volume-icon">&#xf3ba;</text>
+                <text v-if="isPlaying" class="icomoon volume-icon">&#xf210;</text>
+            </view>
+            <text v-if="message.direction == 1" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
         </view>
-        <text v-if="message.direction == 1" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
+        <!-- 语音转文字结果贴在气泡下面，与 flutter voice_cell_builder 一致 -->
+        <view v-if="speechText != '' || inProgress" class="speech-container"
+            :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+            <text class="speech-text"
+                :style="{ fontSize: fontPx(14), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ inProgress ? t('asr.converting') : speechText }}</text>
+        </view>
     </view>
 </template>
 
@@ -17,6 +25,7 @@ import store from "@/store.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
 defineOptions({
     name: "AudioMessageContentView",
     styleIsolation: 'app'
@@ -34,6 +43,15 @@ const content = computed<SoundMessageContent>((): SoundMessageContent => {
 
 const isPlaying = computed<boolean>((): boolean => {
     return content.value._isPlaying
+})
+
+/** 转文字结果。只存在内存里（见 soundMessageContent.uts），杀进程就没了，与 flutter 一致。 */
+const speechText = computed<string>((): string => {
+    return content.value._speechText
+})
+
+const inProgress = computed<boolean>((): boolean => {
+    return content.value._speechToTextInProgress
 })
 
 const duration = computed<number>((): number => {
@@ -64,6 +82,11 @@ const playVoice = () => {
 </script>
 
 <style scoped>
+.audio-message-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
 .audio-message-container {
     margin: 0 10px;
     display: flex;
@@ -90,5 +113,16 @@ const playVoice = () => {
 
 .duration {
     padding: 8px;
+}
+
+.speech-container {
+    margin: 4px 10px 0 10px;
+    max-width: 250px;
+    padding: 8px 10px;
+    border-radius: 5px;
+}
+
+.speech-text {
+    width: 100%;
 }
 </style>

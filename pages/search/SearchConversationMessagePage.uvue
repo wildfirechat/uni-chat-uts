@@ -1,135 +1,599 @@
 <template>
-    <view class="search-conversation-message-container" :style="{ backgroundColor: c.surface }">
-        <input class="input" type="text" v-model="query" placeholder="搜索" @input="search"
-            :style="{ backgroundColor: c.surface, color: c.textPrimary, borderBottomColor: c.hairline }" />
-        <text class="category" :style="{ fontSize: fontPx(13), color: c.textTertiary }">聊天记录</text>
-        <scroll-view class="message-list" direction="vertical" :style="{ backgroundColor: c.surface }">
-            <view v-for="(msg, index) in messages" :key="index">
-                <view class="search-result-item" :style="{ backgroundColor: c.surface }" @tap="onClickMessage(msg)">
-                    <image class="item-portrait" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
-                    <view class="title-desc">
-                        <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ fromNameOf(msg) }}</text>
-                        <text class="desc" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ msg.messageContent.digest(msg) }}</text>
-                    </view>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <view class="search-bar">
+            <view class="search-box" :style="{ backgroundColor: c.inputBg }">
+                <input class="search-input" type="text" :value="keyword" :placeholder="t('search.search_message_history')"
+                    :placeholder-style="placeholderStyle" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }"
+                    confirm-type="search" @input="onKeywordInput" @confirm="onKeywordConfirm" />
+                <text v-if="keyword != ''" class="clear-btn" :style="{ fontSize: fontPx(FONT_BASE), color: c.textTertiary }"
+                    @tap="clearKeyword">✕</text>
+            </view>
+        </view>
+
+        <scroll-view class="tab-bar" direction="horizontal" :show-scrollbar="false">
+            <view class="tab-row">
+                <view v-for="tab in tabs" :key="tab.tag" class="tab-chip"
+                    :style="{ backgroundColor: currentTab == tab.tag ? c.accentSoft : c.buttonSecondaryBg }"
+                    @tap="switchTab(tab.tag)">
+                    <text :style="{ fontSize: fontPx(FONT_BASE), color: currentTab == tab.tag ? c.accent : c.textSecondary }">{{ tab.title }}</text>
                 </view>
             </view>
         </scroll-view>
+
+        <!-- 全部 -->
+        <scroll-view v-if="currentTab == TAB_ALL" class="content" direction="vertical" @scrolltolower="loadMoreMessages">
+            <view v-if="keyword == '' && history.length > 0" class="history">
+                <view class="history-head">
+                    <text :style="{ fontSize: fontPx(FONT_SM), color: c.textSecondary }">{{ t('search.history_title') }}</text>
+                    <text :style="{ fontSize: fontPx(FONT_SM), color: c.textSecondary }" @tap="clearHistory">{{ t('search.clear_all') }}</text>
+                </view>
+                <view class="history-words">
+                    <view v-for="(word, index) in history" :key="index" class="history-chip"
+                        :style="{ backgroundColor: c.buttonSecondaryBg }" @tap="applyHistory(word)">
+                        <text :style="{ fontSize: fontPx(FONT_SM), color: c.textSecondary }">{{ word }}</text>
+                    </view>
+                </view>
+            </view>
+
+            <view v-if="messages.length == 0 && !loading" class="empty">
+                <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('search.no_result') }}</text>
+            </view>
+            <view v-for="item in messages" :key="item.messageId" class="row"
+                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="locateMessage(item)">
+                <image class="row-portrait" :style="{ backgroundColor: c.inputBg }" :src="portraitOf(item)" />
+                <view class="texts">
+                    <view class="title-line">
+                        <text class="title" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ senderOf(item) }}</text>
+                        <text :style="{ fontSize: fontPx(FONT_XS), color: c.textTertiary }">{{ item._timeStr }}</text>
+                    </view>
+                    <!-- 命中的关键字用主题色标出来，与 flutter 的 _highlightedDigest 同构 -->
+                    <text class="digest" :style="{ fontSize: fontPx(FONT_SM), color: c.textSecondary }"><text
+                            v-for="(seg, si) in digestSegmentsOf(item)" :key="si"
+                            :style="{ color: seg.hit ? c.accent : c.textSecondary }">{{ seg.text }}</text></text>
+                </view>
+            </view>
+            <view v-if="hasMoreMessages" class="footer">
+                <text :style="{ fontSize: fontPx(FONT_SM), color: c.textTertiary }">{{ t('common.loading') }}</text>
+            </view>
+        </scroll-view>
+
+        <!-- 文件 -->
+        <scroll-view v-else-if="currentTab == TAB_FILE" class="content" direction="vertical" @scrolltolower="loadMoreFiles">
+            <view v-if="files.length == 0 && !fileLoading" class="empty">
+                <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('file_record.empty') }}</text>
+            </view>
+            <view v-for="file in files" :key="file.messageUid" class="row"
+                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="showFileActions(file)">
+                <image class="file-icon" :src="'/static/image/filetypes/' + file._fileIconName" />
+                <view class="texts">
+                    <text class="title" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ file.name }}</text>
+                    <text class="digest" :style="{ fontSize: fontPx(FONT_XS), color: c.textSecondary }">{{ fileMetaOf(file) }}</text>
+                </view>
+            </view>
+            <view v-if="hasMoreFiles" class="footer">
+                <text :style="{ fontSize: fontPx(FONT_SM), color: c.textTertiary }">{{ t('common.loading') }}</text>
+            </view>
+        </scroll-view>
+
+        <!-- 图片与视频 / 链接 / 日期：内容全在组件里，与它们的独立页共用 -->
+        <view v-else-if="conversation != null" class="content">
+            <conversation-media-grid v-if="currentTab == TAB_MEDIA" :conversation="conversation!" />
+            <conversation-links v-else-if="currentTab == TAB_LINK" :conversation="conversation!" />
+            <conversation-calendar v-else-if="currentTab == TAB_DATE" :conversation="conversation!"
+                @daySelected="locateMessage" />
+        </view>
+
+        <bottom-action-sheet v-model="fileSheetVisible" :items="fileSheetItems" @select="onFileSheetSelect" />
     </view>
 </template>
 
 <script setup lang="uts">
+/**
+ * 会话内「查找聊天内容」。对齐 flutter `search/conversation_search_panel.dart`。
+ *
+ * 版式是搜索框 + 一排分类标签（全部 / 文件 / 图片与视频 / 链接 / 日期）+ 内容区，
+ * 后三个标签直接内嵌 M3 新加的三个组件，与它们的独立页共用同一份实现。
+ *
+ * ## 与 flutter 的差异
+ *
+ * - **日期标签**：flutter 选中某天后在面板里内嵌当天的消息列表，再点某条才定位；
+ *   这里点某天直接跳回会话页定位到当天最后一条消息 —— 与 flutter **独立日历页**
+ *   （`ConversationCalendarScreen` 不传 onDaySelected 时）的行为一致，少一层。
+ * - **消息行的点击**：flutter 点消息先弹一个只有「定位到聊天位置」一项的菜单（PC 微信版式），
+ *   移动端多这一步没有收益，这里直接定位。
+ * - 搜索历史存 `uni.getStorageSync`（字符串按 \\n 分隔），flutter 用 SharedPreferences 的 StringList。
+ */
 import store, { searchState } from "@/store.uts";
-import Message from "@/wfc/messages/message.uts";
-import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import Config from "@/config.uts";
+import Message from "@/wfc/messages/message.uts";
+import FileRecord from "@/wfc/model/fileRecord.uts";
+import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import { forward } from "@/common/forward.uts";
+import { saveMessageFile } from "@/common/mediaSaver.uts";
 import { go2ConversationPage } from "@/common/nav.uts";
-
+import { getItem, setItem, removeItem } from "@/pages/util/storageHelper.uts";
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx } from "@/common/layoutScale.uts";
+import { fontPx, FONT_XS, FONT_SM, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
+
 defineOptions({
     name: "SearchConversationMessagePage"
 })
 
+const TAB_ALL = 'all'
+const TAB_FILE = 'file'
+const TAB_MEDIA = 'media'
+const TAB_LINK = 'link'
+const TAB_DATE = 'date'
+
+const PAGE_SIZE = 30
+const HISTORY_KEY = 'conversation_search_history'
+const HISTORY_MAX = 10
+
+class SearchTab {
+    tag = ''
+    title = ''
+    constructor(tag: string, title: string) {
+        this.tag = tag
+        this.title = title
+    }
+}
+
+/** 摘要按关键字切成若干段，命中的那些 hit=true，模板里换个颜色渲染。 */
+class DigestSegment {
+    text = ''
+    hit = false
+    constructor(text: string, hit: boolean) {
+        this.text = text
+        this.hit = hit
+    }
+}
 
 const c = computed<AppColors>((): AppColors => colors())
-const query = ref<string>(searchState.query as string)
-const conversationInfo = ref<ConversationInfo | null>(null as ConversationInfo | null)
-const messages = ref<Message[]>([] as Message[])
 
-const portrait = computed<string>((): string => {
-    const info = conversationInfo.value
-    if (info == null) {
-        return Config.DEFAULT_PORTRAIT_URL
-    }
-    const target = store.ensureConversationTarget(info.conversation)
-    const portrait = target != null ? target.portrait : ''
-    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+const conversation = ref<Conversation | null>(null as Conversation | null)
+const currentTab = ref<string>(TAB_ALL)
+const keyword = ref<string>('')
+const history = ref<string[]>([] as string[])
+
+const messages = ref<Message[]>([] as Message[])
+const loading = ref<boolean>(false)
+const hasMoreMessages = ref<boolean>(true)
+
+const files = ref<FileRecord[]>([] as FileRecord[])
+const fileLoading = ref<boolean>(false)
+const hasMoreFiles = ref<boolean>(true)
+const fileSheetVisible = ref<boolean>(false)
+
+// 浏览态（无关键字）按 messageId 游标翻页，搜索态按 offset 翻页
+let browseFromIndex = 0
+let searchOffset = 0
+// 关键字每变一次就 +1，回调里对不上就丢弃，避免过期结果混进来
+let searchToken = 0
+let searchTimer = 0
+let beforeMessageUid = '0'
+let selectedFile: FileRecord | null = null
+
+const tabs = computed<SearchTab[]>((): SearchTab[] => {
+    return [
+        new SearchTab(TAB_ALL, t('search.tab_all')),
+        new SearchTab(TAB_FILE, t('search.tab_file')),
+        new SearchTab(TAB_MEDIA, t('search.tab_media')),
+        new SearchTab(TAB_LINK, t('search.tab_link')),
+        new SearchTab(TAB_DATE, t('search.tab_date'))
+    ]
 })
 
-const fromNameOf = (msg: Message): string => {
-    const from = msg._from
-    return from != null ? from._displayName : ''
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
+const fileSheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
+    return [
+        new ActionSheetItem(t('common.forward'), 'forward'),
+        new ActionSheetItem(t('common.download'), 'download')
+    ]
+})
+
+// ---------- 全部：浏览 / 搜索 ----------
+
+const resetMessages = () => {
+    messages.value = [] as Message[]
+    browseFromIndex = 0
+    searchOffset = 0
+    hasMoreMessages.value = true
+    loading.value = false
 }
 
-const search = () => {
-    const info = conversationInfo.value
-    if (info != null && query.value.trim() != '') {
-        messages.value = store.searchMessage(info.conversation, query.value);
-    } else {
-        messages.value = [];
+const loadMoreMessages = () => {
+    const conv = conversation.value
+    if (conv == null || loading.value || !hasMoreMessages.value) {
+        return
     }
+    loading.value = true
+    const query = keyword.value.trim()
+    if (query == '') {
+        // 无关键字：从最新往前翻，与会话页加载历史消息同一路径。
+        // 这是本页唯一的异步取数，回调回来时关键字可能已经变了，用 token 丢弃过期结果。
+        const token = searchToken
+        store.getMessages(conv!, browseFromIndex, true, '', (msgs: Message[]) => {
+            if (token != searchToken) {
+                return
+            }
+            loading.value = false
+            if (msgs.length > 0) {
+                messages.value = messages.value.concat(msgs)
+                browseFromIndex = msgs[msgs.length - 1].messageId
+            }
+            hasMoreMessages.value = msgs.length > 0
+        })
+        return
+    }
+    // 关键字搜索是同步的（本地库直查），不需要 token
+    const msgs = store.searchMessagePaged(conv!, query, PAGE_SIZE, searchOffset)
+    loading.value = false
+    messages.value = messages.value.concat(msgs)
+    searchOffset += msgs.length
+    hasMoreMessages.value = msgs.length >= PAGE_SIZE
 }
 
-const onClickMessage = (msg: Message) => {
-    store.setCurrentConversation(msg.conversation);
+const onKeywordInput = (e: UniInputEvent) => {
+    keyword.value = e.detail.value
+    // 输入关键字时自动回到「全部」标签（与 flutter 一致）
+    if (keyword.value.trim() != '') {
+        currentTab.value = TAB_ALL
+    }
+    searchToken++
+    if (searchTimer != 0) {
+        clearTimeout(searchTimer)
+    }
+    searchTimer = setTimeout((): void => {
+        searchTimer = 0
+        resetMessages()
+        loadMoreMessages()
+    }, 300)
+}
+
+const onKeywordConfirm = () => {
+    saveHistory(keyword.value)
+}
+
+const clearKeyword = () => {
+    keyword.value = ''
+    searchToken++
+    resetMessages()
+    loadMoreMessages()
+}
+
+const portraitOf = (message: Message): string => {
+    const from = message._from
+    const portrait = from != null ? from!.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const senderOf = (message: Message): string => {
+    const from = message._from
+    return from != null ? from!._displayName : message.from
+}
+
+const digestSegmentsOf = (message: Message): DigestSegment[] => {
+    const digest = message.messageContent.digest(message)
+    const query = keyword.value.trim()
+    const segments: DigestSegment[] = []
+    if (query == '') {
+        segments.push(new DigestSegment(digest, false))
+        return segments
+    }
+    const lowerDigest = digest.toLowerCase()
+    const lowerQuery = query.toLowerCase()
+    let start = 0
+    while (true) {
+        const index = lowerDigest.indexOf(lowerQuery, start)
+        if (index < 0) {
+            segments.push(new DigestSegment(digest.substring(start), false))
+            break
+        }
+        if (index > start) {
+            segments.push(new DigestSegment(digest.substring(start, index), false))
+        }
+        segments.push(new DigestSegment(digest.substring(index, index + query.length), true))
+        start = index + query.length
+    }
+    return segments
+}
+
+const locateMessage = (message: Message) => {
+    saveHistory(keyword.value)
+    store.setCurrentConversation(message.conversation)
     // 会话页 onShow 时消费，定位并高亮该消息
-    store.requestLocateMessage(msg.messageId);
-    go2ConversationPage();
+    store.requestLocateMessage(message.messageId)
+    go2ConversationPage()
 }
 
-onMounted(() => {
-    const conversation = searchState.conversation
-    if (conversation != null) {
-        conversationInfo.value = store.getConversationInfo(conversation)
+// ---------- 搜索历史 ----------
+
+const loadHistory = () => {
+    const saved = getItem(HISTORY_KEY)
+    if (saved == '') {
+        history.value = [] as string[]
+        return
     }
-    search();
+    history.value = saved.split('\n').filter((word: string): boolean => word != '')
+}
+
+const saveHistory = (word: string) => {
+    const trimmed = word.trim()
+    if (trimmed == '') {
+        return
+    }
+    let list = [trimmed].concat(history.value.filter((w: string): boolean => w != trimmed))
+    if (list.length > HISTORY_MAX) {
+        list = list.slice(0, HISTORY_MAX)
+    }
+    history.value = list
+    setItem(HISTORY_KEY, list.join('\n'))
+}
+
+const clearHistory = () => {
+    history.value = [] as string[]
+    removeItem(HISTORY_KEY)
+}
+
+const applyHistory = (word: string) => {
+    keyword.value = word
+    currentTab.value = TAB_ALL
+    searchToken++
+    saveHistory(word)
+    resetMessages()
+    loadMoreMessages()
+}
+
+// ---------- 文件标签 ----------
+
+const loadMoreFiles = () => {
+    const conv = conversation.value
+    if (conv == null || fileLoading.value || !hasMoreFiles.value) {
+        return
+    }
+    fileLoading.value = true
+    store.getConversationFileRecords(conv!, '', beforeMessageUid, 20, (records: FileRecord[]) => {
+        fileLoading.value = false
+        files.value = files.value.concat(records)
+        if (records.length > 0) {
+            beforeMessageUid = records[records.length - 1].messageUid
+        }
+        hasMoreFiles.value = records.length >= 20
+    }, (errorCode: number) => {
+        fileLoading.value = false
+        hasMoreFiles.value = false
+        console.log('load conversation file records fail', errorCode)
+    })
+}
+
+const fileMetaOf = (file: FileRecord): string => {
+    const parts: string[] = []
+    if (file._userDisplayName != '') {
+        parts.push(file._userDisplayName)
+    }
+    parts.push(file._sizeStr)
+    parts.push(file._timeStr)
+    return parts.join('  ')
+}
+
+const showFileActions = (file: FileRecord) => {
+    selectedFile = file
+    fileSheetVisible.value = true
+}
+
+const onFileSheetSelect = (tag: string) => {
+    const file = selectedFile
+    if (file == null) {
+        return
+    }
+    const content = new FileMessageContent('', file!.url, file!.name, file!.size)
+    const message = new Message(file!.conversation, content)
+    message.messageUid = file!.messageUid
+    message.from = file!.userId
+    message.timestamp = file!.timestamp
+    if (tag == 'forward') {
+        forward(ForwardType.NORMAL, [message])
+    } else if (tag == 'download') {
+        saveMessageFile(message)
+    }
+}
+
+// ---------- 标签切换 ----------
+
+const switchTab = (tag: string) => {
+    if (currentTab.value == tag) {
+        return
+    }
+    currentTab.value = tag
+    if (tag == TAB_FILE && files.value.length == 0 && hasMoreFiles.value) {
+        loadMoreFiles()
+    }
+}
+
+onLoad(() => {
+    uni.setNavigationBarTitle({
+        title: t('conversation.search_chat_content')
+    } as SetNavigationBarTitleOptions)
+    const conv = searchState.conversation
+    if (conv != null) {
+        conversation.value = conv
+    }
+    keyword.value = searchState.query
+    loadHistory()
+    loadMoreMessages()
 })
 
 onBeforeUnmount(() => {
-    searchState.conversation = null;
+    if (searchTimer != 0) {
+        clearTimeout(searchTimer)
+        searchTimer = 0
+    }
+    searchState.conversation = null
 })
 </script>
 
 <style scoped>
-.search-conversation-message-container {
-    position: relative;
-    flex: 1;
-}
-
-.input {
-    height: 35px;
+.page {
     width: 100%;
-    padding: 5px 10px;
-    margin-bottom: 5px;
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
-}
-
-.category {
-    margin-left: 10px;
-}
-
-.message-list {
     flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
-.search-result-item {
-    padding: 10px 12px;
+.search-bar {
+    width: 100%;
+    padding: 8px 12px 4px 12px;
+}
+
+.search-box {
+    width: 100%;
+    height: 36px;
+    border-radius: 8px;
+    padding: 0 10px;
     display: flex;
     flex-direction: row;
     align-items: center;
 }
 
-.item-portrait {
-    width: 34px;
-    height: 34px;
-    border-radius: 2px;
+.search-input {
+    flex: 1;
+    height: 36px;
 }
 
-.item-name {
-    padding-left: 10px;
+.clear-btn {
+    padding: 0 4px;
 }
 
-.title-desc {
+.tab-bar {
+    width: 100%;
+    height: 44px;
+    flex-grow: 0;
+    flex-shrink: 0;
+}
+
+.tab-row {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 12px;
+}
+
+.tab-chip {
+    height: 32px;
+    border-radius: 16px;
+    padding: 0 14px;
+    margin-right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.content {
     flex: 1;
 }
 
-.desc {
-    padding-left: 10px;
+.history {
+    width: 100%;
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.history-head {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.history-words {
+    width: 100%;
+    margin-top: 8px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.history-chip {
+    height: 28px;
+    border-radius: 14px;
+    padding: 0 12px;
+    margin-right: 8px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.empty {
+    width: 100%;
+    padding: 60px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.row {
+    width: 100%;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.row-portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+}
+
+.file-icon {
+    width: 40px;
+    height: 40px;
+}
+
+.texts {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.title-line {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.title {
+    flex: 1;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
+}
+
+.digest {
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.footer {
+    width: 100%;
+    padding: 16px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 </style>

@@ -1,0 +1,247 @@
+<template>
+    <scroll-view class="root" direction="vertical" @scrolltolower="loadMoreMonths">
+        <view v-for="month in months" :key="month.key" class="month">
+            <text class="month-title" :style="{ fontSize: fontPx(FONT_XL), color: c.textPrimary }">{{ month.title }}</text>
+            <view class="week-row">
+                <view v-for="(label, index) in weekdayLabels" :key="index" class="week-cell">
+                    <text :style="{ fontSize: fontPx(FONT_XS), color: c.textSecondary }">{{ label }}</text>
+                </view>
+            </view>
+            <view class="day-grid">
+                <view v-for="day in month.days" :key="day.key" class="day-cell">
+                    <view class="day-circle" :style="{ backgroundColor: day.enabled ? c.accentSoft : 'transparent' }"
+                        @tap="onDayTap(day)">
+                        <text v-if="day.dayOfMonth > 0"
+                            :style="{ fontSize: fontPx(FONT_SM), color: day.enabled ? c.accent : c.textTertiary }">{{ day.dayOfMonth }}</text>
+                    </view>
+                </view>
+            </view>
+        </view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 按日期查找聊天内容。对齐 flutter `search/conversation_calendar_screen.dart` 的 ConversationCalendarView。
+ *
+ * 从当月往前铺月份，滚到底再补 3 个月。每个月调一次
+ * [store.getMessageCountByDay]（原生 SDK 直接给 `yyyy-MM-dd -> count`），
+ * 有消息的日期才是可点的实心圆。
+ *
+ * 点某天 → 取当天**最后一条**消息 `emit('daySelected', message)`；
+ * 调用方决定是跳回会话页定位，还是内嵌展示当天消息列表（搜索面板走后者）。
+ *
+ * ⚠️ 两个时间单位不一样，别弄混：
+ * - `getMessageCountByDay` 入参是**秒**
+ * - `getMessagesInTypesAndTimes` 入参是**毫秒**
+ */
+import store from "@/store.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import Message from "@/wfc/messages/message.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_XS, FONT_SM, FONT_XL } from "@/common/layoutScale.uts";
+import { t, t2 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "conversation-calendar"
+})
+
+/** 每次往前铺几个月 */
+const MONTH_BATCH = 3
+
+const props = defineProps<{
+    conversation: Conversation
+}>()
+
+const emit = defineEmits<{
+    (e: 'daySelected', message: Message): void
+}>()
+
+const c = computed<AppColors>((): AppColors => colors())
+
+class DayCell {
+    key = ''
+    /** 0 表示月初的占位空格 */
+    dayOfMonth = 0
+    year = 0
+    month = 0
+    enabled = false
+}
+
+class MonthSection {
+    key = ''
+    title = ''
+    year = 0
+    month = 0
+    days: DayCell[] = [] as DayCell[]
+}
+
+const months = ref<MonthSection[]>([] as MonthSection[])
+
+/** 周一起头的星期标签。flutter 用 intl 的 DateFormat.E，这里用固定短名（三种语言的词条都在 i18n 里）。 */
+const weekdayLabels = computed<string[]>((): string[] => {
+    return [t('common.week_1'), t('common.week_2'), t('common.week_3'), t('common.week_4'),
+        t('common.week_5'), t('common.week_6'), t('common.week_7')]
+})
+
+const pad2 = (value: number): string => {
+    return value < 10 ? '0' + value : '' + value
+}
+
+/** 该月天数：下个月的第 0 天就是本月最后一天 */
+const daysInMonth = (year: number, month: number): number => {
+    return new Date(year, month, 0).getDate()
+}
+
+/** 周一 = 0 ... 周日 = 6。JS 的 getDay() 是周日 = 0，要转一下。 */
+const leadingBlanksOf = (year: number, month: number): number => {
+    const weekday = new Date(year, month - 1, 1).getDay()
+    return weekday == 0 ? 6 : weekday - 1
+}
+
+const buildMonth = (year: number, month: number): MonthSection => {
+    const section = new MonthSection()
+    section.key = year + '-' + pad2(month)
+    section.year = year
+    section.month = month
+    section.title = t2('common.year_month', '' + year, t('common.month_' + month))
+
+    // 本月消息数：从月初 00:00:00 到下月初前一秒，单位秒
+    const startSeconds = Math.floor(new Date(year, month - 1, 1).getTime() / 1000)
+    const endSeconds = Math.floor(new Date(year, month, 1).getTime() / 1000) - 1
+    const counts = store.getMessageCountByDay(props.conversation, startSeconds, endSeconds)
+
+    const today = new Date()
+    const todayKey = today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate())
+
+    const cells: DayCell[] = []
+    const blanks = leadingBlanksOf(year, month)
+    for (let i = 0; i < blanks; i++) {
+        const blank = new DayCell()
+        blank.key = section.key + '-blank-' + i
+        cells.push(blank)
+    }
+    const total = daysInMonth(year, month)
+    for (let day = 1; day <= total; day++) {
+        const cell = new DayCell()
+        cell.key = section.key + '-' + pad2(day)
+        cell.dayOfMonth = day
+        cell.year = year
+        cell.month = month
+        const count = counts == null ? 0 : (counts!.getNumber(cell.key) ?? 0)
+        // 未来的日期即便有数据也不可点（与 flutter 一致）
+        cell.enabled = count > 0 && cell.key <= todayKey
+        cells.push(cell)
+    }
+    section.days = cells
+    return section
+}
+
+const appendMonths = (fromYear: number, fromMonth: number, count: number) => {
+    const list = months.value.slice(0)
+    let year = fromYear
+    let month = fromMonth
+    for (let i = 0; i < count; i++) {
+        list.push(buildMonth(year, month))
+        month -= 1
+        if (month == 0) {
+            month = 12
+            year -= 1
+        }
+    }
+    months.value = list
+}
+
+const loadMoreMonths = () => {
+    const list = months.value
+    if (list.length == 0) {
+        return
+    }
+    const last = list[list.length - 1]
+    let year = last.year
+    let month = last.month - 1
+    if (month == 0) {
+        month = 12
+        year -= 1
+    }
+    appendMonths(year, month, MONTH_BATCH)
+}
+
+/**
+ * 取当天最后一条消息。用 [store.getMessagesInTypesAndTimes] 限定当天的时间区间、降序取 1 条 ——
+ * 与 android-chat uikit 的 `getFirstMessageOfDay` 同一做法（门面没有 getMessagesByTimestamp）。
+ */
+const onDayTap = (day: DayCell) => {
+    if (!day.enabled) {
+        return
+    }
+    const startTime = new Date(day.year, day.month - 1, day.dayOfMonth, 0, 0, 0).getTime()
+    const endTime = new Date(day.year, day.month - 1, day.dayOfMonth, 23, 59, 59).getTime() + 999
+    const messages = store.getMessagesInTypesAndTimes(props.conversation, [] as number[], startTime, endTime, 1, 0)
+    if (messages.length > 0) {
+        emit('daySelected', messages[0])
+    }
+}
+
+onMounted(() => {
+    const now = new Date()
+    appendMonths(now.getFullYear(), now.getMonth() + 1, MONTH_BATCH)
+})
+</script>
+
+<style scoped>
+.root {
+    width: 100%;
+    flex: 1;
+}
+
+.month {
+    width: 100%;
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.month-title {
+    padding: 8px 0;
+    font-weight: 600;
+}
+
+.week-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    margin-bottom: 8px;
+}
+
+.week-cell {
+    width: 14.28%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.day-grid {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.day-cell {
+    width: 14.28%;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.day-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>

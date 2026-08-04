@@ -8,7 +8,8 @@
 
         <form-card>
             <option-item :title="t('conversation.search_chat_content')" @tap="searchMessages" />
-            <option-item :title="t('conversation.chat_files')" :show-bottom-divider="false" @tap="openFiles" />
+            <option-item :title="t('conversation.chat_files')" @tap="openFiles" />
+            <option-item :title="t('conversation.chat_links')" :show-bottom-divider="false" @tap="openLinks" />
         </form-card>
 
         <section-divider />
@@ -47,7 +48,7 @@ import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
-import { clearConversationMessages, searchConversationMessages, openConversationFiles } from "@/common/conversationActions.uts";
+import { clearConversationMessages, searchConversationMessages, openConversationFiles, openConversationLinks } from "@/common/conversationActions.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { t } from "@/i18n/i18n.uts";
 
@@ -129,6 +130,13 @@ const openFiles = () => {
     const info = conversationInfo.value
     if (info != null) {
         openConversationFiles(info.conversation, conversationTitle.value)
+    }
+}
+
+const openLinks = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        openConversationLinks(info.conversation)
     }
 }
 

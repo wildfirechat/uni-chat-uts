@@ -12,6 +12,10 @@ export default class SoundMessageContent extends MediaMessageContent {
 
     // ---- UI 层补丁字段 ----
     _isPlaying = false;
+    // 语音转文字结果。只存在于内存里，不入库也不参与 encode/decode ——
+    // 与 flutter 的 SoundMessageContent.speechText 一样，杀进程就没了。
+    _speechText = '';
+    _speechToTextInProgress = false;
 
     constructor(fileOrLocalPath: string = '', remotePath: string = '', duration: number = 0) {
         super(MessageContentType.Voice, MessageContentMediaType.Voice, fileOrLocalPath, remotePath);

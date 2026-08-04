@@ -1,0 +1,174 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view v-if="infos.length == 0" class="empty">
+            <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('pc.no_pc_online') }}</text>
+        </view>
+
+        <view v-else>
+            <view class="summary">
+                <text class="summary-count" :style="{ fontSize: fontPx(FONT_XXL), color: c.accent }">{{ infos.length }}</text>
+                <text class="summary-text" :style="{ fontSize: fontPx(FONT_LG), color: c.textPrimary }">{{ t1('pc.device_count', '' + infos.length) }}</text>
+            </view>
+
+            <form-card>
+                <option-switch-item :title="t('pc.mobile_mute')" :desc="t('pc.mobile_mute_desc')" :value="isMute"
+                    :show-bottom-divider="false" @change="onMuteChange" />
+            </form-card>
+
+            <section-divider />
+
+            <form-card>
+                <view v-for="(info, index) in infos" :key="info.clientId" class="device-row"
+                    :style="{ borderBottomColor: c.hairlineSoft, borderBottomWidth: index == infos.length - 1 ? 0 : 0.5 }">
+                    <view class="device-texts">
+                        <text :style="{ fontSize: fontPx(FONT_LG), color: c.textPrimary }">{{ deviceNameOf(info) }}</text>
+                        <text class="device-time" :style="{ fontSize: fontPx(FONT_XS), color: c.textSecondary }">{{ loginTimeOf(info) }}</text>
+                    </view>
+                    <view class="kick-button" :style="{ backgroundColor: c.buttonSecondaryBg }" @tap="confirmKick(info)">
+                        <text :style="{ fontSize: fontPx(FONT_BASE), color: c.danger }">{{ t('pc.kick') }}</text>
+                    </view>
+                </view>
+            </form-card>
+        </view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 已登录设备（PC / Web / 小程序 / Pad）。对齐 flutter `settings/pc_online_devices_screen.dart`。
+ *
+ * 从会话列表顶部的「PC 已登录」横幅进来。不需要任何新原生接口 ——
+ * `getPCOnlineInfos` 读的是 user setting scope 14，`kickoffPCClient` 门面早就有了。
+ *
+ * flutter 那页顶部是一个 80px 的电脑图标，这里换成设备数字 —— 项目的 icomoon 子集里
+ * 没有电脑字形（用 `f0c1` 之类没收录的码位会渲染成豆腐块）。
+ */
+import store, { miscState } from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import PCOnlineInfo from "@/wfc/model/pcOnlineInfo.uts";
+import PCOnlineType from "@/wfc/model/pcOnlineType.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_XS, FONT_BASE, FONT_LG, FONT_XXL } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+import { showConfirmDialog, toast, toastError } from "@/common/prompt.uts";
+
+defineOptions({
+    name: "PcOnlineDevicesPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const isMute = ref<boolean>(false)
+
+const infos = computed<PCOnlineInfo[]>((): PCOnlineInfo[] => {
+    return miscState.pcOnlineInfos
+})
+
+const deviceNameOf = (info: PCOnlineInfo): string => {
+    if (info.type == PCOnlineType.PC_Online) {
+        return t('pc.pc_client')
+    } else if (info.type == PCOnlineType.Web_Online) {
+        return t('pc.web_client')
+    } else if (info.type == PCOnlineType.WX_Online) {
+        return t('pc.mini_program')
+    } else if (info.type == PCOnlineType.Pad_Online) {
+        return t('pc.pad_client')
+    }
+    return t('pc.unknown_device')
+}
+
+/** `登录时间：2026-08-04 21:30`，与 flutter 的 `substring(0, 16)` 等价 */
+const loginTimeOf = (info: PCOnlineInfo): string => {
+    const date = new Date(info.timestamp)
+    const pad2 = (value: number): string => value < 10 ? '0' + value : '' + value
+    const text = date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate())
+        + ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes())
+    return t('pc.login_time') + text
+}
+
+const onMuteChange = (value: boolean) => {
+    isMute.value = value
+    wfc.muteNotificationWhenPcOnline(value, () => {
+        // 服务端会回推 SettingUpdate，这里不再重复刷新
+    }, (errorCode: number) => {
+        isMute.value = !value
+        toastError(errorCode)
+    })
+}
+
+const confirmKick = (info: PCOnlineInfo) => {
+    showConfirmDialog(t('pc.kick'), t('pc.kick_confirm'), true, () => {
+        wfc.kickoffPCClient(info.clientId, () => {
+            toast(t('pc.kicked'))
+            store.refreshPCOnlineInfos()
+        }, (errorCode: number) => {
+            toastError(errorCode)
+        })
+    })
+}
+
+onShow(() => {
+    store.refreshPCOnlineInfos()
+    isMute.value = wfc.isMuteNotificationWhenPcOnline()
+})
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.empty {
+    width: 100%;
+    padding: 80px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.summary {
+    width: 100%;
+    padding: 30px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.summary-count {
+    font-weight: 600;
+}
+
+.summary-text {
+    margin-top: 8px;
+}
+
+.device-row {
+    width: 100%;
+    min-height: 60px;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    border-bottom-style: solid;
+}
+
+.device-texts {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.device-time {
+    margin-top: 4px;
+}
+
+.kick-button {
+    height: 32px;
+    border-radius: 16px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>

@@ -53,22 +53,18 @@
  * 换语言后当前页面栈上已渲染的文案不会变，重启才全量生效，所以切完给一条提示。
  */
 import wfc from "@/wfc/client/wfc.uts";
-import Conversation from "@/wfc/model/conversation.uts";
-import ConversationType from "@/wfc/model/conversationType.uts";
 import store from "@/store.uts";
 import { clear } from "@/pages/util/storageHelper.uts";
 import { colors, AppColors, themeMode, setThemeMode, THEME_MODE_SYSTEM, THEME_MODE_LIGHT, THEME_MODE_DARK } from "@/common/theme.uts";
 import { fontPx, FONT_LG } from "@/common/layoutScale.uts";
 import { t, getLocale, setLocale } from "@/i18n/i18n.uts";
-import { go2ConversationPage } from "@/common/nav.uts";
+import { report } from "@/common/report.uts";
 import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
 
 defineOptions({
     name: "GeneralSettingsPage"
 })
 
-/** 举报接收方：官方账号，与 flutter `general_settings.dart` 一致。 */
-const REPORT_TARGET_USER_ID = 'cgc8c8VV'
 const USER_AGREEMENT_URL = 'https://static.wildfirechat.cn/agreement.html'
 const PRIVACY_POLICY_URL = 'https://static.wildfirechat.cn/privacy.html'
 
@@ -180,23 +176,6 @@ const logout = () => {
     } as ReLaunchOptions)
 }
 
-/**
- * 举报（UGC 审核指南 1.2 要求）：确认后打开与官方账号的单聊，用户把举报内容发给官方处理。
- * 与 flutter / 原生 iOS 的举报入口一致。
- */
-const report = () => {
-    uni.showModal({
-        title: t('setting.report'),
-        content: t('setting.report_tip'),
-        success: (res) => {
-            if (!res.confirm) {
-                return
-            }
-            store.setCurrentConversation(new Conversation(ConversationType.Single, REPORT_TARGET_USER_ID, 0))
-            go2ConversationPage()
-        }
-    } as ShowModalOptions)
-}
 </script>
 
 <style scoped>

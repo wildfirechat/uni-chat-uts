@@ -128,7 +128,19 @@
         {
             "path": "pages/search/SearchConversationMessagePage",
             "style": {
-                "navigationBarTitleText": "会话消息搜索"
+                "navigationBarTitleText": "查找聊天内容"
+            }
+        },
+        {
+            "path": "pages/conversation/ConversationLinksPage",
+            "style": {
+                "navigationBarTitleText": "会话链接"
+            }
+        },
+        {
+            "path": "pages/me/PcOnlineDevicesPage",
+            "style": {
+                "navigationBarTitleText": "已登录设备"
             }
         },
         {

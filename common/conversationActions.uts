@@ -25,10 +25,24 @@ export function searchConversationMessages(conversation: Conversation): void {
 }
 
 /**
+ * 会话链接：对齐 flutter 群/单聊会话信息页里的 `ConversationLinksScreen` 入口。
+ * 频道信息页 flutter 没有这一项，所以那页也不放。
+ */
+export function openConversationLinks(conversation: Conversation): void {
+    searchState.conversation = conversation
+    uni.navigateTo({
+        url: '/pages/conversation/ConversationLinksPage',
+        fail: (err) => {
+            console.log('nav to ConversationLinksPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+/**
  * 会话文件：复用 M1 的 FileListPage（它本来就支持「指定会话」这一档）。
  *
  * flutter 有独立的 `conversation_files_screen.dart`，但那页做的事和 FileListPage 一致，
- * 没必要再写一个。真正缺的是会话链接页（M3）。
+ * 没必要再写一个。
  */
 export function openConversationFiles(conversation: Conversation, title: string): void {
     const options = new FileListOptions()

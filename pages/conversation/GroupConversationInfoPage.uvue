@@ -22,7 +22,8 @@
 
         <form-card>
             <option-item :title="t('conversation.search_chat_content')" @tap="searchMessages" />
-            <option-item :title="t('conversation.chat_files')" :show-bottom-divider="false" @tap="openFiles" />
+            <option-item :title="t('conversation.chat_files')" @tap="openFiles" />
+            <option-item :title="t('conversation.chat_links')" :show-bottom-divider="false" @tap="openLinks" />
         </form-card>
 
         <section-divider />
@@ -82,7 +83,7 @@ import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
 import EventType from "@/wfc/client/wfcEvent.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions, pickUser, PickUserOptions } from "@/common/picker.uts";
-import { clearConversationMessages, searchConversationMessages, openConversationFiles } from "@/common/conversationActions.uts";
+import { clearConversationMessages, searchConversationMessages, openConversationFiles, openConversationLinks } from "@/common/conversationActions.uts";
 import { showEditDialog, showConfirmDialog, toast, toastError } from "@/common/prompt.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
@@ -354,6 +355,13 @@ const openFiles = () => {
     const info = conversationInfo.value
     if (info != null) {
         openConversationFiles(info.conversation, groupName.value)
+    }
+}
+
+const openLinks = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        openConversationLinks(info.conversation)
     }
 }
 

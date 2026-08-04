@@ -130,6 +130,7 @@ export default {
         "mark_as_read": "Mark as read",
         "search_chat_content": "Search chat content",
         "chat_files": "Chat files",
+        "chat_links": "Chat links",
         "clear_chat_history": "Clear chat history"
     },
     "fav": {
@@ -149,7 +150,9 @@ export default {
         "tag_voice": "[Voice]",
         "tag_file": "[File]",
         "tag_link": "[Link]",
-        "tag_composite": "[Chat Record]"
+        "tag_composite": "[Chat Record]",
+        "fav_success": "Added to favorites",
+        "fav_fail": "Failed to favorite: {0}"
     },
     "voip": {
         "desc": "Audio and Video Call",
@@ -165,7 +168,18 @@ export default {
         "new_user": "New User",
         "view_all": "View All",
         "message_history": "Chat History",
-        "search_message_history": "Search chat history..."
+        "search_message_history": "Search chat history...",
+        "tab_all": "All",
+        "tab_file": "Files",
+        "tab_media": "Photos & Videos",
+        "tab_link": "Links",
+        "tab_date": "Date",
+        "no_result": "No search result",
+        "no_links": "No links",
+        "history_title": "Search history",
+        "clear_all": "Clear",
+        "locate_to_chat": "Locate in chat",
+        "message_not_found": "Message not found"
     },
     "file_record": {
         "no_more": "No more files",
@@ -304,6 +318,14 @@ export default {
         "open_dir": "Open Directory",
         "draft": "Draft",
         "save": "Save",
+        "year_month": "{1} {0}",
+        "week_1": "Mon",
+        "week_2": "Tue",
+        "week_3": "Wed",
+        "week_4": "Thu",
+        "week_5": "Fri",
+        "week_6": "Sat",
+        "week_7": "Sun",
         "month_1": "January",
         "month_2": "February",
         "month_3": "March Month",
@@ -321,6 +343,31 @@ export default {
         "download": "Download",
         "operate_fail": "Operation failed: {0}",
         "unsupported_type": "Unsupported type"
+    },
+    "pc": {
+        "online_devices": "PC Online Devices",
+        "no_pc_online": "No other devices logged in",
+        "device_count": "{0} devices logged in",
+        "logged_in": "{0} logged in",
+        "pc_client": "PC Client",
+        "web_client": "Web Client",
+        "mini_program": "Mini Program",
+        "pad_client": "Pad Client",
+        "unknown_device": "Unknown Device",
+        "login_time": "Login time: ",
+        "kick": "Log out",
+        "kick_confirm": "Log this device out?",
+        "kicked": "Kicked offline",
+        "mobile_mute": "Mute Mobile",
+        "mobile_mute_desc": "Mute mobile notifications when PC is online"
+    },
+    "asr": {
+        "speech_to_text": "Speech to Text",
+        "converting": "Converting...",
+        "convert_fail": "Convert failed",
+        "fail": "Speech to text failed",
+        "success": "Speech to text success",
+        "audio_not_available": "Audio file not available"
     },
     "misc": {
         "beijing": "Beijing",

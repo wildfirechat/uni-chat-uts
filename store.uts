@@ -36,6 +36,7 @@ import UnreadCount from "./wfc/model/unreadCount.uts";
 import FriendRequest from "./wfc/model/friendRequest.uts";
 import FileRecord from "./wfc/model/fileRecord.uts";
 import UserOnlineState from "./wfc/model/userOnlineState.uts";
+import PCOnlineInfo from "./wfc/model/pcOnlineInfo.uts";
 import SearchType from "./wfc/model/searchType.uts";
 import Message from "./wfc/messages/message.uts";
 import MessageStatus from "./wfc/messages/messageStatus.uts";
@@ -466,6 +467,11 @@ export class MiscState {
     get userOnlineStateMap(): Map<string, UserOnlineState> { return this._userOnlineStateMap.value }
     set userOnlineStateMap(value: Map<string, UserOnlineState>) { this._userOnlineStateMap.value = value }
 
+    /** PC/Web/小程序/Pad 在线信息，驱动会话列表顶部的「PC 已登录」横幅。 */
+    private _pcOnlineInfos = ref<PCOnlineInfo[]>([] as PCOnlineInfo[]);
+    get pcOnlineInfos(): PCOnlineInfo[] { return this._pcOnlineInfos.value }
+    set pcOnlineInfos(value: PCOnlineInfo[]) { this._pcOnlineInfos.value = value }
+
     _reset(): void {
         this.connectionStatus = ConnectionStatus.ConnectionStatusUnconnected;
         this.enableNotification = true;
@@ -474,6 +480,7 @@ export class MiscState {
         this.isDisableSyncDraft = false;
         this.isVoipOngoing = false;
         this.userOnlineStateMap = new Map<string, UserOnlineState>();
+        this.pcOnlineInfos = [] as PCOnlineInfo[];
     }
 }
 
@@ -557,6 +564,8 @@ class Store {
             this._deferLoadFavGroupList();
             this._deferLoadChannelList();
             this._deferLoadCurrentConversationMessages();
+            // PC 在线状态就是 user setting scope 14，上下线走的是这个事件
+            this.refreshPCOnlineInfos();
         });
 
         wfc.eventEmitter.on(EventType.FriendRequestUpdate, (args: Array<any | null>) => {
@@ -953,10 +962,16 @@ class Store {
         this._loadSelfUserInfo();
         this._loadDefaultConversationList();
         this._loadUserLocalSettings();
+        this.refreshPCOnlineInfos();
         conversationState.isMessageReceiptEnable = wfc.isReceiptEnabled() && wfc.isUserReceiptEnabled();
         if (conversationState.currentConversationInfo != null) {
             this._loadCurrentConversationMessages();
         }
+    }
+
+    /** 重新读取 PC/Web/小程序/Pad 在线状态。踢下线之后调用方也应主动调一次。 */
+    refreshPCOnlineInfos(): void {
+        miscState.pcOnlineInfos = wfc.getPCOnlineInfos();
     }
 
     // conversation actions
@@ -2323,6 +2338,57 @@ class Store {
             this._patchMessage(msgs[i], 0);
         }
         return msgs;
+    }
+
+    /**
+     * 会话内消息分页搜索（关键字，新的在前）。
+     *
+     * 与 [searchMessage] 的区别：那个是一次拿全量（wfc.searchMessage 没有分页参数），
+     * 会话消息多的时候会卡；这个走 `searchMessageEx` 的 limit/offset。
+     */
+    searchMessagePaged(conversation: Conversation, query: string, limit: number, offset: number): Message[] {
+        const msgs = wfc.searchMessageEx(conversation, query, true, limit, offset)
+        for (let i = 0; i < msgs.length; i++) {
+            this._patchMessage(msgs[i], 0);
+        }
+        return msgs;
+    }
+
+    /**
+     * 按消息类型 + 时间区间拉会话消息（新的在前），M3 的会话链接页 / 图片视频网格页 / 日历页共用。
+     *
+     * 为什么不用 `getMessagesV2`：三端插件的 getMessagesV2 都把 contentTypes 写死成空数组，
+     * 传不进类型过滤。`searchMessageByTypesAndTimes` 传空关键字即为「不限关键字」，
+     * 与 android-chat uikit 的 `ConversationLinkRecordViewModel` / `ConversationMediaViewModel` 同一用法。
+     *
+     * @param startTime 毫秒，0 表示不限
+     * @param endTime 毫秒
+     */
+    getMessagesInTypesAndTimes(conversation: Conversation, contentTypes: number[], startTime: number, endTime: number, limit: number, offset: number): Message[] {
+        const msgs = wfc.searchMessageByTypesAndTimes(conversation, '', contentTypes, startTime, endTime, true, limit, offset)
+        for (let i = 0; i < msgs.length; i++) {
+            this._patchMessage(msgs[i], 0);
+        }
+        return msgs;
+    }
+
+    /**
+     * 某个月每天的消息条数，返回的对象 key 为 `yyyy-MM-dd`。日历页用它决定哪些日期可点。
+     * 直接把 UTSJSONObject 抛给调用方按天 key 取值 —— 日历本来就是逐日查表，不必先转 Map。
+     *
+     * ⚠️ 门面 [wfc.getMessageCountByDay] 的入参是**秒**（与原生 SDK 一致），
+     * 而 [getMessagesInTypesAndTimes] 的入参是毫秒，别弄混。
+     */
+    getMessageCountByDay(conversation: Conversation, startTimeSeconds: number, endTimeSeconds: number): UTSJSONObject | null {
+        const result = wfc.getMessageCountByDay(conversation, [] as number[], startTimeSeconds, endTimeSeconds)
+        if (result == '') {
+            return null
+        }
+        const obj = JSON.parseObject(result)
+        if (obj == null) {
+            console.log('getMessageCountByDay parse fail', result)
+        }
+        return obj
     }
 
     searchConversation(query: string, types: number[] = [0, 1, 2], lines: number[] = [0, 1, 2]): ConversationSearchResult[] {

@@ -1,0 +1,228 @@
+<template>
+    <view class="root">
+        <view v-if="items.length == 0 && !loading" class="empty">
+            <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('search.no_result') }}</text>
+        </view>
+        <scroll-view v-else class="list" direction="vertical" @scrolltolower="loadMore">
+            <view class="grid">
+                <view v-for="item in items" :key="item.messageUid" class="cell"
+                    :style="{ width: cellSize + 'px', height: cellSize + 'px' }" @tap="preview(item)">
+                    <image class="thumb" :style="{ backgroundColor: c.sectionGap }" :src="item._thumbnail" mode="aspectFill" />
+                    <text v-if="item.isVideo" class="wxfont play-badge" :style="{ color: c.onAccent }">&#xe6a6;</text>
+                </view>
+            </view>
+            <view v-if="hasMore" class="footer">
+                <text :style="{ fontSize: fontPx(FONT_SM), color: c.textTertiary }">{{ t('common.loading') }}</text>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会话图片与视频网格。对齐 flutter `search/conversation_media_grid_screen.dart` 的 ConversationMediaGridView。
+ *
+ * 三列方形缩略图，滚到底翻页。缩略图优先用消息里的 base64 缩略图（本地就有，不发网络请求），
+ * 没有才退回 remotePath。
+ *
+ * ## 与 flutter 的差异：预览
+ *
+ * flutter 用自己的 `MMPreviewView` 图片视频混合预览（捏合缩放、下拉关闭、翻到两端继续翻页）。
+ * uni-app x 没有等价能力，这里沿用本项目已有的两条路径：
+ * - 图片 → `uni.previewImage`（系统预览，串起当前已加载的**全部图片**）
+ * - 视频 → [PreviewVideoPage](../../pages/misc/PreviewVideoPage.uvue)
+ *
+ * 代价是图片和视频不在同一个预览序列里滑动。这属于 §1「接受不同」里的「媒体浏览器手势」。
+ *
+ * 用 `scroll-view` 而不是 `list-view`：见 [conversation-links](../conversation-links/conversation-links.uvue) 的说明。
+ *
+ * 方格是**算出来的像素宽高**，不是 `aspect-ratio` —— uni-app x 三端都不支持 aspect-ratio
+ * （`node scripts/check-uvue-css.js` 会报），百分比宽也撑不出正方形。
+ */
+import store from "@/store.uts";
+import Config from "@/config.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import Message from "@/wfc/messages/message.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_SM, FONT_LG } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "conversation-media-grid",
+    // 播放角标借全局的 wxfont 字体类，组件默认样式隔离吃不到
+    styleIsolation: 'app'
+})
+
+const PAGE_SIZE = 30
+/** 网格容器左右各留的边距，要和 `.grid` 的 padding 对上 */
+const GRID_PADDING = 2
+
+const props = defineProps<{
+    conversation: Conversation
+}>()
+
+const c = computed<AppColors>((): AppColors => colors())
+
+class MediaItem {
+    messageUid = ''
+    isVideo = false
+    /** 原图/视频地址，预览用 */
+    remoteUrl = ''
+    /** 网格里显示的缩略图 */
+    _thumbnail = ''
+}
+
+/** 三列方格的边长：(屏宽 - 容器左右 padding) / 3，随屏幕宽度算一次。 */
+const cellSize = ref<number>(0)
+
+const items = ref<MediaItem[]>([] as MediaItem[])
+const loading = ref<boolean>(false)
+const hasMore = ref<boolean>(true)
+
+let offset = 0
+
+const toItem = (message: Message): MediaItem => {
+    const item = new MediaItem()
+    item.messageUid = message.messageUid
+    const content = message.messageContent
+    let thumbnail = ''
+    if (content instanceof VideoMessageContent) {
+        const c = content as VideoMessageContent
+        item.isVideo = true
+        item.remoteUrl = c.remotePath
+        thumbnail = c.thumbnail
+    } else if (content instanceof ImageMessageContent) {
+        const c = content as ImageMessageContent
+        item.remoteUrl = c.remotePath
+        thumbnail = c.thumbnail
+    }
+    if (thumbnail != '') {
+        item._thumbnail = 'data:image/jpeg;base64,' + thumbnail
+    } else if (item.remoteUrl != '') {
+        item._thumbnail = item.remoteUrl
+    } else {
+        item._thumbnail = Config.DEFAULT_THUMBNAIL_URL
+    }
+    return item
+}
+
+const load = () => {
+    if (loading.value || !hasMore.value) {
+        return
+    }
+    loading.value = true
+    const messages = store.getMessagesInTypesAndTimes(props.conversation,
+        [MessageContentType.Image, MessageContentType.Video], 0, new Date().getTime(), PAGE_SIZE, offset)
+    const page: MediaItem[] = []
+    for (let i = 0; i < messages.length; i++) {
+        page.push(toItem(messages[i]))
+    }
+    items.value = items.value.concat(page)
+    offset += messages.length
+    hasMore.value = messages.length >= PAGE_SIZE
+    loading.value = false
+}
+
+const loadMore = () => {
+    load()
+}
+
+const preview = (item: MediaItem) => {
+    if (item.remoteUrl == '') {
+        return
+    }
+    if (item.isVideo) {
+        uni.navigateTo({
+            url: '/pages/misc/PreviewVideoPage?url=' + encodeURIComponent(item.remoteUrl),
+            fail: (err) => {
+                console.log('nav to PreviewVideoPage err', err)
+            }
+        } as NavigateToOptions)
+        return
+    }
+    // 已加载的图片串成一组，支持左右滑动切换（与会话页图片气泡的行为一致）
+    const urls: string[] = []
+    const list = items.value
+    for (let i = 0; i < list.length; i++) {
+        if (!list[i].isVideo && list[i].remoteUrl != '') {
+            urls.push(list[i].remoteUrl)
+        }
+    }
+    let current = urls.indexOf(item.remoteUrl)
+    if (current < 0) {
+        urls.push(item.remoteUrl)
+        current = urls.length - 1
+    }
+    uni.previewImage({
+        urls: urls,
+        current: current
+    } as PreviewImageOptions)
+}
+
+onMounted(() => {
+    const windowInfo = uni.getWindowInfo()
+    cellSize.value = Math.floor((windowInfo.windowWidth - GRID_PADDING * 2) / 3)
+    load()
+})
+</script>
+
+<style scoped>
+.wxfont {
+    font-family: "wxfont";
+}
+
+.root {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.list {
+    flex: 1;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.grid {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 2px;
+}
+
+/* 三列，宽高由 JS 算好后走 :style 下发 */
+.cell {
+    padding: 2px;
+    position: relative;
+}
+
+.thumb {
+    width: 100%;
+    height: 100%;
+}
+
+.play-badge {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    font-size: 20px;
+}
+
+.footer {
+    width: 100%;
+    padding: 16px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>

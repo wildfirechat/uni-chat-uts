@@ -1,0 +1,224 @@
+<template>
+    <view class="root">
+        <view v-if="links.length == 0 && !loading" class="empty">
+            <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('search.no_links') }}</text>
+        </view>
+        <scroll-view v-else class="list" direction="vertical" @scrolltolower="loadMore">
+            <view v-for="link in links" :key="link.messageUid" class="row"
+                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="openLink(link)">
+                <image v-if="link._thumbnail != ''" class="thumb" :src="link._thumbnail" mode="aspectFill" />
+                <view v-else class="thumb thumb-placeholder" :style="{ backgroundColor: c.sectionGap }">
+                    <text class="thumb-initial" :style="{ color: c.textSecondary }">{{ link._initial }}</text>
+                </view>
+                <view class="texts">
+                    <text class="title" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ link._title }}</text>
+                    <text class="meta" :style="{ fontSize: fontPx(FONT_XS), color: c.textSecondary }">{{ link._meta }}</text>
+                </view>
+            </view>
+            <view v-if="hasMore" class="footer">
+                <text :style="{ fontSize: fontPx(FONT_SM), color: c.textTertiary }">{{ t('common.loading') }}</text>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会话链接列表。对齐 flutter `conversation/conversation_links_screen.dart` 的 ConversationLinksView。
+ *
+ * 与 flutter 一样做成「无导航栏的内容体」，两处复用：
+ * - [ConversationLinksPage](../../pages/conversation/ConversationLinksPage.uvue) 独立页（会话信息页入口）
+ * - [SearchConversationMessagePage](../../pages/search/SearchConversationMessagePage.uvue) 的「链接」标签
+ *
+ * 消息来源用 [store.getMessagesInTypesAndTimes]（底下是 `searchMessageByTypesAndTimes` 传空关键字），
+ * 不是 flutter 的 `getMessages(contentTypes:)` —— 三端插件的 getMessagesV2 把 contentTypes 写死成空数组。
+ *
+ * 用 `scroll-view` 而不是 `list-view`：list-view 在鸿蒙 vapor 下是复用渲染路径，
+ * 行里有动态 `:style` 很容易塌成 0 高（见 FLUTTER_ALIGNMENT_TODO「list-view 的坑」），
+ * 链接列表条目本来就不多，不值得为它冒这个险。
+ */
+import store from "@/store.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import Message from "@/wfc/messages/message.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import LinkMessageContent from "@/wfc/messages/linkMessageContent.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_XS, FONT_SM, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "conversation-links"
+})
+
+const PAGE_SIZE = 20
+
+const props = defineProps<{
+    conversation: Conversation
+}>()
+
+const c = computed<AppColors>((): AppColors => colors())
+
+/** 列表项是 Message，展示用的三个字段挂在 `_` 前缀的补丁字段上，避免模板里反复 as 转型。 */
+class LinkItem {
+    messageUid = ''
+    url = ''
+    _title = ''
+    _meta = ''
+    _thumbnail = ''
+    /** 无缩略图时的占位字符：域名首字母。**不用图标字体** —— icomoon 里没有链接字形，写了会渲染成豆腐块。 */
+    _initial = ''
+}
+
+const links = ref<LinkItem[]>([] as LinkItem[])
+const loading = ref<boolean>(false)
+const hasMore = ref<boolean>(true)
+
+let offset = 0
+
+/** 从 url 里取一个占位字符：优先域名首字母，取不到就退回 '#'。 */
+const initialOf = (url: string): string => {
+    let host = url
+    const schemeIndex = host.indexOf('://')
+    if (schemeIndex >= 0) {
+        host = host.substring(schemeIndex + 3)
+    }
+    if (host.startsWith('www.')) {
+        host = host.substring(4)
+    }
+    return host.length > 0 ? host.substring(0, 1).toUpperCase() : '#'
+}
+
+const toItem = (message: Message): LinkItem => {
+    const content = message.messageContent as LinkMessageContent
+    const item = new LinkItem()
+    item.messageUid = message.messageUid
+    item.url = content.url
+    item._title = content.title.trim() != '' ? content.title : content.url
+    item._thumbnail = content.thumbnail
+    item._initial = initialOf(content.url)
+    // 「发送者  摘要  时间」，与 flutter 的 subtitle 同构
+    const parts: string[] = []
+    const from = message._from
+    if (from != null && from!._displayName != '') {
+        parts.push(from!._displayName)
+    }
+    if (content.contentDigest.trim() != '') {
+        parts.push(content.contentDigest.trim())
+    }
+    parts.push(message._timeStr)
+    item._meta = parts.join('  ')
+    return item
+}
+
+const load = () => {
+    if (loading.value || !hasMore.value) {
+        return
+    }
+    loading.value = true
+    const messages = store.getMessagesInTypesAndTimes(props.conversation,
+        [MessageContentType.Link], 0, new Date().getTime(), PAGE_SIZE, offset)
+    const page: LinkItem[] = []
+    for (let i = 0; i < messages.length; i++) {
+        page.push(toItem(messages[i]))
+    }
+    links.value = links.value.concat(page)
+    offset += messages.length
+    hasMore.value = messages.length >= PAGE_SIZE
+    loading.value = false
+}
+
+const loadMore = () => {
+    load()
+}
+
+const openLink = (link: LinkItem) => {
+    if (link.url == '') {
+        return
+    }
+    uni.navigateTo({
+        url: '/pages/misc/WebViewPage?url=' + encodeURIComponent(link.url),
+        fail: (err) => {
+            console.log('nav to WebViewPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+onMounted(() => {
+    load()
+})
+</script>
+
+<style scoped>
+.root {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.list {
+    flex: 1;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.row {
+    width: 100%;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+}
+
+.thumb-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.thumb-initial {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.texts {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.title {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.meta {
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.footer {
+    width: 100%;
+    padding: 16px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>

@@ -1,0 +1,119 @@
+/**
+ * 收藏一条消息。对齐 flutter `model/favorite_item.dart` 的 `FavoriteItem.fromMessage`
+ * + `conversation_controller.dart` 里 `case "favorite"` 的那段。
+ *
+ * 放在 common 而不是 [FavoriteItem] 上，是因为构造 origin（群名/好友名/频道名）要查 wfc，
+ * 而 `wfc/model/favoriteItem.uts` 本身刻意不依赖客户端（见该文件头注释）。
+ */
+import wfc from "../wfc/client/wfc.uts";
+import appServerApi from "../api/appServerApi.uts";
+import FavoriteItem from "../wfc/model/favoriteItem.uts";
+import Message from "../wfc/messages/message.uts";
+import MessageContentType from "../wfc/messages/messageContentType.uts";
+import ConversationType from "../wfc/model/conversationType.uts";
+import ImageMessageContent from "../wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "../wfc/messages/videoMessageContent.uts";
+import FileMessageContent from "../wfc/messages/fileMessageContent.uts";
+import SoundMessageContent from "../wfc/messages/soundMessageContent.uts";
+import LinkMessageContent from "../wfc/messages/linkMessageContent.uts";
+import TextMessageContent from "../wfc/messages/textMessageContent.uts";
+import CompositeMessageContent from "../wfc/messages/compositeMessageContent.uts";
+import { t, t1 } from "../i18n/i18n.uts";
+
+/** 收藏来源：群备注/群名、好友名、频道名。 */
+function originOf(message: Message): string {
+    const conversation = message.conversation
+    if (conversation.type == ConversationType.Group) {
+        const groupInfo = wfc.getGroupInfo(conversation.target, false)
+        return groupInfo.remark != '' ? groupInfo.remark : groupInfo.name
+    } else if (conversation.type == ConversationType.Single) {
+        return wfc.getUserDisplayName(message.from)
+    } else if (conversation.type == ConversationType.Channel) {
+        return wfc.getChannelInfo(conversation.target, false).name
+    }
+    return ''
+}
+
+/**
+ * 把一条消息转成收藏条目。
+ *
+ * 与 flutter 的两处差异：
+ * - 缩略图：flutter 的 thumbnail 是 Uint8List，收藏时 base64 编码；uts 的 thumbnail 本身就是
+ *   不带 `data:` 头的 base64 串，直接透传（与 [FavoriteItem.buildContent] 的还原侧对称）。
+ * - 合并转发：flutter 会把 remoteUrl 注回 payload 的 JSON 再重编码，这里只存原始 payload 的
+ *   binaryContent —— 还原侧（[FavoriteItem.buildContent]）本来就把合并转发按未知类型处理。
+ */
+export function favoriteItemFromMessage(message: Message): FavoriteItem {
+    const item = new FavoriteItem()
+    item.messageUid = message.messageUid
+    item.favType = message.messageContent.type
+    item.timestamp = new Date().getTime()
+    item.conversation = message.conversation
+    item.origin = originOf(message)
+    item.sender = message.from
+
+    const content = message.messageContent
+    if (content instanceof TextMessageContent) {
+        item.title = (content as TextMessageContent).content
+    } else if (content instanceof ImageMessageContent) {
+        const c = content as ImageMessageContent
+        item.url = c.remotePath
+        if (c.thumbnail != '') {
+            item.data = JSON.stringify({ thumb: c.thumbnail } as UTSJSONObject)!
+        }
+    } else if (content instanceof VideoMessageContent) {
+        const c = content as VideoMessageContent
+        item.url = c.remotePath
+        item.data = JSON.stringify({ thumb: c.thumbnail, duration: c.duration } as UTSJSONObject)!
+    } else if (content instanceof FileMessageContent) {
+        const c = content as FileMessageContent
+        item.url = c.remotePath
+        item.title = c.name
+        item.data = JSON.stringify({ size: c.size } as UTSJSONObject)!
+    } else if (content instanceof SoundMessageContent) {
+        const c = content as SoundMessageContent
+        item.url = c.remotePath
+        item.data = JSON.stringify({ duration: c.duration } as UTSJSONObject)!
+    } else if (content instanceof LinkMessageContent) {
+        const c = content as LinkMessageContent
+        item.title = c.title
+        item.thumbUrl = c.thumbnail
+        item.url = c.url
+    } else if (content instanceof CompositeMessageContent) {
+        const c = content as CompositeMessageContent
+        item.title = c.title
+        item.data = c.encode().binaryContent
+    }
+    return item
+}
+
+/** 消息是否可收藏。与 flutter 一致：菜单里对所有消息都放这一项，服务端不认的类型会返回失败。 */
+export function isFavoriteAble(message: Message): boolean {
+    const type = message.messageContent.type
+    return type == MessageContentType.Text
+        || type == MessageContentType.Image
+        || type == MessageContentType.Video
+        || type == MessageContentType.File
+        || type == MessageContentType.Voice
+        || type == MessageContentType.Link
+        || type == MessageContentType.Composite_Message
+}
+
+/** 收藏一条消息并 toast 结果。 */
+export function favoriteMessage(message: Message): void {
+    const item = favoriteItemFromMessage(message)
+    appServerApi.addFavoriteItem(item.toJsonObject())
+        .then((_: UTSJSONObject | null) => {
+            uni.showToast({
+                title: t('fav.fav_success'),
+                icon: 'none'
+            } as ShowToastOptions)
+        })
+        .catch((err: any | null) => {
+            console.log('add favorite item fail', err)
+            uni.showToast({
+                title: t1('fav.fav_fail', '' + err),
+                icon: 'none'
+            } as ShowToastOptions)
+        })
+}

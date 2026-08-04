@@ -43,6 +43,10 @@ export default class Config {
     // 工作台地址，如果不需要工作台，请删除 pages.json 里面，WorkspacePage 相关配置
     static WORKSPACE_URL = "https://open.wildfirechat.cn/work.html";
 
+    // 语音转文字（ASR）服务地址。不走 IM 协议栈，客户端直接 POST 语音的 remoteUrl 过去。
+    // 置空则消息长按菜单不显示「语音转文字」。
+    static ASR_SERVER = 'https://app.wildfirechat.net/asr/api/recognize';
+
     // 请仔细看注释
     // 仅仅是 HOST，没有 http 前缀，后面也没有端口
     // IM SERVER 的 host 地址，一定要和 APP_SERVER 对应起来，即 APP_SERVER 上配置的 im-server 和下面所配置的im-server 是同一个

@@ -84,8 +84,12 @@ import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import eventBus from "@/common/eventBus.uts";
 import { getTouchPoint } from "@/common/touch.uts";
 import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
+import { isAsrEnabled, speechToText } from "@/common/asr.uts";
+import { isFavoriteAble, favoriteMessage } from "@/common/favorite.uts";
+import { report } from "@/common/report.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
 
 let innerAudioContext: InnerAudioContext | null = null;
 
@@ -447,6 +451,53 @@ const isQuotable = (message: Message): boolean => {
     MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE].indexOf(message.messageContent.type) <= -1;
 }
 
+/**
+ * 语音转文字。只对还没转过的语音消息显示，且要配了 ASR 服务地址。
+ * 与 flutter 一致：转过一次之后菜单里就不再出现这一项（结果已经贴在气泡下面了）。
+ */
+const isSpeechToTextable = (message: Message): boolean => {
+    if (!isAsrEnabled()) {
+        return false
+    }
+    const content = message.messageContent
+    if (!(content instanceof SoundMessageContent)) {
+        return false
+    }
+    return (content as SoundMessageContent)._speechText == ''
+}
+
+const speechToTextMessage = (message: Message) => {
+    const content = message.messageContent as SoundMessageContent
+    if (content.remotePath == '') {
+        uni.showToast({
+            title: t('asr.audio_not_available'),
+            icon: 'none'
+        } as ShowToastOptions)
+        return
+    }
+    content._speechToTextInProgress = true
+    speechToText(content.remotePath, (text: string) => {
+        content._speechToTextInProgress = false
+        if (text == '') {
+            content._speechText = t('asr.convert_fail')
+            uni.showToast({
+                title: t('asr.fail'),
+                icon: 'none'
+            } as ShowToastOptions)
+            return
+        }
+        content._speechText = text
+    }, (err: string) => {
+        console.log('speech to text fail', err)
+        content._speechToTextInProgress = false
+        content._speechText = t('asr.convert_fail')
+        uni.showToast({
+            title: t('asr.fail'),
+            icon: 'none'
+        } as ShowToastOptions)
+    })
+}
+
 const copy = (message: Message) => {
     const content = message.messageContent;
     if (content instanceof TextMessageContent) {
@@ -551,7 +602,14 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     if (isQuotable(message)) {
         items.push(new PopupMenuItem('引用', 'quote'))
     }
+    if (isSpeechToTextable(message)) {
+        items.push(new PopupMenuItem(t('asr.speech_to_text'), 'speechToText'))
+    }
+    if (isFavoriteAble(message)) {
+        items.push(new PopupMenuItem(t('common.fav'), 'favorite'))
+    }
     items.push(new PopupMenuItem('多选', 'multiSelection'))
+    items.push(new PopupMenuItem(t('setting.report'), 'report'))
     contextMenuItems.value = items;
     showContextMenu.value = true;
 }
@@ -589,6 +647,15 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
             break;
         case 'save':
             saveMessageMedia(message);
+            break;
+        case 'speechToText':
+            speechToTextMessage(message);
+            break;
+        case 'favorite':
+            favoriteMessage(message);
+            break;
+        case 'report':
+            report();
             break;
         default:
             uni.showToast({
