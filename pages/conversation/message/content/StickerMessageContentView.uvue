@@ -1,5 +1,5 @@
 <template>
-    <view class="sticker-content-container">
+    <view class="sticker-content-container" :style="{ borderColor: c.hairlineSoft }">
         <image class="sticker" mode="aspectFit" :src="stickerSrc" />
     </view>
 </template>
@@ -8,10 +8,13 @@
 import Message from "@/wfc/messages/message.uts";
 import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "StickerMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -29,7 +32,8 @@ const stickerSrc = computed<string>((): string => {
 .sticker-content-container {
     margin: 0 10px;
     position: relative;
-    border: 1px solid #efefef;
+    border-width: 1px;
+    border-style: solid;
     border-radius: 5px;
 }
 

@@ -1,38 +1,41 @@
 <template>
-    <view class="pick-conversation-container">
+    <view class="pick-conversation-container" :style="{ backgroundColor: c.bottomBarBg }">
         <view class="conversation-list-panel">
             <view class="input-container">
-                <input class="search-input" type="text" placeholder="搜索" v-model="query" />
+                <input class="search-input" type="text" placeholder="搜索" v-model="query"
+                    :style="{ borderColor: c.hairlineSoft, backgroundColor: c.surface, color: c.textPrimary }" />
             </view>
             <scroll-view class="conversation-list-container" direction="vertical">
-                <view class="create-group" @tap="showForwardByCreateConversationModal">
-                    <text class="create-group-text">创建群聊</text>
+                <view class="create-group" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+                    @tap="showForwardByCreateConversationModal">
+                    <text class="create-group-text" :style="{ color: c.textPrimary }">创建群聊</text>
                 </view>
-                <text class="section-label">最近聊天</text>
+                <text class="section-label" :style="{ color: c.textSecondary, backgroundColor: c.bottomBarBg }">最近聊天</text>
                 <view v-for="(conversationInfo, index) in conversationInfos" :key="index">
-                    <view class="conversation-item" @tap="onConversationItemClick(conversationInfo.conversation)">
+                    <view class="conversation-item" :style="{ backgroundColor: c.surface }"
+                        @tap="onConversationItemClick(conversationInfo.conversation)">
                         <round-checkbox class="checkbox" :checked="isConversationChecked(conversationInfo.conversation)" />
                         <view class="item-header">
-                            <image class="avatar" :src="portraitOf(conversationInfo)" />
+                            <image class="avatar" :style="{ backgroundColor: c.inputBg }" :src="portraitOf(conversationInfo)" />
                         </view>
-                        <text class="title single-line">{{ displayNameOf(conversationInfo) }}</text>
+                        <text class="title single-line" :style="{ color: c.textPrimary }">{{ displayNameOf(conversationInfo) }}</text>
                     </view>
                 </view>
             </scroll-view>
         </view>
-        <view class="checked-conversation-list-container">
+        <view class="checked-conversation-list-container" :style="{ backgroundColor: c.surface }">
             <view class="panel-header">
-                <text class="panel-title">分别发送给</text>
-                <text class="panel-desc" v-if="pickedConversations.length == 0">未选择聊天</text>
-                <text class="panel-desc" v-else>已选择{{ pickedConversations.length }}个聊天</text>
-                <button size="mini" @tap="confirm" class="confirm">发送</button>
+                <text class="panel-title" :style="{ color: c.textPrimary }">分别发送给</text>
+                <text class="panel-desc" :style="{ color: c.textSecondary }" v-if="pickedConversations.length == 0">未选择聊天</text>
+                <text class="panel-desc" :style="{ color: c.textSecondary }" v-else>已选择{{ pickedConversations.length }}个聊天</text>
+                <button size="mini" @tap="confirm" class="confirm" :style="{ color: c.accent }">发送</button>
             </view>
             <scroll-view class="picked-content" direction="horizontal">
                 <view class="picked-user-container" v-for="(conversation, index) in pickedConversations" :key="index">
                     <view class="picked-user" @tap="unpConversation(conversation)">
-                        <image class="avatar" :src="portraitOfConversation(conversation)" />
+                        <image class="avatar" :style="{ backgroundColor: c.inputBg }" :src="portraitOfConversation(conversation)" />
                     </view>
-                    <text class="name single-line">{{ displayNameOfConversation(conversation) }}</text>
+                    <text class="name single-line" :style="{ color: c.textPrimary }">{{ displayNameOfConversation(conversation) }}</text>
                 </view>
             </scroll-view>
             <ForwardMessageView ref="forwardMessageView" :forward-type="forwardType" :messages="messages" />
@@ -48,11 +51,14 @@ import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ForwardMessageByPickConversationView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     forwardType?: number
     messages: Message[]
@@ -147,7 +153,6 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    background-color: #f7f7f7;
     overflow: hidden;
 }
 
@@ -162,13 +167,12 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
     margin: 15px 20px 0 15px;
     flex: 1;
     border-radius: 3px;
-    border: 1px solid #ededed;
-    background-color: #ffffff;
+    border-width: 1px;
+    border-style: solid;
     padding-left: 10px;
 }
 
 .create-group {
-    background-color: #f7f7f7;
     height: 40px;
     padding-left: 15px;
     display: flex;
@@ -185,9 +189,7 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
 }
 
 .section-label {
-    background-color: #f7f7f7;
     font-size: 12px;
-    color: #888888;
     padding-left: 15px;
 }
 
@@ -196,11 +198,11 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
     height: 70px;
     display: flex;
     flex-direction: row;
-    border-bottom: 1px solid #eeeeee;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
     align-items: center;
     justify-content: flex-start;
     padding-left: 15px;
-    background-color: #ffffff;
 }
 
 .item-header {
@@ -213,13 +215,11 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
 .avatar {
     width: 45px;
     height: 45px;
-    background-color: #d6d6d6;
     border-radius: 3px;
 }
 
 .title {
     font-size: 14px;
-    color: #262626;
     padding-right: 10px;
     flex: 1;
 }
@@ -232,7 +232,6 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
     display: flex;
     min-height: 230px;
     flex-direction: column;
-    background-color: #ffffff;
 }
 
 .panel-header {
@@ -256,7 +255,6 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
 .confirm {
     font-size: 12px;
     margin-right: 20px;
-    color: #4168e0;
 }
 
 .picked-content {

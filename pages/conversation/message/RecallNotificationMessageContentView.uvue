@@ -1,7 +1,7 @@
 <template>
     <view class="notification-container">
-        <text class="notification">{{ message.messageContent.digest(message) }}</text>
-        <text v-if="reeditable" class="reedit" @tap="reedit">重新编辑</text>
+        <text class="notification" :style="{ color: c.textTertiary }">{{ message.messageContent.digest(message) }}</text>
+        <text v-if="reeditable" class="reedit" :style="{ color: c.accent }" @tap="reedit">重新编辑</text>
     </view>
 </template>
 
@@ -13,10 +13,13 @@ import RecallMessageNotification from "@/wfc/messages/notification/recallMessage
 import Config from "@/config.uts";
 import eventBus from "@/common/eventBus.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "RecallNotificationMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -52,7 +55,6 @@ const reedit = () => {
 }
 
 .notification {
-    color: #b8b8b8;
     margin: 20px 0;
     font-size: 14px;
 }
@@ -60,6 +62,5 @@ const reedit = () => {
 .reedit {
     margin-left: 10px;
     font-size: 14px;
-    color: #3B62E0;
 }
 </style>

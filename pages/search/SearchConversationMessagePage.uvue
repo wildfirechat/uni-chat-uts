@@ -1,14 +1,15 @@
 <template>
-    <view class="search-conversation-message-container">
-        <input class="input" type="text" v-model="query" placeholder="搜索" @input="search" />
-        <text class="category">聊天记录</text>
-        <scroll-view class="message-list" direction="vertical">
+    <view class="search-conversation-message-container" :style="{ backgroundColor: c.surface }">
+        <input class="input" type="text" v-model="query" placeholder="搜索" @input="search"
+            :style="{ backgroundColor: c.surface, color: c.textPrimary, borderBottomColor: c.hairline }" />
+        <text class="category" :style="{ color: c.textTertiary }">聊天记录</text>
+        <scroll-view class="message-list" direction="vertical" :style="{ backgroundColor: c.surface }">
             <view v-for="(msg, index) in messages" :key="index">
-                <view class="search-result-item" @tap="onClickMessage(msg)">
-                    <image class="item-portrait" :src="portrait" />
+                <view class="search-result-item" :style="{ backgroundColor: c.surface }" @tap="onClickMessage(msg)">
+                    <image class="item-portrait" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
                     <view class="title-desc">
-                        <text class="item-name">{{ fromNameOf(msg) }}</text>
-                        <text class="desc">{{ msg.messageContent.digest(msg) }}</text>
+                        <text class="item-name" :style="{ color: c.textPrimary }">{{ fromNameOf(msg) }}</text>
+                        <text class="desc" :style="{ color: c.textSecondary }">{{ msg.messageContent.digest(msg) }}</text>
                     </view>
                 </view>
             </view>
@@ -23,10 +24,13 @@ import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import Config from "@/config.uts";
 import { go2ConversationPage } from "@/common/nav.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "SearchConversationMessagePage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const query = ref<string>(searchState.query as string)
 const conversationInfo = ref<ConversationInfo | null>(null as ConversationInfo | null)
 const messages = ref<Message[]>([] as Message[])
@@ -77,7 +81,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .search-conversation-message-container {
-    background-color: #ffffff;
     position: relative;
     flex: 1;
 }
@@ -87,23 +90,20 @@ onBeforeUnmount(() => {
     width: 100%;
     padding: 5px 10px;
     margin-bottom: 5px;
-    background-color: #ffffff;
-    border-bottom: 1px solid #d3d3d3;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .category {
     margin-left: 10px;
-    color: #b2b2b2;
     font-size: 13px;
 }
 
 .message-list {
     flex: 1;
-    background-color: #ffffff;
 }
 
 .search-result-item {
-    background-color: #ffffff;
     padding: 10px 12px;
     display: flex;
     flex-direction: row;
@@ -129,7 +129,6 @@ onBeforeUnmount(() => {
 
 .desc {
     font-size: 12px;
-    color: #808080;
     padding-left: 10px;
     white-space: nowrap;
     text-overflow: ellipsis;

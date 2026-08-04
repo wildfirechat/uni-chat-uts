@@ -1,13 +1,19 @@
 <template>
     <view class="loading">
-        <text class="loading-text">加载中...</text>
+        <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ t('common.loading') }}</text>
     </view>
 </template>
 
 <script setup lang="uts">
+import { colors, AppColors } from "../../common/theme.uts"
+import { fontPx, FONT_XS } from "../../common/layoutScale.uts"
+import { t } from "../../i18n/i18n.uts"
+
 defineOptions({
     name: "LoadingView"
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 </script>
 
 <style scoped>
@@ -17,10 +23,5 @@ defineOptions({
     align-items: center;
     justify-content: center;
     padding: 10px;
-}
-
-.loading-text {
-    font-size: 12px;
-    color: #848484;
 }
 </style>

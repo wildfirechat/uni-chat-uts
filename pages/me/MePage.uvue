@@ -1,16 +1,25 @@
 <template>
-    <view class="me-container">
-        <view class="user-info" @tap="showUserInfo">
-            <image class="portrait" :src="portrait" @tap.stop="updatePortrait"></image>
-            <text class="name">{{ displayName }}</text>
+    <view class="me-container" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="user-info" :style="{ backgroundColor: c.surface }" hover-class="user-info-pressed"
+            hover-stay-time="80" @tap="showUserInfo">
+            <image class="portrait" :src="portrait" :style="{ width: iconPx(60), height: iconPx(60) }"
+                @tap.stop="updatePortrait"></image>
+            <text class="name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ displayName }}</text>
         </view>
-        <view class="about" @tap="showAbout">
-            <text>关于</text>
+
+        <section-divider />
+
+        <form-card>
+            <option-item :title="t('me.about')" @tap="showAbout" />
+            <option-item :title="t('me.api_test')" :show-bottom-divider="false" @tap="showApiTest" />
+        </form-card>
+
+        <section-divider />
+
+        <view class="logout" :style="{ backgroundColor: c.surface }" hover-class="logout-pressed" hover-stay-time="80"
+            @tap="logout">
+            <text :style="{ color: c.danger, fontSize: fontPx(FONT_LG) }">{{ t('me.logout') }}</text>
         </view>
-        <view class="about" @tap="showApiTest">
-            <text>API测试</text>
-        </view>
-        <button class="logout-button" @tap="logout">退出登录</button>
     </view>
 </template>
 
@@ -23,6 +32,11 @@ import MessageContentMediaType from "../../wfc/messages/messageContentMediaType.
 import ModifyMyInfoType from "../../wfc/model/modifyMyInfoType.uts";
 import ModifyMyInfoEntry from "../../wfc/model/modifyMyInfoEntry.uts";
 import { toLocalFilePath } from "../../common/filePath.uts";
+import { colors, AppColors } from "../../common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_XL } from "../../common/layoutScale.uts";
+import { t } from "../../i18n/i18n.uts";
+
+const c = computed<AppColors>((): AppColors => colors())
 
 const portrait = computed<string>((): string => {
     const user = contactState.selfUserInfo
@@ -93,13 +107,13 @@ const updatePortrait = () => {
                             user.portrait = remoteUrl;
                         }
                         uni.showToast({
-                            title: '头像更新成功',
+                            title: t('me.portrait_update_success'),
                             icon: 'none'
                         } as ShowToastOptions);
                     }, (error: number) => {
                         console.error('modifyMyInfo error', error);
                         uni.showToast({
-                            title: '头像更新失败: ' + error,
+                            title: t('me.portrait_update_fail') + ': ' + error,
                             icon: 'none'
                         } as ShowToastOptions);
                     });
@@ -121,42 +135,47 @@ const updatePortrait = () => {
 .me-container {
     display: flex;
     flex-direction: column;
-    align-items: center;
     width: 100%;
     flex: 1;
-    background-color: #fafafa;
 }
 
 .user-info {
     width: 100%;
-    padding: 10px;
-    height: 80px;
+    padding: 20px 15px;
     display: flex;
-    background-color: #ffffff;
-    align-items: center;
     flex-direction: row;
-    margin-bottom: 10px;
+    align-items: center;
+}
+
+/* 按下态的色值对应 theme.uts 的 pressedOverlay，hover-class 拿不到 :style 绑定 */
+.user-info-pressed {
+    background-color: #F5F5F5;
 }
 
 .portrait {
-    width: 60px;
-    height: 60px;
     border-radius: 5px;
 }
 
+/* flex: 1 不能省：text 带了 overflow: hidden 又没有确定宽度时，鸿蒙上会被压成 0 宽，
+ * 整个昵称塌成省略号（与 option-item 的 .title 同一个坑） */
 .name {
-    margin-left: 10px;
-    font-size: 16px;
+    flex: 1;
+    margin-left: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
-.about {
+.logout {
     width: 100%;
-    padding: 15px 10px;
-    background-color: #ffffff;
+    height: 50px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
 }
 
-.logout-button {
-    margin-top: 20px;
-    width: 90%;
+.logout-pressed {
+    background-color: #F5F5F5;
 }
 </style>

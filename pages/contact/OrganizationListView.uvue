@@ -1,8 +1,8 @@
 <template>
     <list-item v-for="(organization, index) in rootOrganizations" :key="index" @tap="showOrganization(organization)">
-        <view class="organization-item">
-            <image class="avatar" :src="portraitOf(organization)" />
-            <text class="org-name single-line">{{ organization.getString('name') ?? '' }}</text>
+        <view class="organization-item" :style="{ backgroundColor: c.sectionGap }">
+            <image class="avatar" :src="portraitOf(organization)" :style="{ backgroundColor: c.inputBg }" />
+            <text class="org-name single-line" :style="{ color: c.textPrimary }">{{ organization.getString('name') ?? '' }}</text>
         </view>
     </list-item>
 </template>
@@ -12,11 +12,14 @@ import store from "../../store.uts";
 import organizationServerApi from "../../api/organizationServerApi.uts";
 import Config from "../../config.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "OrganizationListView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const rootOrganizations = ref<UTSJSONObject[]>([] as UTSJSONObject[])
 
 onMounted(() => {
@@ -67,7 +70,6 @@ const showOrganization = (organization: UTSJSONObject) => {
     display: flex;
     flex-direction: row;
     align-items: center;
-    background-color: #fafafa;
 }
 
 .org-name {

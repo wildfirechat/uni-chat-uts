@@ -1,7 +1,8 @@
 <template>
-    <view class="pick-single-user-container">
+    <view class="pick-single-user-container" :style="{ backgroundColor: c.bottomBarBg }">
         <view class="input-container">
-            <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery" />
+            <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery"
+                :style="{ borderColor: c.hairlineSoft, backgroundColor: c.surface, color: c.textPrimary }" />
         </view>
         <list-view class="user-list-container" direction="vertical">
             <UserListView :users="filteredUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
@@ -16,10 +17,13 @@ import UserListView from "../user/UserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { currentPickUserOptions, notifyPickedUser } from "@/common/picker.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "PickSingleUserPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const filterQuery = ref<string>('')
 const users = ref<UserInfo[]>([] as UserInfo[])
 const showCategoryLabel = ref<boolean>(true)
@@ -54,7 +58,6 @@ const onClickUser = (user: UserInfo) => {
     flex-direction: column;
     flex: 1;
     width: 100%;
-    background-color: #f7f7f7;
 }
 
 .input-container {
@@ -69,8 +72,8 @@ const onClickUser = (user: UserInfo) => {
     margin: 15px 20px 0 15px;
     flex: 1;
     border-radius: 3px;
-    border: 1px solid #ededed;
-    background-color: #ffffff;
+    border-width: 1px;
+    border-style: solid;
     padding-left: 10px;
 }
 

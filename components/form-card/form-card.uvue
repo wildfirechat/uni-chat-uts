@@ -1,0 +1,42 @@
+<template>
+    <view class="form-card" :style="{ backgroundColor: c.surface, borderRadius: radius + 'px' }">
+        <slot></slot>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 表单/设置分组卡片：白（深色下是 surface）面 + 圆角，里面塞 option-item / option-switch-item。
+ * 对齐 flutter `widget/form_card.dart`。
+ *
+ * 与 flutter 的差别：flutter 的 FormCard 会自动在子项之间插分隔线，uni-app x 的具名插槽
+ * 拿不到子节点列表，做不了。所以线由子项自己画 —— 卡片里最后一项传
+ * `:show-bottom-divider="false"`，否则底部会多出一条贴着圆角的线。
+ *
+ * [radius] 默认 0 = 通栏分组（设置类页面的形态，对齐 flutter 移动端）；
+ * 真正的表单卡片（如创建投票）传 `:radius="8"`。圆角配通栏会贴着屏幕边断掉，
+ * 想要圆角就同时给外层留左右间距。
+ */
+import { colors, AppColors } from '@/common/theme.uts'
+
+defineOptions({
+    name: 'form-card'
+})
+
+withDefaults(defineProps<{
+    radius?: number
+}>(), {
+    radius: 0
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+</script>
+
+<style scoped>
+.form-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+</style>

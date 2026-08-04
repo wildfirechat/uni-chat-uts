@@ -1,8 +1,9 @@
 <template>
-    <view class="pick-contact-container">
+    <view class="pick-contact-container" :style="{ backgroundColor: c.bottomBarBg }">
         <view class="contact-list-container">
             <view class="input-container">
-                <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery" />
+                <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery"
+                    :style="{ borderColor: c.hairlineSoft, backgroundColor: c.surface, color: c.textPrimary }" />
             </view>
             <list-view class="friend-list-container" direction="vertical">
                 <CheckableUserListView :users="filteredUsers" :initial-checked-users="initialCheckedUsers"
@@ -10,16 +11,17 @@
                     padding-left="20px" />
             </list-view>
         </view>
-        <view class="checked-contact-list-container">
+        <view class="checked-contact-list-container"
+            :style="{ backgroundColor: c.surface, borderTopColor: c.hairlineSoft }">
             <view class="panel-header">
-                <text class="panel-desc" v-if="checkedUsers.length == 0">已选择联系人</text>
-                <text class="panel-desc" v-else>已选择联系人 {{ checkedUsers.length }}</text>
+                <text class="panel-desc" :style="{ color: c.textSecondary }" v-if="checkedUsers.length == 0">已选择联系人</text>
+                <text class="panel-desc" :style="{ color: c.textSecondary }" v-else>已选择联系人 {{ checkedUsers.length }}</text>
                 <button size="mini" :disabled="checkedUsers.length == 0" @tap="confirm">{{ confirmTitle }}</button>
             </view>
             <scroll-view class="picked-content" direction="horizontal">
                 <view class="picked-user" v-for="(user, index) in checkedUsers" :key="index" @tap="unpick(user)">
-                    <image class="avatar" :src="user.portrait" />
-                    <text class="name single-line">{{ user.displayName }}</text>
+                    <image class="avatar" :src="user.portrait" :style="{ backgroundColor: c.inputBg }" />
+                    <text class="name single-line" :style="{ color: c.textPrimary }">{{ user.displayName }}</text>
                 </view>
             </scroll-view>
         </view>
@@ -32,10 +34,13 @@ import CheckableUserListView from "@/pages/user/CheckableUserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { currentPickUsersOptions, notifyPickedUsers } from "@/common/picker.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "PickUserPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const users = ref<UserInfo[]>([] as UserInfo[])
 const initialCheckedUsers = ref<UserInfo[]>([] as UserInfo[])
 const uncheckableUsers = ref<UserInfo[]>([] as UserInfo[])
@@ -123,7 +128,6 @@ const confirm = () => {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    background-color: #f7f7f7;
     overflow: hidden;
 }
 
@@ -140,8 +144,8 @@ const confirm = () => {
     margin: 15px 20px 0 15px;
     flex: 1;
     border-radius: 3px;
-    border: 1px solid #ededed;
-    background-color: #ffffff;
+    border-width: 1px;
+    border-style: solid;
     padding-left: 10px;
 }
 
@@ -154,8 +158,8 @@ const confirm = () => {
     display: flex;
     height: 150px;
     flex-direction: column;
-    background-color: #ffffff;
-    border-top: 1px solid #ececec;
+    border-top-width: 1px;
+    border-top-style: solid;
 }
 
 .panel-header {
@@ -190,7 +194,6 @@ const confirm = () => {
 .avatar {
     width: 45px;
     height: 45px;
-    background-color: #d6d6d6;
     border-radius: 3px;
 }
 

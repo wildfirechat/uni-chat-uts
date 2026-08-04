@@ -1,11 +1,12 @@
 <template>
-    <view class="search-portal-container">
-        <input class="input" type="text" v-model="keyword" placeholder="搜索" @input="search" />
+    <view class="search-portal-container" :style="{ backgroundColor: c.surface }">
+        <input class="input" type="text" v-model="keyword" placeholder="搜索" @input="search"
+            :style="{ backgroundColor: c.surface, color: c.textPrimary, borderBottomColor: c.hairline }" />
         <SearchResultView :query="keyword" :search-user="searchUserOption" :search-contact="searchContactOption"
             :search-group="searchGroupOption" :search-conversation="searchConversationOption"
             v-if="keyword.trim() != ''" />
         <view v-else class="tip-container">
-            <text class="tip">请输入关键字进行搜索</text>
+            <text class="tip" :style="{ color: c.textSecondary }">请输入关键字进行搜索</text>
         </view>
     </view>
 </template>
@@ -14,6 +15,9 @@
 import SearchResultView from "./SearchResultView.uvue";
 import store from "../../store.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
+
+const c = computed<AppColors>((): AppColors => colors())
 const keyword = ref<string>('')
 const searchUserOption = ref<boolean>(true)
 const searchContactOption = ref<boolean>(true)
@@ -36,15 +40,14 @@ const search = () => {
 .search-portal-container {
     flex: 1;
     position: relative;
-    background-color: #ffffff;
 }
 
 .input {
     padding: 5px 10px;
     height: 35px;
-    border-bottom: 1px solid #d3d3d3;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
     width: 100%;
-    background-color: #ffffff;
 }
 
 .tip-container {
@@ -56,6 +59,5 @@ const search = () => {
 }
 
 .tip {
-    color: #808080;
 }
 </style>

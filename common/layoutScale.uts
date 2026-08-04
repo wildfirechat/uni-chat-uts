@@ -1,0 +1,127 @@
+/**
+ * 字号阶梯 + 字号档位缩放 —— 全 app 唯一的字号来源，页面里不要再写死 `font-size`。
+ *
+ * 对齐 flutter 的 `theme/app_typography.dart`（字号阶梯）和 `utils/layout_scale.dart`
+ * （档位缩放 + 分类上限）。flutter 靠 MaterialApp 的 `textScaler` 全局放大文字，
+ * uni-app x 没有这个东西，所以文字尺寸也得逐个走 [fontPx]。
+ *
+ * ## 字号阶梯
+ *
+ * | 令牌         | px | 用途                                     |
+ * |--------------|----|------------------------------------------|
+ * | FONT_XXS     | 11 | 角标数字、字母索引、小号时间戳           |
+ * | FONT_XS      | 12 | 时间戳、元信息、辅助说明                 |
+ * | FONT_SM      | 13 | 次要信息（会话摘要、说明文字）           |
+ * | FONT_BASE    | 14 | 表单文字、次级正文                       |
+ * | FONT_LG      | 16 | **移动端正文**：消息正文、列表主标题     |
+ * | FONT_XL      | 20 | 页面 / 弹窗标题                          |
+ * | FONT_XXL     | 24 | 展示级大标题（启动页、扫码页、空状态）   |
+ * | FONT_XXXL    | 40 | 头像占位首字母                           |
+ *
+ * ⚠️ [FONT_BASE] 不是移动端正文，移动端正文是 [FONT_LG]。
+ *
+ * ## 为什么布局尺寸不能跟文字同倍放大
+ *
+ * 头像、图标放大没有可读性收益，只会把同行的文字挤出屏幕。所以按元素性质分设上限：
+ * 图形 [ICON_CAP]、行高/列表项 [ROW_CAP]、纯文本不封顶（[fontPx]）。
+ * 同一个容器里，容器高度和容器内的图形要用配套的上限，否则会溢出。
+ *
+ * ## 页面怎么用
+ *
+ * ```vue
+ * <text :style="{ fontSize: fontPx(FONT_LG) }">正文</text>
+ * <view :style="{ height: rowPx(56) }">
+ *     <image :style="{ width: iconPx(40), height: iconPx(40) }" />
+ * </view>
+ * ```
+ *
+ * 同一个尺寸只允许被缩放一次 —— 组件内部已经缩放过的，调用方传未缩放的基准值。
+ */
+import { ref } from 'vue'
+import { getItem, setItem } from '@/pages/util/storageHelper.uts'
+
+export const FONT_XXS: number = 11
+export const FONT_XS: number = 12
+export const FONT_SM: number = 13
+export const FONT_BASE: number = 14
+export const FONT_LG: number = 16
+export const FONT_XL: number = 20
+export const FONT_XXL: number = 24
+export const FONT_XXXL: number = 40
+
+/** 头像、图标等图形元素。1.2 以上再放大只是挤压同行的文字。 */
+export const ICON_CAP: number = 1.2
+/** 行高、列表项高度。容器内同时有图形和文字时用这个。 */
+export const ROW_CAP: number = 1.35
+/** 纯文本。必须完整跟随字号，否则最大档位下文字会被裁掉。 */
+export const TEXT_CAP: number = 1000.0
+
+// 与 flutter 的 FontSizeViewModel._scaleFactors 一致
+const SCALES: number[] = [0.90, 1.0, 1.15, 1.30, 1.45]
+const DEFAULT_INDEX: number = 1
+const FONT_SIZE_KEY = 'app_font_size_index'
+
+/** 档位数量（字体大小设置页的滑块刻度数）。 */
+export const FONT_SIZE_LEVEL_COUNT: number = 5
+
+// 存的是索引不是倍数：以后调整倍数不会让老用户的选择漂移到别的档位
+const _index = ref<number>(DEFAULT_INDEX)
+
+/** 当前档位索引，0..4。读它会建立响应式依赖。 */
+export function fontSizeIndex(): number {
+    return _index.value
+}
+
+/** 当前字号倍数。 */
+export function fontScale(): number {
+    return SCALES[_index.value]
+}
+
+/**
+ * 切换字号档位并落盘。先改内存再落盘：拖滑块不能等磁盘 IO 返回才回弹。
+ */
+export function setFontSizeIndex(index: number): void {
+    if (index < 0 || index >= SCALES.length || index == _index.value) {
+        return
+    }
+    _index.value = index
+    setItem(FONT_SIZE_KEY, '' + index)
+}
+
+/** App.uvue 的 onLaunch 里调一次。 */
+export function initFontScale(): void {
+    const stored = getItem(FONT_SIZE_KEY)
+    if (stored == '') {
+        return
+    }
+    const parsed = parseInt(stored)
+    if (!isNaN(parsed) && parsed >= 0 && parsed < SCALES.length) {
+        _index.value = parsed
+    }
+}
+
+/** 按 [cap] 封顶缩放 [base]，返回数值。需要参与计算时用它，直接给样式用 [px]。 */
+export function scale(base: number, cap: number): number {
+    const factor = fontScale()
+    return base * (factor < cap ? factor : cap)
+}
+
+/** 同 [scale]，返回 `'20px'` 形式，可直接塞进 `:style`。 */
+export function px(base: number, cap: number): string {
+    return scale(base, cap) + 'px'
+}
+
+/** 文字尺寸：不封顶，完整跟随档位。 */
+export function fontPx(base: number): string {
+    return scale(base, TEXT_CAP) + 'px'
+}
+
+/** 图形尺寸（头像、图标）：按 [ICON_CAP] 封顶。 */
+export function iconPx(base: number): string {
+    return px(base, ICON_CAP)
+}
+
+/** 行高、列表项高度：按 [ROW_CAP] 封顶。 */
+export function rowPx(base: number): string {
+    return px(base, ROW_CAP)
+}

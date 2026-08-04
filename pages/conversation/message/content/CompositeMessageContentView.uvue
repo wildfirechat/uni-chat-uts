@@ -1,8 +1,9 @@
 <template>
-    <view class="composite-message-container" @tap="showCompositePage" :class="{ out: message.direction == 0 }">
-        <text class="title">{{ title }}</text>
-        <text class="content">{{ content }}</text>
-        <text class="desc">{{ recordsText }}</text>
+    <view class="composite-message-container" @tap="showCompositePage" :class="{ out: message.direction == 0 }"
+        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+        <text class="title" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
+        <text class="content" :style="{ color: c.textTertiary }">{{ content }}</text>
+        <text class="desc" :style="{ color: c.textTertiary, borderTopColor: c.hairlineSoft }">{{ recordsText }}</text>
     </view>
 </template>
 
@@ -14,10 +15,13 @@ import ConversationType from "@/wfc/model/conversationType.uts";
 import { navigateToPage } from "@/common/nav.uts";
 import { t } from "@/i18n/i18n.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "CompositeMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -55,26 +59,23 @@ const showCompositePage = () => {
 .composite-message-container {
     margin: 0 10px;
     padding: 10px;
-    background-color: #ffffff;
     position: relative;
     border-radius: 5px;
 }
 
 .title {
-    color: #050505;
     font-size: 15px;
 }
 
 .content {
     padding: 5px 0;
     font-size: 14px;
-    color: #b2b2b2;
 }
 
 .desc {
-    border-top: 1px solid #f2f2f2;
+    border-top-width: 1px;
+    border-top-style: solid;
     padding: 5px 0 0 0;
     font-size: 14px;
-    color: #b2b2b2;
 }
 </style>

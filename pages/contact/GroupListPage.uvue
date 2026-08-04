@@ -1,19 +1,21 @@
 <template>
-    <scroll-view class="group-list-page" direction="vertical">
+    <scroll-view class="group-list-page" direction="vertical" :style="{ backgroundColor: c.surface }">
         <GroupListView />
     </scroll-view>
 </template>
 <script setup lang="uts">
 import GroupListView from "./GroupListView.uvue";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "GroupListPage"
 })
-</script>
+
+
+const c = computed<AppColors>((): AppColors => colors())</script>
 
 <style scoped>
 .group-list-page {
     flex: 1;
-    background-color: #ffffff;
 }
 </style>

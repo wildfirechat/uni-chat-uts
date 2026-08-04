@@ -1,0 +1,44 @@
+<template>
+    <view class="section-divider" :style="{ height: gap + 'px', backgroundColor: bgColor }"></view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 设置类页面里分组之间的段间凹槽（微信移动端形态）。对齐 flutter `widget/section_divider.dart`。
+ *
+ * 默认透明，露出页面底色（primaryBackground / sectionGap）；页面底色不是凹槽色时，
+ * 传 `color` 显式指定。
+ *
+ * 列表**尾部**的收尾留白不要用它，直接给容器加 padding-bottom —— 语义不同，
+ * 段间凹槽后面应该还有内容。
+ */
+import { colors } from '@/common/theme.uts'
+
+defineOptions({
+    name: 'section-divider'
+})
+
+const props = withDefaults(defineProps<{
+    /** 段间高度，默认 18，与 flutter SectionDivider.gap 一致。 */
+    gap?: number
+    /** 'transparent' 时露出页面底色；'section' 时用 sectionGap 令牌；其余按色值直接用。 */
+    color?: string
+}>(), {
+    gap: 18,
+    color: 'transparent'
+})
+
+const bgColor = computed<string>((): string => {
+    if (props.color == 'section') {
+        return colors().sectionGap
+    }
+    return props.color
+})
+</script>
+
+<style scoped>
+.section-divider {
+    width: 100%;
+    flex-shrink: 0;
+}
+</style>

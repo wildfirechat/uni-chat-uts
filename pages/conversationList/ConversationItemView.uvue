@@ -1,20 +1,25 @@
 <template>
-    <view class="conversation-item-container">
+    <view class="conversation-item-container"
+        :style="{ backgroundColor: conversationInfo.top > 0 ? c.cellTop : c.surface, borderBottomColor: c.hairlineSoft }">
         <view class="conversation-item">
             <view class="header">
-                <image class="avatar" :src="portrait" mode="aspectFill" />
-                <text v-if="unread > 0" class="badge" :class="{ silent: conversationInfo.isSilent }">{{ unread > 99 ? '99' : '' + unread }}</text>
+                <image class="avatar" :src="portrait" mode="aspectFill" :style="{ backgroundColor: c.inputBg }" />
+                <text v-if="unread > 0" class="badge" :class="{ silent: conversationInfo.isSilent }"
+                    :style="{ color: c.onAccent, backgroundColor: c.badge }">{{ unread > 99 ? '99' : '' + unread }}</text>
             </view>
             <view class="content-container">
                 <view class="title-time-container">
-                    <text class="title single-line">{{ conversationTitle }}</text>
-                    <text class="time">{{ conversationInfo._timeStr }}</text>
+                    <text class="title single-line" :style="{ color: c.textPrimary }">{{ conversationTitle }}</text>
+                    <text class="time" :style="{ color: c.textSecondary }">{{ conversationInfo._timeStr }}</text>
                 </view>
                 <view class="content">
-                    <text class="draft single-line" v-if="shouldShowDraft"><text class="draft-label">[草稿]</text>{{ draft }}</text>
-                    <text v-if="unreadMention > 0" class="mention">[有人@我]</text>
-                    <text v-if="!shouldShowDraft" class="last-message-desc single-line">{{ lastMessageContent }}</text>
-                    <text v-if="conversationInfo.isSilent" class="icomoon silent-icon">&#xf39a;</text>
+                    <text class="draft single-line" v-if="shouldShowDraft" :style="{ color: c.textPrimary }"><text
+                            class="draft-label" :style="{ color: c.danger }">[草稿]</text>{{ draft }}</text>
+                    <text v-if="unreadMention > 0" class="mention" :style="{ color: c.danger }">[有人@我]</text>
+                    <text v-if="!shouldShowDraft" class="last-message-desc single-line"
+                        :style="{ color: c.textTertiary }">{{ lastMessageContent }}</text>
+                    <text v-if="conversationInfo.isSilent" class="icomoon silent-icon"
+                        :style="{ color: c.textTertiary }">&#xf39a;</text>
                 </view>
             </view>
         </view>
@@ -29,11 +34,17 @@ import store, { conversationState } from "../../store.uts";
 import Draft from "../util/draft.uts";
 import NotificationMessageContent from "../../wfc/messages/notification/notificationMessageContent.uts";
 import Config from "../../config.uts";
+import { colors, AppColors } from "../../common/theme.uts";
 
 defineOptions({
     name: "ConversationItemView",
     styleIsolation: 'app'
 })
+
+// 本组件在 list-view 里，走的是鸿蒙 vapor 的**复用（recycle）渲染路径**。
+// 规矩（踩过一次坑）：只有颜色走 :style，**尺寸和字号一律留在下面的 class 里**。
+// 上次把 height/font-size 挪进 :style，鸿蒙上整行塌成 0 高——有滚动条、看不到 item、点不动。
+const c = computed<AppColors>((): AppColors => colors())
 
 const props = defineProps<{
     conversationInfo: ConversationInfo
@@ -125,8 +136,12 @@ const unreadMention = computed<number>((): number => {
 </script>
 
 <style scoped>
+/* 行的底色、置顶底色、分隔线都画在这里（组件根节点），而不是外面那个 list-item：
+ * list-item 走复用渲染，尽量不给它任何动态绑定。 */
 .conversation-item-container {
     padding-left: 10px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .conversation-item {
@@ -150,15 +165,12 @@ const unreadMention = computed<number>((): number => {
 .avatar {
     width: 45px;
     height: 45px;
-    background-color: #d6d6d6;
     border-radius: 3px;
 }
 
 .badge {
     position: absolute;
-    color: #ffffff;
     font-size: 10px;
-    background-color: #ff0000;
     border-radius: 8px;
     width: 16px;
     height: 16px;
@@ -194,13 +206,11 @@ const unreadMention = computed<number>((): number => {
 
 .title {
     font-size: 14px;
-    color: #262626;
     padding-right: 10px;
     flex: 1;
 }
 
 .time {
-    color: #808080;
     font-size: 10px;
 }
 
@@ -216,24 +226,20 @@ const unreadMention = computed<number>((): number => {
 }
 
 .draft-label {
-    color: #ff0000;
     font-size: 13px;
     padding-right: 5px;
 }
 
 .mention {
-    color: #ff0000;
     font-size: 13px;
 }
 
 .last-message-desc {
-    color: #b8b8b8;
     font-size: 13px;
     flex: 1;
 }
 
 .silent-icon {
-    color: #b8b8b8;
     font-size: 14px;
 }
 </style>

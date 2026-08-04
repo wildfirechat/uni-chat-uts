@@ -1,6 +1,7 @@
 <template>
     <view class="rich-root">
-        <view class="notification-container" @tap="onClickRichNotification" @longpress="onLongPress">
+        <view class="notification-container" :style="{ backgroundColor: c.surface }"
+            @tap="onClickRichNotification" @longpress="onLongPress">
             <text class="title">{{ content.title }}</text>
             <text class="desc">{{ content.desc }}</text>
             <view v-if="content.datas.length > 0">
@@ -9,7 +10,7 @@
                     <text class="value">{{ data.getString('value') ?? '' }}</text>
                 </view>
             </view>
-            <view class="ex-info-container">
+            <view class="ex-info-container" :style="{ borderTopColor: c.hairline }">
                 <text class="exName">{{ content.exName }}</text>
             </view>
         </view>
@@ -21,11 +22,14 @@ import Message from "../../../wfc/messages/message.uts";
 import RichNotificationMessageContent from "../../../wfc/messages/notification/richNotificationMessageContent.uts";
 import { navigateToPage } from "../../../common/nav.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "RichNotificationMessageContentView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -54,7 +58,6 @@ const onClickRichNotification = () => {
 }
 
 .notification-container {
-    background-color: #ffffff;
     width: 300px;
     padding: 5px 10px;
     border-radius: 5px;
@@ -89,7 +92,8 @@ const onClickRichNotification = () => {
 }
 
 .ex-info-container {
-    border-top: 1px solid #d3d3d3;
+    border-top-width: 1px;
+    border-top-style: solid;
     padding-top: 5px;
     margin: 5px 0;
 }

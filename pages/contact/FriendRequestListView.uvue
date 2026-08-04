@@ -1,17 +1,18 @@
 <template>
     <view class="new-friend-item-container">
         <view v-for="(friendRequest, index) in friendRequestList" :key="index" @tap="showFriendRequest(friendRequest)"
-            class="new-friend-item">
-            <image class="avatar" :src="portraitOf(friendRequest)" />
+            class="new-friend-item" :style="{ borderBottomColor: c.hairlineSoft }">
+            <image class="avatar" :src="portraitOf(friendRequest)" :style="{ backgroundColor: c.inputBg }" />
             <view class="info">
                 <view class="name">
-                    <text class="single-line request-name">{{ displayNameOf(friendRequest) }}</text>
-                    <text class="reason single-line">{{ reasonOf(friendRequest) }}</text>
+                    <text class="single-line request-name" :style="{ color: c.textPrimary }">{{ displayNameOf(friendRequest) }}</text>
+                    <text class="reason single-line" :style="{ color: c.textTertiary }">{{ reasonOf(friendRequest) }}</text>
                 </view>
-                <text v-if="friendRequest.status == 1" class="status">已添加</text>
+                <text v-if="friendRequest.status == 1" class="status" :style="{ color: c.textTertiary }">已添加</text>
                 <button v-else-if="friendRequest.status == 0" class="accept" size="mini"
+                    :style="{ color: c.onAccent, backgroundColor: c.accent, borderColor: c.accent }"
                     @tap="accept(friendRequest)">添加</button>
-                <text v-else-if="friendRequest.status == 3" class="status">已拒绝</text>
+                <text v-else-if="friendRequest.status == 3" class="status" :style="{ color: c.textTertiary }">已拒绝</text>
             </view>
         </view>
     </view>
@@ -24,11 +25,14 @@ import EventType from "../../wfc/client/wfcEvent.uts";
 import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "FriendRequestListView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const isActive = ref<boolean>(false)
 
 const friendRequestList = computed<FriendRequest[]>((): FriendRequest[] => {
@@ -111,7 +115,8 @@ onBeforeUnmount(() => {
     padding: 10px 10px 10px 0;
     align-items: center;
     position: relative;
-    border-bottom: 1px solid #f3f3f3;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .info {
@@ -133,18 +138,15 @@ onBeforeUnmount(() => {
 
 .accept {
     text-align: center;
-    color: #ffffff;
-    background-color: #4168e0;
-    border: 1px solid #4168e0;
+    border-width: 1px;
+    border-style: solid;
 }
 
 .status {
-    color: #b2b2b2;
     font-size: 13px;
 }
 
 .reason {
     font-size: 12px;
-    color: #b2b2b2;
 }
 </style>

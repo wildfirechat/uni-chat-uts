@@ -1,10 +1,12 @@
 <template>
     <view class="articles-container">
-        <view class="top-article" @tap="openArticle(content.topArticle.url)" @longpress="onLongPress">
+        <view class="top-article" :style="{ backgroundColor: c.surface }"
+            @tap="openArticle(content.topArticle.url)" @longpress="onLongPress">
             <image class="top-cover" mode="aspectFill" :src="content.topArticle.cover" />
             <text class="top-title">{{ content.topArticle.title }}</text>
         </view>
-        <view v-for="(sa, si) in content.subArticles" :key="si" class="sub-article" @tap="openArticle(sa.url)">
+        <view v-for="(sa, si) in content.subArticles" :key="si" class="sub-article"
+            :style="{ backgroundColor: c.surface }" @tap="openArticle(sa.url)">
             <text class="sub-title">{{ sa.title }}</text>
             <image class="sub-cover" mode="aspectFill" :src="sa.cover" />
         </view>
@@ -15,10 +17,13 @@
 import Message from "../../../wfc/messages/message.uts";
 import ArticlesMessageContent from "../../../wfc/messages/articlesMessageContent.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ArticlesMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -55,7 +60,6 @@ const openArticle = (url: string) => {
 .top-article {
     position: relative;
     width: 300px;
-    background-color: #ffffff;
     padding: 10px;
     border-radius: 5px;
     margin: 5px 0;
@@ -75,7 +79,6 @@ const openArticle = (url: string) => {
 
 .sub-article {
     width: 300px;
-    background-color: #ffffff;
     padding: 10px;
     display: flex;
     flex-direction: row;

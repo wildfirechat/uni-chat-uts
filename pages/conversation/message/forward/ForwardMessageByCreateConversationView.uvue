@@ -1,29 +1,30 @@
 <template>
-    <view class="pick-user-container">
+    <view class="pick-user-container" :style="{ backgroundColor: c.bottomBarBg }">
         <view class="user-list-panel">
             <view class="input-container">
-                <input class="search-input" type="text" placeholder="搜索" v-model="query" />
+                <input class="search-input" type="text" placeholder="搜索" v-model="query"
+                    :style="{ borderColor: c.hairlineSoft, backgroundColor: c.surface, color: c.textPrimary }" />
             </view>
             <list-view class="user-list-container" direction="vertical">
                 <list-item class="back-pick-conversation" @tap="backPickConversation">
-                    <text class="back-pick-conversation-text">选择已有会话</text>
+                    <text class="back-pick-conversation-text" :style="{ color: c.textPrimary }">选择已有会话</text>
                 </list-item>
                 <CheckableUserListView :users="filteredUsers" :show-category-label="true" padding-left="15px" />
             </list-view>
         </view>
-        <view class="checked-user-list-container">
+        <view class="checked-user-list-container" :style="{ backgroundColor: c.surface }">
             <view class="panel-header">
-                <text class="panel-title">发送给</text>
-                <text class="panel-desc" v-if="pickedUsers.length == 0">未选择联系人</text>
-                <text class="panel-desc" v-else>已选择{{ pickedUsers.length }}个联系人</text>
-                <button size="mini" @tap="confirm" class="confirm">发送</button>
+                <text class="panel-title" :style="{ color: c.textPrimary }">发送给</text>
+                <text class="panel-desc" :style="{ color: c.textSecondary }" v-if="pickedUsers.length == 0">未选择联系人</text>
+                <text class="panel-desc" :style="{ color: c.textSecondary }" v-else>已选择{{ pickedUsers.length }}个联系人</text>
+                <button size="mini" @tap="confirm" class="confirm" :style="{ color: c.accent }">发送</button>
             </view>
             <scroll-view class="picked-content" direction="horizontal">
                 <view class="picked-user-container" v-for="(user, index) in pickedUsers" :key="index">
                     <view class="picked-user" @tap="unpick(user)">
-                        <image class="avatar" :src="user.portrait" />
+                        <image class="avatar" :src="user.portrait" :style="{ backgroundColor: c.inputBg }" />
                     </view>
-                    <text class="name single-line">{{ user._displayName }}</text>
+                    <text class="name single-line" :style="{ color: c.textPrimary }">{{ user._displayName }}</text>
                 </view>
             </scroll-view>
             <ForwardMessageView ref="forwardMessageView" :forward-type="forwardType" :messages="messages" />
@@ -39,11 +40,14 @@ import UserInfo from "@/wfc/model/userInfo.uts";
 import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ForwardMessageByCreateConversationView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     forwardType?: number
     messages: Message[]
@@ -109,7 +113,6 @@ const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    background-color: #f7f7f7;
     overflow: hidden;
 }
 
@@ -124,13 +127,12 @@ const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
     margin: 15px 20px 0 15px;
     flex: 1;
     border-radius: 3px;
-    border: 1px solid #ededed;
-    background-color: #ffffff;
+    border-width: 1px;
+    border-style: solid;
     padding-left: 10px;
 }
 
 .back-pick-conversation {
-    background-color: #f7f7f7;
     height: 40px;
     padding-left: 15px;
     display: flex;
@@ -150,7 +152,6 @@ const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
     display: flex;
     min-height: 230px;
     flex-direction: column;
-    background-color: #ffffff;
 }
 
 .panel-header {
@@ -174,7 +175,6 @@ const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
 .confirm {
     font-size: 12px;
     margin-right: 20px;
-    color: #4168e0;
 }
 
 .picked-content {
@@ -206,7 +206,6 @@ const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
 .avatar {
     width: 45px;
     height: 45px;
-    background-color: #d6d6d6;
     border-radius: 3px;
 }
 

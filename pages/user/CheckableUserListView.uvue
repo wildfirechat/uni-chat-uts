@@ -1,17 +1,18 @@
 <template>
     <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" class="checkable-user-row-item">
-        <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft }">
-            <text class="label-text">{{ item.category.toUpperCase() }}</text>
+        <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft, backgroundColor: c.sectionGap }">
+            <text class="label-text" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
         </view>
-        <view v-else class="content" :style="{ paddingLeft: paddingLeft }" :class="{ disabled: isUserUncheckable(item.user as UserInfo) }"
+        <view v-else class="content" :style="{ paddingLeft: paddingLeft, backgroundColor: c.surface }"
+            :class="{ disabled: isUserUncheckable(item.user as UserInfo) }"
             @tap="clickUserItem(item.user as UserInfo)">
             <round-checkbox class="checkbox" :disabled="isUserUncheckable(item.user as UserInfo)" :checked="isUserChecked(item.user as UserInfo)" />
-            <image class="avatar" :src="(item.user as UserInfo).portrait" />
-            <text class="user-name single-line">{{ displayNameOf(item.user as UserInfo) }}</text>
+            <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
+            <text class="user-name single-line" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
         </view>
     </list-item>
     <list-item v-if="hasMore" class="loading-row" @appear="appendNextBatch" @tap="appendNextBatch">
-        <text class="loading-text">加载中...</text>
+        <text class="loading-text" :style="{ color: c.textSecondary }">加载中...</text>
     </list-item>
 </template>
 
@@ -19,6 +20,7 @@
 import store, { pickState } from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 class FlatUserListItem {
     category = ''
     isLabel = false
@@ -30,6 +32,8 @@ defineOptions({
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     users: UserInfo[]
     initialCheckedUsers?: UserInfo[]
@@ -142,10 +146,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.checkable-user-row-item {
-    background-color: #ffffff;
-}
-
+/* 底色画在内层 label/content 上：list-item 走复用渲染，不给它动态绑定 */
 .avatar {
     width: 40px;
     height: 40px;
@@ -158,7 +159,6 @@ onMounted(() => {
 
 .label {
     width: 100%;
-    background-color: #fafafa;
 }
 
 .label-text {
@@ -190,11 +190,9 @@ onMounted(() => {
     height: 40px;
     align-items: center;
     justify-content: center;
-    background-color: #ffffff;
 }
 
 .loading-text {
-    color: #808080;
     font-size: 12px;
 }
 </style>

@@ -1,0 +1,23 @@
+/**
+ * 底部操作菜单的一项。
+ *
+ * 与 flutter `BottomActionSheetItem` 的差别：这里不带 onTap 回调，点击由组件 emit 出
+ * `select(tag)`，调用方按 tag 分支。UTS 里把闭包塞进 props 数组跨端行为不稳，用 tag 更省心。
+ */
+export class ActionSheetItem {
+    /** 显示文案 */
+    label = ''
+    /** 回传给调用方的标识 */
+    tag = ''
+    /** iconfont 字符，留空则不显示图标 */
+    icon = ''
+    /** icon 所属字体：customicons / wxfont / icomoon */
+    iconFamily = 'icomoon'
+    /** 危险操作（删除、退群），文字走 danger 色 */
+    danger = false
+
+    constructor(label: string, tag: string) {
+        this.label = label
+        this.tag = tag
+    }
+}

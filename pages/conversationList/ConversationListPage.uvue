@@ -1,9 +1,10 @@
 <template>
-    <view class="page-container">
+    <view class="page-container" :style="{ backgroundColor: c.primaryBackground }">
         <NavBar title="野火" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
-        <text v-if="connectionStatusDesc != ''" class="connection-status">{{ connectionStatusDesc }}</text>
+        <text v-if="connectionStatusDesc != ''" class="connection-status"
+            :style="{ color: c.textSecondary }">{{ connectionStatusDesc }}</text>
         <list-view class="conversation-list" direction="vertical">
-            <list-item class="conversation-item" :class="{ top: conversationInfo.top > 0 }"
+            <list-item class="conversation-item"
                 v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
                 @tap="showConversation(conversationInfo)"
                 @longpress="showConversationContextMenu($event, conversationInfo)">
@@ -29,10 +30,13 @@ import organizationServerApi from "../../api/organizationServerApi.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import { getTouchPoint } from "../../common/touch.uts";
 import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
+import { colors, AppColors } from "../../common/theme.uts";
 
 defineOptions({
     name: 'ConversationListPage'
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 
 // wx_iconfont.ttf 中的图标：搜索、加号（与原 titleNView buttons 一致）
 const searchIcon = ref<string>('\ue636')
@@ -226,28 +230,21 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background-color: #f3f3f3;
 }
 
 .connection-status {
     text-align: center;
     padding: 5px 0;
     font-size: 13px;
-    color: #808080;
 }
 
 .conversation-list {
     flex: 1;
-    background-color: #f3f3f3;
 }
 
+/* 底色/置顶色/分隔线都挪到了 ConversationItemView 的根节点，
+ * list-item 走复用渲染，这里一个动态绑定都不留。 */
 .conversation-item {
     position: relative;
-    background-color: #ffffff;
-    border-bottom: 1px solid #f4f4f4;
-}
-
-.conversation-item.top {
-    background-color: #f1f1f1;
 }
 </style>

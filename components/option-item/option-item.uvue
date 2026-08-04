@@ -1,0 +1,158 @@
+<template>
+    <view class="option-item" :hover-class="pressedClass" hover-stay-time="80" @tap="onTap">
+        <view class="row" :style="{ minHeight: rowPx(36) }">
+            <image v-if="leftImage != ''" class="left-icon" :src="leftImage"
+                :style="{ width: iconPx(20), height: iconPx(20) }" />
+            <text v-else-if="leftIcon != ''" class="left-icon" :class="leftIconFamily"
+                :style="{ fontSize: iconPx(20), color: leftIconColor == '' ? c.iconPrimary : leftIconColor }">{{ leftIcon }}</text>
+
+            <text class="title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ title }}</text>
+
+            <text v-if="desc != ''" class="desc" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ desc }}</text>
+
+            <text v-if="showRightArrow" class="arrow"
+                :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
+        </view>
+        <view v-if="showBottomDivider" class="divider"
+            :style="{ backgroundColor: c.hairlineSoft, marginLeft: dividerIndent }"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 分组列表里的一行：左图标 + 标题 + 右侧副文案 + 右箭头 + 底部分隔线。
+ * 对齐 flutter `widget/option_item.dart`。
+ *
+ * 放进 form-card 时，最后一行传 `:show-bottom-divider="false"`，否则会和卡片边界叠出双线。
+ */
+import { colors, AppColors, isDark } from '@/common/theme.uts'
+import { fontPx, iconPx, rowPx, scale, ICON_CAP, FONT_LG, FONT_BASE } from '@/common/layoutScale.uts'
+
+defineOptions({
+    name: 'option-item'
+})
+
+const props = withDefaults(defineProps<{
+    title?: string
+    /** 右侧次要文案（如当前选中的值）。 */
+    desc?: string
+    /** 左侧图标：iconfont 字符，如 ''。与 leftImage 二选一。 */
+    leftIcon?: string
+    /** leftIcon 所属字体：customicons / wxfont / icomoon。 */
+    leftIconFamily?: string
+    /** leftIcon 颜色，留空用 iconPrimary。 */
+    leftIconColor?: string
+    /** 左侧图标：图片路径。优先于 leftIcon。 */
+    leftImage?: string
+    showRightArrow?: boolean
+    showBottomDivider?: boolean
+}>(), {
+    title: '',
+    desc: '',
+    leftIcon: '',
+    leftIconFamily: 'icomoon',
+    leftIconColor: '',
+    leftImage: '',
+    showRightArrow: true,
+    showBottomDivider: true
+})
+
+const emit = defineEmits(['tap'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// hover-class 只认静态类名，拿不到 :style 绑定，所以按下态的两个色值只能在样式块里各写一份，
+// 值对应 theme.uts 的 pressedOverlay，改令牌记得同步
+const pressedClass = computed<string>((): string => isDark() ? 'row-pressed-dark' : 'row-pressed-light')
+
+// 分隔线左侧对齐到标题，而不是图标
+const dividerIndent = computed<string>((): string => {
+    if (props.leftImage != '' || props.leftIcon != '') {
+        return (15 + scale(20, ICON_CAP) + 12) + 'px'
+    }
+    return '15px'
+})
+
+const onTap = () => {
+    emit('tap')
+}
+</script>
+
+<style scoped>
+.option-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.row-pressed-light {
+    background-color: #0000000A;
+}
+
+.row-pressed-dark {
+    background-color: #FFFFFF14;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 5px 10px 15px;
+}
+
+.left-icon {
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+/* leftIconFamily 绑到这三个类之一。同样必须在组件内声明，理由见 .arrow */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.customicons {
+    font-family: "customicons";
+}
+
+.wxfont {
+    font-family: "wxfont";
+}
+
+/* 标题吃掉剩余宽度。**不要**改成 flex-shrink: 0 + 一个 flex:1 的占位 view ——
+ * 鸿蒙上 flex-shrink: 0 没兜住，占位 view 会把宽度全抢走，标题被压成 0 宽，
+ * 两个字的「关于」也只剩省略号。
+ *
+ * 单行截断不能用 lines：vapor 下鸿蒙不支持，white-space 三端都行。 */
+.title {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 右侧当前值：内容多长占多长，不跟标题抢 */
+.desc {
+    flex-shrink: 0;
+    margin-left: 12px;
+    margin-right: 12px;
+    text-align: right;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 字体在这里自己声明，不能只写 class="icomoon" 指望全局样式：
+ * 样式隔离 2.0 下**组件引用不到全局 class**（见 global.css 顶部说明），
+ * `.icomoon` 会是个空类，字形静默渲染不出来。
+ * 字体本身是 App.uvue 里 loadFontFace({ global: true }) 加载的，全局可用，
+ * 隔离的只是 CSS 类。 */
+.arrow {
+    flex-shrink: 0;
+    font-family: "icomoon";
+}
+
+.divider {
+    height: 0.5px;
+    margin-right: 12px;
+}
+</style>

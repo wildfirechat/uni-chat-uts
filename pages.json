@@ -206,10 +206,14 @@
             }
         }
     ],
+    // @ 开头的值引用 theme.json 里的同名变量，随亮/暗主题切换。
+    // 能力有限：只有 navigationBar*、backgroundColor、backgroundTextStyle 和 tabBar 的
+    // color/selectedColor/backgroundColor/borderStyle 支持，其余样式走 common/theme.uts。
     "tabBar": {
-        "selectedColor": "#3B62E0",
-        "color": "#7f8389",
-        "backgroundColor": "#ffffff",
+        "selectedColor": "@tabSelectedColor",
+        "color": "@tabColor",
+        "backgroundColor": "@tabBgColor",
+        "borderStyle": "@tabBorderStyle",
         "list": [
             {
                 "pagePath": "pages/conversationList/ConversationListPage",
@@ -244,8 +248,10 @@
         ]
     },
     "globalStyle": {
-        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarBackgroundColor": "@navBgColor",
         "navigationBarTitleText": "野火IM",
-        "navigationBarTextStyle": "black"
+        "navigationBarTextStyle": "@navTxtStyle",
+        "backgroundColor": "@bgColor",
+        "backgroundTextStyle": "@bgTxtStyle"
     }
 }

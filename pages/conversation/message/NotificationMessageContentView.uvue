@@ -1,16 +1,19 @@
 <template>
     <view class="notification-container">
-        <text class="notification">{{ message.messageContent.digest(message) }}</text>
+        <text class="notification" :style="{ color: c.textTertiary }">{{ message.messageContent.digest(message) }}</text>
     </view>
 </template>
 
 <script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "NotificationMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 defineProps<{
     message: Message
 }>()
@@ -24,7 +27,6 @@ defineProps<{
 }
 
 .notification {
-    color: #b8b8b8;
     margin: 20px 10px;
     font-size: 14px;
     text-align: center;

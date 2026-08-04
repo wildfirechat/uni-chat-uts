@@ -1,9 +1,10 @@
 <template>
     <view>
-        <view class="wf-message-input-container" :style="{ paddingBottom: inputPaddingBottom + 'px' }">
-            <view class="wf-message-input-toolbar">
-                <text class="wf-input-button-icon wxfont" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
-                <text v-if="isPttEnable" class="wf-input-button-icon wxfont" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
+        <view class="wf-message-input-container"
+            :style="{ paddingBottom: inputPaddingBottom + 'px', backgroundColor: c.bottomBarBg }">
+            <view class="wf-message-input-toolbar" :style="{ borderTopColor: c.hairline, borderBottomColor: c.hairline }">
+                <text class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
+                <text v-if="isPttEnable" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
                 <view class="wf-input-voice-container" v-if="showVoice">
                     <AudioInputView :conversationInfo="conversationInfo"></AudioInputView>
                 </view>
@@ -11,33 +12,38 @@
                     <PttAudioInputView :conversationInfo="conversationInfo"></PttAudioInputView>
                 </view>
                 <view v-else class="wf-input-middle">
-                    <view class="wf-input-text-container">
-                        <textarea class="wf-input-textarea" @focus="onInputFocus" @input="onInput" :value="text"
+                    <view class="wf-input-text-container" :style="{ backgroundColor: c.surface }">
+                        <textarea class="wf-input-textarea" :style="{ backgroundColor: c.surface, color: c.textPrimary }" @focus="onInputFocus" @input="onInput" :value="text"
                             placeholder="" :hold-keyboard="true" confirm-type="send" @confirm="send" :maxlength="-1"
                             :auto-height="true" :adjust-position="adjustPosition" />
                     </view>
-                    <view v-if="quotedMessage != null" class="quote-message-container">
-                        <text class="quoted-message single-line">{{ quotedMessageDigest }}</text>
-                        <text class="cancel icomoon" @tap="cancelQuote">&#xf12a;</text>
+                    <view v-if="quotedMessage != null" class="quote-message-container" :style="{ backgroundColor: c.bubbleQuoted }">
+                        <text class="quoted-message single-line" :style="{ color: c.bubbleQuotedText }">{{ quotedMessageDigest }}</text>
+                        <text class="cancel icomoon" :style="{ color: c.textSecondary }" @tap="cancelQuote">&#xf12a;</text>
                     </view>
                 </view>
-                <text @tap="toggleEmoji" class="wf-input-button-icon wxfont">&#xe60b;</text>
-                <view v-if="!hideSendButton && text != ''" class="wf-input-text-send-button" @tap="send">
-                    <text class="send-button-text">发送</text>
+                <text @tap="toggleEmoji" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }">&#xe60b;</text>
+                <view v-if="!hideSendButton && text != ''" class="wf-input-text-send-button"
+                    :style="{ backgroundColor: c.accent, borderColor: c.accent }" @tap="send">
+                    <text class="send-button-text" :style="{ color: c.onAccent }">发送</text>
                 </view>
-                <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon wxfont">&#xe657;</text>
+                <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon wxfont"
+                    :style="{ color: c.iconSecondary }">&#xe657;</text>
             </view>
-            <view v-if="showExt" class="wf-ext-container" :style="{ height: keyboardHeight + 'px' }">
+            <view v-if="showExt" class="wf-ext-container"
+                :style="{ height: keyboardHeight + 'px', backgroundColor: c.bottomBarBg }">
                 <view class="wf-ext-item" v-for="(v, i) in extList" @tap="onClickExt(v)" :key="i">
-                    <view class="wf-ext-item-icon">
+                    <view class="wf-ext-item-icon" :style="{ backgroundColor: c.surface }">
                         <text class="wxfont ext-icon">{{ v.icon }}</text>
                     </view>
-                    <text class="wf-ext-item-text">{{ v.title }}</text>
+                    <text class="wf-ext-item-text" :style="{ color: c.textSecondary }">{{ v.title }}</text>
                 </view>
             </view>
-            <view v-if="showEmoji" class="wf-stickers-container" :style="{ height: keyboardHeight + 'px' }">
+            <view v-if="showEmoji" class="wf-stickers-container"
+                :style="{ height: keyboardHeight + 'px', backgroundColor: c.inputBg }">
                 <view class="category-container">
-                    <view class="category" v-for="(v, i) in emojiStickerList" :key="i" @tap="onCategoryClick(i)">
+                    <view class="category" :style="{ borderBottomColor: c.hairline }" v-for="(v, i) in emojiStickerList" :key="i"
+                        @tap="onCategoryClick(i)">
                         <image class="category-poster" :class="{ active: i == currentEmojiStickerIndex }" :src="v.poster" mode="aspectFit" />
                     </view>
                 </view>
@@ -85,6 +91,7 @@ import pttClient from "../../wfc/ptt/pttClient.uts";
 import { navigateToPage } from "../../common/nav.uts";
 import { toLocalFilePath } from "../../common/filePath.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 class ExtItem {
     title = ''
     tag = ''
@@ -102,6 +109,8 @@ defineOptions({
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     conversationInfo: ConversationInfo
 }>()
@@ -600,13 +609,11 @@ defineExpose({
 
 <style scoped>
 .wf-message-input-container {
-    background-color: #f7f7f7;
     width: 100%;
 }
 
 .wf-ext-container {
     width: 100%;
-    background-color: #f7f7f7;
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
@@ -621,7 +628,6 @@ defineExpose({
 }
 
 .wf-ext-item-icon {
-    background-color: #ffffff;
     width: 55px;
     height: 55px;
     display: flex;
@@ -632,13 +638,11 @@ defineExpose({
 }
 
 .ext-icon {
-    color: #181818;
     font-size: 32px;
 }
 
 .wf-ext-item-text {
     font-size: 12px;
-    color: #666666;
     margin-top: 8px;
 }
 
@@ -650,8 +654,10 @@ defineExpose({
     flex-direction: row;
     align-items: flex-end;
     justify-content: space-around;
-    border-top: 1px solid #dddddd;
-    border-bottom: 1px solid #dddddd;
+    border-top-width: 1px;
+    border-top-style: solid;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .wf-input-middle {
@@ -661,7 +667,6 @@ defineExpose({
 .wf-input-text-container {
     margin: 0 6px;
     min-height: 38px;
-    background-color: #ffffff;
     border-radius: 12px;
     padding-top: 9px;
     max-height: 113px;
@@ -670,7 +675,6 @@ defineExpose({
 .quote-message-container {
     display: flex;
     flex-direction: row;
-    background-color: #EBEFEF;
     align-items: center;
     position: relative;
     margin: 0 6px;
@@ -682,26 +686,22 @@ defineExpose({
     flex: 1;
     max-width: 250px;
     font-size: 13px;
-    color: #666666;
 }
 
 .cancel {
     padding: 0 5px;
-    color: #808080;
     font-size: 16px;
 }
 
 .wf-input-textarea {
     padding: 0 12px;
     width: 100%;
-    background-color: #ffffff;
 }
 
 .wf-input-voice-container {
     margin: 0 6px;
     height: 38px;
     border-radius: 12px;
-    background-color: #ffffff;
     display: flex;
     flex: 1;
     flex-direction: row;
@@ -711,18 +711,16 @@ defineExpose({
 .wf-input-text-send-button {
     padding: 5px 12px;
     border-radius: 6px;
-    border: 1px solid #1BC418;
-    background-color: #4168e0;
+    border-width: 1px;
+    border-style: solid;
 }
 
 .send-button-text {
-    color: #ffffff;
     font-size: 15px;
 }
 
 .wf-input-button-icon {
     font-size: 32px;
-    color: #333333;
 }
 
 .wf-stickers-container {
@@ -737,7 +735,8 @@ defineExpose({
     align-items: center;
     width: 100%;
     height: 60px;
-    border-bottom: 1px solid #808080;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .category {
@@ -756,7 +755,6 @@ defineExpose({
 }
 
 .category-poster.active {
-    background-color: #d3d3d3;
 }
 
 .wf-emoji-content {

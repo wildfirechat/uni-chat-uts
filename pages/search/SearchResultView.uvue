@@ -1,53 +1,53 @@
 <template>
-    <scroll-view class="search-result-container" direction="vertical">
+    <scroll-view class="search-result-container" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
         <view v-if="!showEmptyView" class="search-result">
-            <view class="search-result-category-container" v-if="searchUser && userSearchResult.length > 0">
-                <text class="category-label">新用户</text>
+            <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchUser && userSearchResult.length > 0">
+                <text class="category-label" :style="{ color: c.textTertiary }">新用户</text>
                 <view v-for="(user, index) in toShowUserList" :key="index">
-                    <view class="search-result-item">
-                        <image class="item-portrait" :src="user.portrait" />
-                        <text class="item-name">{{ user.displayName }}</text>
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
+                        <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="user.portrait" />
+                        <text class="item-name" :style="{ color: c.textPrimary }">{{ user.displayName }}</text>
                         <button v-if="!isFriend(user)" class="add-button" size="mini" @tap="addFriend(user)">添加</button>
                     </view>
                 </view>
-                <text v-if="!shouldShowAllUser && userSearchResult.length > 5" class="show-all" @tap="showAllUser">查看全部 {{ userSearchResult.length }}</text>
+                <text v-if="!shouldShowAllUser && userSearchResult.length > 5" class="show-all" :style="{ color: c.accent }" @tap="showAllUser">查看全部 {{ userSearchResult.length }}</text>
             </view>
-            <view class="search-result-category-container" v-if="searchContact && contactSearchResult.length > 0">
-                <text class="category-label">联系人</text>
+            <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchContact && contactSearchResult.length > 0">
+                <text class="category-label" :style="{ color: c.textTertiary }">联系人</text>
                 <view v-for="(contact, index) in toShowContactList" :key="index">
-                    <view class="search-result-item" @tap="chatToContact(contact)">
-                        <image class="item-portrait" :src="contact.portrait" />
-                        <text class="item-name">{{ contact._displayName }}</text>
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="chatToContact(contact)">
+                        <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="contact.portrait" />
+                        <text class="item-name" :style="{ color: c.textPrimary }">{{ contact._displayName }}</text>
                     </view>
                 </view>
-                <text v-if="!shouldShowAllContact && contactSearchResult.length > 5" class="show-all" @tap="showAllContact">查看全部 {{ contactSearchResult.length }}</text>
+                <text v-if="!shouldShowAllContact && contactSearchResult.length > 5" class="show-all" :style="{ color: c.accent }" @tap="showAllContact">查看全部 {{ contactSearchResult.length }}</text>
             </view>
-            <view class="search-result-category-container" v-if="searchGroup && groupSearchResult.length > 0">
-                <text class="category-label">群聊</text>
+            <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchGroup && groupSearchResult.length > 0">
+                <text class="category-label" :style="{ color: c.textTertiary }">群聊</text>
                 <view v-for="(group, index) in toShowGroupList" :key="index">
-                    <view class="search-result-item" @tap="chatToGroup(group)">
-                        <image class="item-portrait" :src="group.portrait" />
-                        <text class="item-name">{{ group.remark != '' ? group.remark : group.name }}</text>
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="chatToGroup(group)">
+                        <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="group.portrait" />
+                        <text class="item-name" :style="{ color: c.textPrimary }">{{ group.remark != '' ? group.remark : group.name }}</text>
                     </view>
                 </view>
-                <text v-if="!shouldShowAllGroup && groupSearchResult.length > 5" class="show-all" @tap="showAllGroup">查看全部 {{ groupSearchResult.length }}</text>
+                <text v-if="!shouldShowAllGroup && groupSearchResult.length > 5" class="show-all" :style="{ color: c.accent }" @tap="showAllGroup">查看全部 {{ groupSearchResult.length }}</text>
             </view>
-            <view class="search-result-category-container" v-if="searchConversation && conversationSearchResult.length > 0">
-                <text class="category-label">聊天记录</text>
+            <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchConversation && conversationSearchResult.length > 0">
+                <text class="category-label" :style="{ color: c.textTertiary }">聊天记录</text>
                 <view v-for="(convR, index) in toShowConversationList" :key="index">
-                    <view class="search-result-item" @tap="onClickConversationSearchResultItem(convR)">
-                        <image class="item-portrait" :src="convPortrait(convR)" />
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="onClickConversationSearchResultItem(convR)">
+                        <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="convPortrait(convR)" />
                         <view class="title-desc">
-                            <text class="item-name">{{ convDisplayName(convR) }}</text>
-                            <text class="desc">{{ conversationMatchDesc(convR) }}</text>
+                            <text class="item-name" :style="{ color: c.textPrimary }">{{ convDisplayName(convR) }}</text>
+                            <text class="desc" :style="{ color: c.textSecondary }">{{ conversationMatchDesc(convR) }}</text>
                         </view>
                     </view>
                 </view>
-                <text v-if="!shouldShowAllConversation && conversationSearchResult.length > 5" class="show-all" @tap="showAllConversation">查看全部 {{ conversationSearchResult.length }}</text>
+                <text v-if="!shouldShowAllConversation && conversationSearchResult.length > 5" class="show-all" :style="{ color: c.accent }" @tap="showAllConversation">查看全部 {{ conversationSearchResult.length }}</text>
             </view>
         </view>
         <view v-else class="empty-container">
-            <text class="empty-text">没有搜索结果</text>
+            <text class="empty-text" :style="{ color: c.textSecondary }">没有搜索结果</text>
         </view>
     </scroll-view>
 </template>
@@ -63,10 +63,13 @@ import wfc from "../../wfc/client/wfc.uts";
 import Config from "../../config.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "SearchResultView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     query?: string
     searchUser?: boolean
@@ -217,7 +220,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .search-result-container {
     flex: 1;
-    background-color: #f3f3f3;
 }
 
 .empty-container {
@@ -230,23 +232,20 @@ onBeforeUnmount(() => {
 }
 
 .empty-text {
-    color: #808080;
 }
 
 .search-result-category-container {
-    background-color: #ffffff;
     margin-bottom: 10px;
 }
 
 .category-label {
-    color: #b2b2b2;
     padding: 10px 12px 2px 12px;
     font-size: 13px;
-    border-bottom: 1px solid #eeeeee;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .search-result-item {
-    background-color: #ffffff;
     padding: 10px 12px;
     display: flex;
     flex-direction: row;
@@ -276,7 +275,6 @@ onBeforeUnmount(() => {
 
 .desc {
     font-size: 12px;
-    color: #808080;
     padding-left: 10px;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -286,6 +284,5 @@ onBeforeUnmount(() => {
 .show-all {
     padding: 8px 12px;
     font-size: 13px;
-    color: #4168e0;
 }
 </style>

@@ -1,18 +1,19 @@
 <template>
-    <view class="composite-page">
+    <view class="composite-page" :style="{ backgroundColor: c.primaryBackground }">
         <view v-if="compositeMessage == null" class="loading-container">
             <text>加载中...</text>
         </view>
         <scroll-view v-else class="message-list" direction="vertical">
-            <view v-for="(message, index) in compositeMessages" :key="index" class="message-item">
+            <view v-for="(message, index) in compositeMessages" :key="index" class="message-item"
+                :style="{ borderBottomColor: c.hairlineSoft }">
                 <view class="message-container">
                     <view class="portrait-container">
                         <image v-if="shouldShowPortrait(index)" class="portrait" :src="portraitOf(message)" />
                     </view>
                     <view class="name-time-content-container">
                         <view class="name-time-container">
-                            <text class="name">{{ fromNameOf(message) }}</text>
-                            <text class="time">{{ message._timeStr }}</text>
+                            <text class="name" :style="{ color: c.textTertiary }">{{ fromNameOf(message) }}</text>
+                            <text class="time" :style="{ color: c.textTertiary }">{{ message._timeStr }}</text>
                         </view>
                         <view class="content">
                             <TextMessageContentView :message="message" v-if="message.messageContent.type == 1" />
@@ -49,10 +50,13 @@ import CompositeMessageContent from "@/wfc/messages/compositeMessageContent.uts"
 import Config from "@/config.uts";
 import { takePageOptions } from "@/common/nav.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "CompositeMessagePage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const message = ref<Message | null>(null)
 const compositeMessage = ref<Message | null>(null)
 
@@ -140,7 +144,6 @@ onLoad((_options: OnLoadOptions) => {
 <style scoped>
 .composite-page {
     flex: 1;
-    background-color: #f7f7f7;
 }
 
 .loading-container {
@@ -160,7 +163,8 @@ onLoad((_options: OnLoadOptions) => {
 .message-item {
     position: relative;
     padding: 10px 0;
-    border-bottom: 1px solid #f1f1f1;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .message-container {
@@ -183,12 +187,10 @@ onLoad((_options: OnLoadOptions) => {
 
 .name {
     font-size: 12px;
-    color: #c2c2c2;
 }
 
 .time {
     font-size: 12px;
-    color: #c2c2c2;
 }
 
 .portrait-container {

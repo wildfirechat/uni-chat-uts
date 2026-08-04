@@ -1,13 +1,14 @@
 <template>
-    <view class="conference-invite-message-container" @tap="showConferenceInfo" :class="{ out: message.direction == 0 }">
+    <view class="conference-invite-message-container" @tap="showConferenceInfo"
+        :class="{ out: message.direction == 0 }" :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <view class="flex-row flex-align-center">
-            <image class="avatar" :src="portrait" />
+            <image class="avatar" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
             <view class="flex-1">
-                <text class="single-line title">{{ content.title }} </text>
-                <text class="single-line desc">{{ content.desc }}</text>
+                <text class="single-line title" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.title }} </text>
+                <text class="single-line desc" :style="{ color: c.textSecondary }">{{ content.desc }}</text>
             </view>
         </view>
-        <text class="type">会议邀请</text>
+        <text class="type" :style="{ color: c.textSecondary, borderTopColor: c.hairlineSoft }">会议邀请</text>
     </view>
 </template>
 
@@ -17,11 +18,14 @@ import ConferenceInviteMessageContent from "@/wfc/av/messages/conferenceInviteMe
 import store from "@/store.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ConferenceInviteMessageContentView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -49,7 +53,6 @@ const showConferenceInfo = () => {
 .conference-invite-message-container {
     margin: 0 10px;
     padding: 5px;
-    background-color: #ffffff;
     width: 250px;
     position: relative;
     border-radius: 5px;
@@ -59,25 +62,22 @@ const showConferenceInfo = () => {
     width: 60px;
     height: 60px;
     border-radius: 3px;
-    background-color: #d3d3d3;
     margin: 5px 10px;
 }
 
 .type {
     padding-top: 5px;
     margin: 5px 10px 0 10px;
-    border-top: 1px solid rgba(211, 211, 211, 0.4);
+    border-top-width: 1px;
+    border-top-style: solid;
     font-size: 14px;
-    color: #808080;
 }
 
 .title {
     font-size: 16px;
-    color: #000000;
 }
 
 .desc {
     font-size: 14px;
-    color: #808080;
 }
 </style>

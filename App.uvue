@@ -5,9 +5,16 @@ import Config from './config.uts'
 import CustomMessageConfig from './wfc_custom_message/customMessageConfig.uts'
 import avEngineKit from './wfc/av/engine/avEngineKit.uts'
 import pttClient from './wfc/ptt/pttClient.uts'
+import { initTheme, syncNativeTheme } from './common/theme.uts'
+import { initFontScale } from './common/layoutScale.uts'
 
 onLaunch(() => {
     console.log("App Launch");
+
+    // 只读 storage，不碰 ext-api，所以可以放在最前面（首屏就是正确的明暗与字号）。
+    // 真正会碰 uni-theme 的 syncNativeTheme() 放在本函数最后，见那里的说明。
+    initTheme();
+    initFontScale();
 
     // 图标字体（原 css :before 方案 uni-app x 不支持，改为 loadFontFace + 文本内联 unicode）
     uni.loadFontFace({
@@ -69,6 +76,12 @@ onLaunch(() => {
     uni.onPushMessage((res) => {
         console.log("收到推送消息：", res.type)
     })
+
+    // 放在最后：它会碰 uni-theme / uni-getDeviceInfo 这两个 ext-api 模块，基座里没带就会
+    // 在运行时抛错。一旦它排在 wfc.init()/store.init() 前面，整个 onLaunch 会被打断，
+    // IM 压根不初始化 —— 表现是所有列表页全空，但看不出跟主题有任何关系。
+    // 内部已全程 try/catch，这里的排序是第二层保险。
+    syncNativeTheme();
 })
 
 onShow(() => {

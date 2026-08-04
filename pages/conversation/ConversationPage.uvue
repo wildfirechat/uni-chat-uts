@@ -5,7 +5,7 @@
         <view v-if="conversationInfo == null" class="conversation-empty-container">
             <text>^~^</text>
         </view>
-        <view v-else class="conversation-content-container">
+        <view v-else class="conversation-content-container" :style="{ backgroundColor: c.conversationBg }">
             <view class="message-list-container">
                 <scroll-view class="message-list" direction="vertical" :scroll-top="scrollTop"
                     :scroll-into-view="scrollIntoView" :refresher-enabled="true" :refresher-triggered="triggered"
@@ -13,7 +13,8 @@
                     @refresherabort="onAbort" @scrolltolower="onScrollToLower" @touchstart="onTouchStart"
                     @touchmove="onTouchMove">
                     <view v-for="(message, index) in messageList" :id="'id-' + message.messageId" :key="index"
-                        class="message-item" :class="{ highlight: message.messageId == highlightMessageId }"
+                        class="message-item"
+                        :style="{ backgroundColor: message.messageId == highlightMessageId ? c.messageHighlight : 'transparent' }"
                         @tap="clickMessageItem(message)">
                         <NotificationMessageContentView :message="message" v-if="isNotificationMessage(message)" />
                         <RecallNotificationMessageContentView :message="message"
@@ -25,16 +26,20 @@
                     </view>
                 </scroll-view>
                 <view v-if="showUnreadLabel" class="unread-label-container">
-                    <view v-if="unreadMentionCount > 0" class="unread-label" @tap="locateFirstUnreadMention">
-                        <text class="unread-label-text">有 {{ unreadMentionCount }} 条@我的消息</text>
+                    <view v-if="unreadMentionCount > 0" class="unread-label"
+                        :style="{ backgroundColor: c.surface, borderColor: c.hairline }" @tap="locateFirstUnreadMention">
+                        <text class="unread-label-text" :style="{ color: c.accent }">有 {{ unreadMentionCount }} 条@我的消息</text>
                     </view>
-                    <view v-if="showUnreadCountLabel" class="unread-label" @tap="locateFirstUnread">
-                        <text class="unread-label-text">{{ unreadCount }} 条未读消息</text>
+                    <view v-if="showUnreadCountLabel" class="unread-label"
+                        :style="{ backgroundColor: c.surface, borderColor: c.hairline }" @tap="locateFirstUnread">
+                        <text class="unread-label-text" :style="{ color: c.accent }">{{ unreadCount }} 条未读消息</text>
                     </view>
-                    <text class="unread-label-close icomoon" @tap="hideUnreadLabel">&#xf12a;</text>
+                    <text class="unread-label-close icomoon" :style="{ color: c.textSecondary }"
+                        @tap="hideUnreadLabel">&#xf12a;</text>
                 </view>
-                <view v-if="hasMoreNewMessages" class="back-to-latest" @tap="backToLatest">
-                    <text class="back-to-latest-text">回到最新消息</text>
+                <view v-if="hasMoreNewMessages" class="back-to-latest"
+                    :style="{ backgroundColor: c.surface, borderColor: c.hairline }" @tap="backToLatest">
+                    <text class="back-to-latest-text" :style="{ color: c.accent }">回到最新消息</text>
                 </view>
             </view>
             <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
@@ -79,12 +84,15 @@ import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import eventBus from "@/common/eventBus.uts";
 import { getTouchPoint } from "@/common/touch.uts";
 import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
+import { colors, AppColors } from "@/common/theme.uts";
 
 let innerAudioContext: InnerAudioContext | null = null;
 
 defineOptions({
     name: 'ConversationPage'
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 
 const moreIcon = ref<string>('')
 
@@ -692,7 +700,6 @@ const onAbort = () => {
     flex: 1;
     overflow: hidden;
     flex-direction: column;
-    background-color: #f3f3f3;
 }
 
 .message-list-container {
@@ -706,14 +713,8 @@ const onAbort = () => {
     flex: 1;
 }
 
-.message-item {
-    background-color: transparent;
-}
-
-.message-item.highlight {
-    background-color: #ffe9a8;
-}
-
+/* 高亮态原来是 `.message-item.highlight`（复合选择器是支持的）。改成 :style 的理由只有一个：
+ * 高亮色要跟明暗主题走，静态 class 给不了。 */
 .unread-label-container {
     position: absolute;
     top: 10px;
@@ -726,21 +727,19 @@ const onAbort = () => {
 .unread-label {
     margin-left: 8px;
     padding: 6px 10px;
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
+    border-width: 1px;
+    border-style: solid;
     border-top-left-radius: 12px;
     border-bottom-left-radius: 12px;
 }
 
 .unread-label-text {
     font-size: 12px;
-    color: #3B62E0;
 }
 
 .unread-label-close {
     padding: 6px 8px;
     font-size: 14px;
-    color: #808080;
 }
 
 .back-to-latest {
@@ -749,13 +748,12 @@ const onAbort = () => {
     right: 10px;
     padding: 6px 12px;
     border-radius: 14px;
-    border: 1px solid #e0e0e0;
-    background-color: #ffffff;
+    border-width: 1px;
+    border-style: solid;
 }
 
 .back-to-latest-text {
     font-size: 12px;
-    color: #3B62E0;
 }
 
 .message-input-container {

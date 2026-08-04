@@ -1,7 +1,8 @@
 <template>
     <view class="container">
-        <view class="message-time-container" :class="{ checked: isMessageChecked }">
-            <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
+        <view class="message-time-container"
+            :style="{ backgroundColor: isMessageChecked ? c.cellSelected : 'transparent' }">
+            <text v-if="message._showTime" class="time" :style="{ color: c.textTertiary }">{{ message._timeStr }}</text>
             <view class="message-avatar-content-container">
                 <view class="avatar-container">
                     <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
@@ -9,7 +10,7 @@
                 </view>
                 <!--消息内容 根据情况，if-else-->
                 <view class="message-name-content-container">
-                    <text class="name">{{ fromDisplayName }}</text>
+                    <text class="name" :style="{ color: c.messageSenderName }">{{ fromDisplayName }}</text>
                     <view class="flex-column flex-align-start">
                         <view class="flex-row">
                             <MessageContentContainerView class="message-content-container" :message="message"
@@ -35,10 +36,14 @@ import Config from "@/config.uts";
 import eventBus from "@/common/eventBus.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
+
 defineOptions({
     name: "NormalInMessageContentView",
     styleIsolation: 'app'
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 
 const props = defineProps<{
     message: Message
@@ -122,15 +127,11 @@ const isMessageChecked = computed<boolean>((): boolean => {
 .time {
     align-self: center;
     margin-bottom: 20px;
-    color: #b4b4b4;
     height: 20px;
     font-size: 10px;
 }
 
-.message-time-container.checked {
-    background-color: #e7e7e7;
-}
-
+/* 选中态原来是 `.message-time-container.checked`。改成 :style 是因为选中底色要跟主题走。 */
 .message-avatar-content-container {
     display: flex;
     flex-direction: row;
@@ -165,7 +166,6 @@ const isMessageChecked = computed<boolean>((): boolean => {
 
 .name {
     margin-left: 10px;
-    color: #bdbdbd;
     font-size: 12px;
     margin-bottom: 2px;
 }

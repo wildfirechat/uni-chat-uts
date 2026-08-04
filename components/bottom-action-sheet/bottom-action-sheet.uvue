@@ -1,0 +1,163 @@
+<template>
+    <view v-if="modelValue" class="mask" :style="{ backgroundColor: c.scrim }" @tap="close">
+        <view class="sheet" :style="{ backgroundColor: c.sectionGap }" @tap.stop="noop">
+            <view class="group" :style="{ backgroundColor: c.surface }">
+                <view v-for="(item, index) in items" :key="item.tag" class="item" hover-class="item-pressed"
+                    hover-stay-time="80" @tap="select(item)">
+                    <text v-if="item.icon != ''" class="item-icon" :class="item.iconFamily"
+                        :style="{ color: c.iconPrimary, fontSize: iconPx(22) }">{{ item.icon }}</text>
+                    <text class="item-label"
+                        :style="{ color: item.danger ? c.danger : c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ item.label }}</text>
+                    <view v-if="index < items.length - 1" class="divider"
+                        :style="{ backgroundColor: c.hairlineSoft }"></view>
+                </view>
+            </view>
+
+            <view class="group-gap"></view>
+
+            <view class="cancel" :style="{ backgroundColor: c.surface }" hover-class="item-pressed"
+                hover-stay-time="80" @tap="close">
+                <text :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ cancelText }}</text>
+            </view>
+            <view class="safe-area" :style="{ backgroundColor: c.surface, height: safeAreaBottom + 'px' }"></view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 底部弹出的操作菜单。对齐 flutter `widget/bottom_action_sheet.dart`。
+ *
+ * ```vue
+ * <bottom-action-sheet v-model="sheetVisible" :items="sheetItems" @select="onSheetSelect" />
+ * ```
+ *
+ * 与 flutter 的差别：没有上滑入场动画 —— uni-app x 只有 transition 没有 animation，
+ * 靠 transition 做的入场在三端时序不一致，宁可不做（见 FLUTTER_ALIGNMENT_TODO §1「接受不同」）。
+ */
+import { ActionSheetItem } from './actionSheetItem.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, iconPx, FONT_LG } from '@/common/layoutScale.uts'
+import { t } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'bottom-action-sheet'
+})
+
+withDefaults(defineProps<{
+    modelValue?: boolean
+    items?: ActionSheetItem[]
+}>(), {
+    modelValue: false,
+    items: (): ActionSheetItem[] => [] as ActionSheetItem[]
+})
+
+const emit = defineEmits(['update:modelValue', 'select'])
+
+const c = computed<AppColors>((): AppColors => colors())
+const cancelText = computed<string>((): string => t('common.cancel'))
+
+// 取消按钮要顶到屏幕最底，底部安全区用同色补齐
+const safeAreaBottom = uni.getWindowInfo().safeAreaInsets.bottom
+
+const noop = () => { }
+
+const close = () => {
+    emit('update:modelValue', false)
+}
+
+const select = (item: ActionSheetItem) => {
+    emit('update:modelValue', false)
+    emit('select', item.tag)
+}
+</script>
+
+<style scoped>
+.mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.sheet {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    overflow: hidden;
+}
+
+.group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.item {
+    width: 100%;
+    height: 64px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.item-pressed {
+    background-color: #0000000A;
+}
+
+.item-icon {
+    margin-right: 8px;
+}
+
+/* item.iconFamily 绑到这三个类之一。必须在组件内声明：样式隔离 2.0 下组件引用不到
+ * 全局 class，只写 class="icomoon" 会是个空类，字形静默渲染不出来。 */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.customicons {
+    font-family: "customicons";
+}
+
+.wxfont {
+    font-family: "wxfont";
+}
+
+.item-label {
+    white-space: nowrap;
+}
+
+.divider {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 0.5px;
+}
+
+.group-gap {
+    width: 100%;
+    height: 8px;
+}
+
+.cancel {
+    width: 100%;
+    height: 64px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.safe-area {
+    width: 100%;
+}
+</style>

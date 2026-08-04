@@ -1,0 +1,97 @@
+<template>
+    <view class="option-switch-item">
+        <view class="row" :style="{ minHeight: rowPx(36) }">
+            <text class="title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ title }}</text>
+
+            <text v-if="desc != ''" class="desc" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ desc }}</text>
+
+            <switch class="sw" :checked="value" :disabled="disabled" :active-background-color="c.accent"
+                :background-color="c.buttonSecondaryBg" :fore-color="c.surface" :active-fore-color="c.onAccent"
+                @change="onChange" />
+        </view>
+        <view v-if="showBottomDivider" class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 分组列表里的开关行。对齐 flutter `widget/option_switch_item.dart`。
+ *
+ * 与 flutter 的差别：flutter 整行可点（点标题也切换），这里只有开关本身可点 ——
+ * uni-app x 的 switch 没法从外部受控切换，整行代理点击会和它自己的手势打架。
+ */
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, rowPx, FONT_LG, FONT_BASE } from '@/common/layoutScale.uts'
+
+defineOptions({
+    name: 'option-switch-item'
+})
+
+withDefaults(defineProps<{
+    title?: string
+    value?: boolean
+    /** 开关左侧的说明文字（如免打扰时段），右对齐、次要色。 */
+    desc?: string
+    disabled?: boolean
+    showBottomDivider?: boolean
+}>(), {
+    title: '',
+    value: false,
+    desc: '',
+    disabled: false,
+    showBottomDivider: true
+})
+
+const emit = defineEmits(['change'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const onChange = (e: UniSwitchChangeEvent) => {
+    emit('change', e.detail.value)
+}
+</script>
+
+<style scoped>
+.option-switch-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 15px 10px 15px;
+}
+
+/* 同 option-item：标题吃剩余宽度，别用 flex-shrink:0 + flex:1 占位，鸿蒙上会把标题压成 0 宽 */
+.title {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.desc {
+    flex-shrink: 0;
+    margin-left: 12px;
+    margin-right: 12px;
+    text-align: right;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.sw {
+    flex-shrink: 0;
+    /* flutter 侧 Transform.scale(0.6)，这里同样压小以适配紧凑的行高 */
+    transform: scale(0.8);
+}
+
+.divider {
+    height: 0.5px;
+    margin-left: 15px;
+    margin-right: 12px;
+}
+</style>

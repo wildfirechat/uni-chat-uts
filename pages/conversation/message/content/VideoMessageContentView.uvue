@@ -1,7 +1,7 @@
 <template>
-    <view class="video-content-container">
+    <view class="video-content-container" :style="{ borderColor: c.hairlineSoft }">
         <image class="thumbnail" mode="aspectFill" @tap="preview" :src="thumbnailUri" />
-        <text class="wxfont play-button" @tap="preview">&#xe6a6;</text>
+        <text class="wxfont play-button" :style="{ color: c.onAccent }" @tap="preview">&#xe6a6;</text>
     </view>
 </template>
 
@@ -11,11 +11,14 @@ import MessageStatus from "../../../../wfc/messages/messageStatus.uts";
 import VideoMessageContent from "../../../../wfc/messages/videoMessageContent.uts";
 import Config from "../../../../config.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "VideoMessageContentView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     message: Message
     isInCompositeView?: boolean
@@ -56,7 +59,8 @@ const preview = () => {
 .video-content-container {
     margin: 0 10px;
     position: relative;
-    border: 1px solid #efefef;
+    border-width: 1px;
+    border-style: solid;
     border-radius: 5px;
 }
 
@@ -71,7 +75,6 @@ const preview = () => {
     position: absolute;
     left: 70px;
     top: 45px;
-    color: #ffffff;
     font-size: 60px;
 }
 </style>

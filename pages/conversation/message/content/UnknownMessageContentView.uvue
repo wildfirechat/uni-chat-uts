@@ -1,6 +1,8 @@
 <template>
-    <view class="text-message-container" :class="{ out: message.direction == 0 }">
-        <text class="text">{{ desc }}</text>
+    <view class="text-message-container" :class="{ out: message.direction == 0 }"
+        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+        <text class="text"
+            :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ desc }}</text>
     </view>
 </template>
 
@@ -8,11 +10,14 @@
 import Message from "@/wfc/messages/message.uts";
 import { t } from "@/i18n/i18n.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 // 未知消息
 defineOptions({
     name: "UnknownMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 defineProps<{
     message: Message
 }>()
@@ -26,17 +31,14 @@ const desc = computed<string>((): string => {
 .text-message-container {
     margin: 0 10px;
     padding: 10px;
-    background-color: #ffffff;
     position: relative;
     border-radius: 5px;
 }
 
 .text-message-container.out {
-    background-color: #98ea70;
 }
 
 .text {
-    color: #050505;
     font-size: 16px;
 }
 </style>

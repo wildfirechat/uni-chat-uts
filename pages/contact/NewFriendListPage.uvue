@@ -1,5 +1,5 @@
 <template>
-    <view class="page-container">
+    <view class="page-container" :style="{ backgroundColor: c.surface }">
         <NavBar title="新朋友" :showBack="true" :rightIcon1="searchIcon" @right1Tap="onSearchTap" />
         <scroll-view class="friend-request-list" direction="vertical">
             <FriendRequestListView />
@@ -10,6 +10,9 @@
 import FriendRequestListView from "./FriendRequestListView.uvue";
 import NavBar from "../common/NavBar.uvue";
 
+import { colors, AppColors } from "@/common/theme.uts";
+
+const c = computed<AppColors>((): AppColors => colors())
 const searchIcon = ref<string>('\ue636')
 
 const onSearchTap = () => {
@@ -24,7 +27,6 @@ const onSearchTap = () => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background-color: #ffffff;
 }
 
 .friend-request-list {

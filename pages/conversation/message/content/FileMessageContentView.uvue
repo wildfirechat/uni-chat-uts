@@ -1,9 +1,10 @@
 <template>
-    <view class="file-message-container" @tap="clickFile" :class="{ out: message.direction == 0 }">
+    <view class="file-message-container" @tap="clickFile" :class="{ out: message.direction == 0 }"
+        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <image class="file-icon" :src="fileIcon" />
         <view class="flex-column flex-align-start file-info">
-            <text class="file-name">{{ content.name }}</text>
-            <text class="file-size single-line">{{ size }}</text>
+            <text class="file-name" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.name }}</text>
+            <text class="file-size single-line" :style="{ color: c.textSecondary }">{{ size }}</text>
         </view>
     </view>
 </template>
@@ -13,11 +14,14 @@ import Message from "@/wfc/messages/message.uts";
 import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
 import { humanSize, getFiletypeIcon } from "@/pages/util/helper.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "FileMessageContentView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -67,7 +71,6 @@ const clickFile = () => {
 .file-message-container {
     margin: 0 10px;
     padding: 10px;
-    background-color: #ffffff;
     position: relative;
     border-radius: 5px;
     display: flex;
@@ -97,7 +100,6 @@ const clickFile = () => {
 }
 
 .file-size {
-    color: #888888;
     font-size: 13px;
 }
 </style>

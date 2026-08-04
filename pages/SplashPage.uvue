@@ -1,10 +1,13 @@
 <template>
-    <view class="splash-container"></view>
+    <view class="splash-container" :style="{ backgroundColor: c.surface }"></view>
 </template>
 
 <script setup lang="uts">
 import { getItem } from "./util/storageHelper.uts";
 import wfc from "../wfc/client/wfc.uts";
+import { colors, AppColors } from "../common/theme.uts";
+
+const c = computed<AppColors>((): AppColors => colors())
 
 onLoad(() => {
     const userId = getItem('userId');
@@ -38,6 +41,5 @@ const go2ConversationList = () => {
 <style scoped>
 .splash-container {
     flex: 1;
-    background-color: #ffffff;
 }
 </style>

@@ -1,16 +1,16 @@
 <template>
-    <view class="conversation-info">
+    <view class="conversation-info" :style="{ backgroundColor: c.surface }">
         <list-view class="member-list" direction="vertical">
             <list-item @tap="showCreateConversationModal" class="action-item">
-                <view class="icon">
-                    <text class="icon-text">+</text>
+                <view class="icon" :style="{ borderColor: c.hairline }">
+                    <text class="icon-text" :style="{ color: c.textSecondary }">+</text>
                 </view>
-                <text class="action-text">添加成员</text>
+                <text class="action-text" :style="{ color: c.textPrimary }">添加成员</text>
             </list-item>
             <UserListView :users="users" :show-category-label="false" padding-left="20px" />
         </list-view>
-        <view @tap="clearMessages" class="danger-item">
-            <text class="danger-text">清空聊天记录</text>
+        <view @tap="clearMessages" class="danger-item" :style="{ borderTopColor: c.hairlineSoft }">
+            <text class="danger-text" :style="{ color: c.danger }">清空聊天记录</text>
         </view>
     </view>
 </template>
@@ -25,10 +25,13 @@ import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import { clearConversationMessages } from "@/common/conversationActions.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "SingleConversationInfoPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const conversationInfo = ref<ConversationInfo | null>(null)
 const users = ref<UserInfo[]>([] as UserInfo[])
 
@@ -83,7 +86,6 @@ const clearMessages = () => {
     justify-content: flex-start;
     flex: 1;
     overflow: hidden;
-    background-color: #ffffff;
 }
 
 .member-list {
@@ -106,12 +108,12 @@ const clearMessages = () => {
     justify-content: center;
     align-items: center;
     border-radius: 3px;
-    border: 1px dashed #d6d6d6;
+    border-width: 1px;
+    border-style: dashed;
 }
 
 .icon-text {
     font-size: 20px;
-    color: #888888;
 }
 
 .action-text {
@@ -125,11 +127,11 @@ const clearMessages = () => {
     align-items: center;
     justify-content: center;
     height: 50px;
-    border-top: 1px solid #ececec;
+    border-top-width: 1px;
+    border-top-style: solid;
 }
 
 .danger-text {
-    color: #ff0000;
     font-size: 15px;
 }
 </style>

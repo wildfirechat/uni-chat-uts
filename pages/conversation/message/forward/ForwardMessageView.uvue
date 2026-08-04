@@ -1,10 +1,11 @@
 <template>
     <view class="forward-message-container">
-        <view class="forward-message">
+        <view class="forward-message" :style="{ backgroundColor: c.bubbleQuoted }">
             <image v-if="forwardType == 0 && mediaThumbnail != ''" class="thumb" mode="aspectFit" :src="mediaThumbnail" />
-            <text v-else class="forward-message-text">{{ forwardMessageStr }}</text>
+            <text v-else class="forward-message-text" :style="{ color: c.bubbleQuotedText }">{{ forwardMessageStr }}</text>
         </view>
-        <input class="extra-input" type="text" placeholder="给朋友留言" v-model="extraMessageText" />
+        <input class="extra-input" type="text" placeholder="给朋友留言" v-model="extraMessageText"
+            :style="{ color: c.textPrimary, borderBottomColor: c.hairline }" />
     </view>
 </template>
 
@@ -16,10 +17,13 @@ import Message from "@/wfc/messages/message.uts";
 import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
 import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ForwardMessageView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     forwardType?: number
     messages: Message[]
@@ -108,10 +112,8 @@ defineExpose({
 .forward-message-text {
     padding: 0 10px;
     border-radius: 5px;
-    color: #aaaaaa;
     font-size: 13px;
     overflow: hidden;
-    background-color: #e7e7e7;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -125,6 +127,7 @@ defineExpose({
 .extra-input {
     width: 100%;
     margin: 20px 0;
-    border-bottom: 1px solid #e6e6e6;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 </style>

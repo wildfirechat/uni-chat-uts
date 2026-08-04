@@ -104,6 +104,19 @@ export default {
         "no_more": "没有更多文件",
         "all_file_load": "已加载全部文件 :("
     },
+    "discovery": {
+        "chatroom": "聊天室",
+        "robot": "机器人",
+        "channel": "频道",
+        "dev_guide": "开发手册"
+    },
+    "me": {
+        "about": "关于",
+        "api_test": "API测试",
+        "logout": "退出登录",
+        "portrait_update_success": "头像更新成功",
+        "portrait_update_fail": "头像更新失败"
+    },
     "setting": {
         "setting": "设置",
         "enable_notification": "开启通知",
@@ -120,6 +133,7 @@ export default {
         "sync_draft": "同步草稿"
     },
     "common": {
+        "loading": "加载中...",
         "add": "添加",
         "remove": "移除",
         "send": "发送",

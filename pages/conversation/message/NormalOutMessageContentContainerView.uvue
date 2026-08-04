@@ -1,13 +1,16 @@
 <template>
     <view>
-        <view class="message-time-container" :class="{ checked: isMessageChecked }">
-            <text v-if="message._showTime" class="time">{{ message._timeStr }}</text>
-            <view class="message-content-container" :class="{ checked: isMessageChecked }">
+        <view class="message-time-container"
+            :style="{ backgroundColor: isMessageChecked ? c.cellSelected : 'transparent' }">
+            <text v-if="message._showTime" class="time"
+                :style="{ color: c.textTertiary, backgroundColor: c.conversationBg }">{{ message._timeStr }}</text>
+            <view class="message-content-container">
                 <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
 
                 <view class="message-avatar-content-container">
                     <LoadingView v-if="message.status == 0 || isDownloading" />
-                    <text v-if="message.status == 2" class="icomoon resend-icon" @tap="resend">&#xf128;</text>
+                    <text v-if="message.status == 2" class="icomoon resend-icon" :style="{ color: c.danger }"
+                    @tap="resend">&#xf128;</text>
                     <view class="flex-column flex-align-end">
                         <MessageContentContainerView :message="message" class="message-content-container-view"
                             @longpress="openMessageContextMenu" />
@@ -18,7 +21,8 @@
                     <image class="avatar" @tap="onClickUserPortrait" :src="fromPortrait" />
                 </view>
             </view>
-            <text v-if="shouldShowMessageReceipt" class="receipt" @tap="showMessageReceiptDetail">{{ messageReceipt }}</text>
+            <text v-if="shouldShowMessageReceipt" class="receipt" :style="{ color: c.textTertiary }"
+                @tap="showMessageReceiptDetail">{{ messageReceipt }}</text>
         </view>
     </view>
 </template>
@@ -38,10 +42,14 @@ import eventBus from "@/common/eventBus.uts";
 import { navigateToPage } from "@/common/nav.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
+
 defineOptions({
     name: "NormalOutMessageContentView",
     styleIsolation: 'app'
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 
 const props = defineProps<{
     message: Message
@@ -171,24 +179,18 @@ const isMessageChecked = computed<boolean>((): boolean => {
     align-items: flex-end;
 }
 
-.message-time-container.checked {
-    background-color: #e7e7e7;
-}
-
+/* 选中态原来是 `.message-time-container.checked`。改成 :style 是因为选中底色要跟主题走。 */
 .time {
     width: 100%;
     margin-bottom: 20px;
     text-align: center;
-    color: #b4b4b4;
     font-size: 10px;
-    background-color: #f3f3f3;
 }
 
 .receipt {
     margin-right: 70px;
     font-size: 12px;
     margin-top: -10px;
-    color: #b4b4b4;
 }
 
 .message-content-container {
@@ -221,7 +223,6 @@ const isMessageChecked = computed<boolean>((): boolean => {
 }
 
 .resend-icon {
-    color: #ff0000;
     font-size: 20px;
     align-self: center;
 }

@@ -1,0 +1,295 @@
+/**
+ * 语义化颜色令牌 —— 全 app 唯一的颜色来源，页面里不要再写死颜色。
+ *
+ * 对齐 `../flutter-chat/chat/lib/theme/app_colors.dart`：浅色值逐一沿用 flutter 的浅色，
+ * 暗色值同样对齐 vue-pc-chat 的 dark.css（主色切系统蓝 #0A84FF，发送气泡实心蓝 #409CFF）。
+ *
+ * ## 为什么不用 CSS 变量
+ *
+ * uni-app x 的 App 平台不解析自定义 CSS 变量：`uni-nvue-styler` 的 `normalizeCssVar`
+ * 只把 `var(--window-top)` / `var(--window-bottom)` / `var(--status-bar-height)` 三个内置
+ * 变量替换成常量，其余 `var(--x)` 原样透传给原生渲染器；而鸿蒙 runtime.har 里根本没有
+ * 解析 `var(` 的代码。写了不报错，运行时静默失效。所以主题只能走 JS 响应式。
+ *
+ * ## 页面怎么用
+ *
+ * ```vue
+ * <template>
+ *     <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+ *         <text :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">标题</text>
+ *     </view>
+ * </template>
+ * <script setup lang="uts">
+ * import { colors, AppColors } from '@/common/theme.uts'
+ * import { fontPx, FONT_LG } from '@/common/layoutScale.uts'
+ *
+ * const c = computed<AppColors>((): AppColors => colors())
+ * </script>
+ * ```
+ *
+ * 布局（尺寸、间距、圆角、flex）继续留在样式块的 class 里，只有**颜色和字号**走
+ * `:style`。全都塞进 `:style` 会把静态样式也变成每帧重算。
+ */
+import { ref } from 'vue'
+import { getItem, setItem } from '@/pages/util/storageHelper.uts'
+
+/** 跟随系统 */
+export const THEME_MODE_SYSTEM = 'system'
+/** 始终浅色 */
+export const THEME_MODE_LIGHT = 'light'
+/** 始终深色 */
+export const THEME_MODE_DARK = 'dark'
+
+const THEME_MODE_KEY = 'app_theme_mode'
+
+/**
+ * 语义色令牌。
+ *
+ * 字段默认值就是**浅色**色板，`new AppColors()` 即浅色；深色见 [buildDark]。
+ * 需要新色时在这里加令牌，不要在调用点自己调半透明调出一个新颜色。
+ *
+ * flutter 侧那些只服务桌面端的令牌（`*Desktop`、`sidebar*`、`search*`、`*Hover`、
+ * `resizeHandleHover`）这里一律不带 —— 对齐范围不含桌面端（见 FLUTTER_ALIGNMENT_TODO §1）。
+ * flutter 的 `cellHover` / `hoverOverlay` 在移动端实际是按下态，这里改名 `cellPressed` /
+ * `pressedOverlay`。
+ */
+export class AppColors {
+    // ---- 品牌色 ----
+    /** 选中 tab、发送按钮、光标/选区。 */
+    accent: string = '#1F64E4'
+    accentPressed: string = '#1A55C2'
+    /** accent 的淡底：选中项底色、序号圆点、「进行中」标签底。深色下是半透明蓝。 */
+    accentSoft: string = '#E8F0FE'
+    /** accent 实心底上的前景色。 */
+    onAccent: string = '#FFFFFF'
+    /** 次要按钮的灰色实底（微信式：灰底无边框，配 textPrimary 前景）。 */
+    buttonSecondaryBg: string = '#F2F2F2'
+    /** 危险操作（退出登录、删除）。 */
+    danger: string = '#ED4C4D'
+    /** 正向状态（已投票、已参与）。 */
+    success: string = '#07C160'
+    successSoft: string = '#E8F5E9'
+    /** 提醒但不阻断。 */
+    warning: string = '#FF9500'
+    /** 未读角标。 */
+    badge: string = '#FA5151'
+    /** 正文里的超链接。 */
+    link: string = '#1F64E4'
+
+    // ---- 背景层 ----
+    /** 卡片 / 导航栏 / 弹窗的基础面。 */
+    surface: string = '#FFFFFF'
+    /** 页面基础背景（发现、我的、设置等列表页）。 */
+    primaryBackground: string = '#EBEBEB'
+    /** 底部 tabBar 背景。 */
+    bottomBarBg: string = '#F7F7F7'
+    /** 浮层（菜单、@ 面板、气泡卡片）。深色下比 surface 再亮一档 —— 深色没有阴影可用，
+     * 只能靠明度差分层。 */
+    popupBg: string = '#FFFFFF'
+    /** 会话页背景。 */
+    conversationBg: string = '#E8E8E8'
+    /** 搜索框 / 输入框底色。 */
+    inputBg: string = '#DBDAD9'
+    /** 分组列表的段间凹槽（SectionDivider 那条横带）。必须比它所在的面**更暗**才读作凹槽。 */
+    sectionGap: string = '#EBEBEB'
+
+    // ---- 列表项状态 ----
+    /** 列表行按下态。 */
+    cellPressed: string = '#DBDAD9'
+    /** 列表行选中态。 */
+    cellSelected: string = '#C8C7C6'
+    /** 置顶会话底色。 */
+    cellTop: string = '#E6E5E5'
+    /** 盖在任意底色上的通用按下蒙版（半透明）。浅色压黑、深色提白，不能用固定实色。 */
+    pressedOverlay: string = '#0000000A'
+    /** 搜索/引用跳转定位到某条消息时的整行高亮，半透明盖在气泡上。 */
+    messageHighlight: string = '#9E9E9E80'
+
+    // ---- 消息气泡 ----
+    bubbleSent: string = '#A8BDFFF0'
+    bubbleReceived: string = '#FFFFFF'
+    /** 气泡内文字。深色下发送气泡是实心蓝，必须用纯白而不是正文灰白。 */
+    bubbleSentText: string = '#191919'
+    bubbleReceivedText: string = '#191919'
+    /** 气泡内引用块。 */
+    bubbleQuoted: string = '#F5F5F5'
+    bubbleQuotedText: string = '#666666'
+
+    // ---- 文字 ----
+    textPrimary: string = '#191919'
+    textSecondary: string = '#7F7F7F'
+    textTertiary: string = '#B2B2B2'
+    /** 群会话里消息发送者的昵称。 */
+    messageSenderName: string = '#B4B4B4'
+
+    // ---- 图标 ----
+    iconPrimary: string = '#191919'
+    iconSecondary: string = '#555555'
+
+    // ---- 描边 ----
+    /** 发丝线：导航栏下边线、分栏线。 */
+    hairline: string = '#DDDCDB'
+    /** 比 hairline 更淡：浮层轮廓、列表分隔线。 */
+    hairlineSoft: string = '#EBEAE9'
+
+    // ---- 其他 ----
+    /** 模态遮罩。深色下压得更狠，否则深色弹窗和深色背景糊在一起。 */
+    scrim: string = '#0000004D'
+    /** 浮层投影。 */
+    shadow: string = '#00000040'
+}
+
+function buildDark(): AppColors {
+    const c = new AppColors()
+    c.accent = '#0A84FF'
+    c.accentPressed = '#40A9FF'
+    c.accentSoft = '#0A84FF33'
+    c.onAccent = '#FFFFFF'
+    c.buttonSecondaryBg = '#3A3A3C'
+    c.danger = '#FF453A'
+    c.success = '#30D158'
+    c.successSoft = '#30D15833'
+    c.warning = '#FF9F0A'
+    c.badge = '#FF453A'
+    c.link = '#0A84FF'
+
+    c.surface = '#2C2C2E'
+    c.primaryBackground = '#1C1C1E'
+    c.bottomBarBg = '#1C1C1E'
+    c.popupBg = '#323232'
+    c.conversationBg = '#1C1C1E'
+    c.inputBg = '#3A3A3C'
+    c.sectionGap = '#1C1C1E'
+
+    c.cellPressed = '#FFFFFF0D'
+    c.cellSelected = '#FFFFFF1A'
+    c.cellTop = '#1C1C1E'
+    c.pressedOverlay = '#FFFFFF14'
+    c.messageHighlight = '#FFFFFF1F'
+
+    c.bubbleSent = '#409CFF'
+    c.bubbleReceived = '#2C2C2E'
+    c.bubbleSentText = '#FFFFFF'
+    c.bubbleReceivedText = '#E0E0E4'
+    c.bubbleQuoted = '#3A3A3C'
+    c.bubbleQuotedText = '#AEAEB2'
+
+    c.textPrimary = '#E0E0E4'
+    c.textSecondary = '#8E8E93'
+    c.textTertiary = '#636366'
+    c.messageSenderName = '#8E8E93'
+
+    c.iconPrimary = '#E0E0E4'
+    c.iconSecondary = '#8E8E93'
+
+    c.hairline = '#3A3A3C'
+    c.hairlineSoft = '#2F2F31'
+
+    c.scrim = '#00000099'
+    c.shadow = '#00000099'
+    return c
+}
+
+const LIGHT: AppColors = new AppColors()
+const DARK: AppColors = buildDark()
+
+// 用户选的档位；'system' 时实际明暗由 _osDark 决定
+const _mode = ref<string>(THEME_MODE_SYSTEM)
+// 系统当前是不是深色
+const _osDark = ref<boolean>(false)
+
+/**
+ * 当前是否深色。读它会建立响应式依赖，请在 computed / 模板里读。
+ */
+export function isDark(): boolean {
+    const mode = _mode.value
+    if (mode == THEME_MODE_DARK) {
+        return true
+    }
+    if (mode == THEME_MODE_LIGHT) {
+        return false
+    }
+    return _osDark.value
+}
+
+/**
+ * 当前色板。读它会建立响应式依赖 —— 页面里用
+ * `const c = computed<AppColors>((): AppColors => colors())` 包一层再给模板用。
+ */
+export function colors(): AppColors {
+    return isDark() ? DARK : LIGHT
+}
+
+/** 用户选的档位：'system' / 'light' / 'dark'。 */
+export function themeMode(): string {
+    return _mode.value
+}
+
+function normalizeMode(value: string): string {
+    if (value == THEME_MODE_LIGHT || value == THEME_MODE_DARK) {
+        return value
+    }
+    return THEME_MODE_SYSTEM
+}
+
+/**
+ * 把档位同步给框架自身的 UI（pages.json/theme.json 控制的导航栏、tabBar、
+ * showModal/showActionSheet 等）。我们自己的页面不看 appTheme，只看 [isDark]。
+ *
+ * ⚠️ `setAppTheme` / `onOsThemeChange` 属于 **uni-theme 这个 ext-api 模块**
+ * （编译产物里是 `import io.dcloud.uniapp.extapi.setAppTheme`），不在核心运行时里。
+ * 基座/离线工程没带这个模块时，调用会在运行时抛 NoClassDefFoundError 之类的错误
+ * —— 编译期完全看不出来。所以这里全程兜底：**失败只是丢掉原生外壳的换肤和「跟随系统」，
+ * 绝不能让它把调用方（尤其是 App.uvue 的 onLaunch）打断。**
+ */
+function applyAppTheme(mode: string): void {
+    try {
+        uni.setAppTheme({
+            theme: mode == THEME_MODE_SYSTEM ? 'auto' : (mode == THEME_MODE_DARK ? 'dark' : 'light'),
+            fail: (e: IAppThemeFail) => {
+                console.log('setAppTheme fail', e.errMsg)
+            }
+        } as SetAppThemeOptions)
+    } catch (e) {
+        console.log('setAppTheme 不可用，跳过原生外壳换肤（缺 uni-theme 模块？）', e)
+    }
+}
+
+/**
+ * 切换主题档位并落盘。先改内存再落盘：切主题不能等磁盘 IO 返回才重绘。
+ */
+export function setThemeMode(mode: string): void {
+    const normalized = normalizeMode(mode)
+    if (normalized == _mode.value) {
+        return
+    }
+    _mode.value = normalized
+    setItem(THEME_MODE_KEY, normalized)
+    applyAppTheme(normalized)
+}
+
+/**
+ * 读取用户存的档位。**只碰 storage，不碰任何 ext-api**，所以可以在 onLaunch 最前面调，
+ * 保证首屏就是正确的明暗。
+ */
+export function initTheme(): void {
+    _mode.value = normalizeMode(getItem(THEME_MODE_KEY))
+}
+
+/**
+ * 接管系统主题 + 同步原生外壳。会碰 uni-theme / uni-getDeviceInfo 两个 ext-api，
+ * 所以**必须放在 onLaunch 的最后**（IM 初始化之后），且整段兜底。
+ */
+export function syncNativeTheme(): void {
+    applyAppTheme(_mode.value)
+
+    try {
+        _osDark.value = uni.getDeviceInfo().osTheme == 'dark'
+        uni.onOsThemeChange((res: OsThemeChangeResult) => {
+            _osDark.value = res.osTheme == 'dark'
+        })
+    } catch (e) {
+        // 拿不到系统主题时「跟随系统」退化成浅色，用户仍可手动选深色
+        console.log('osTheme 不可用，跟随系统退化为浅色', e)
+    }
+}

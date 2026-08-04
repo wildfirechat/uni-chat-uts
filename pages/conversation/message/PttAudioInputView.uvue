@@ -1,12 +1,12 @@
 <template>
     <view class="TUI-message-input-main" @longpress="handleLongPress" @touchmove="handleTouchMove"
         @touchend="handleTouchEnd">
-        <text class="record-text">{{ text }}</text>
-        <view class="record-modal" v-if="popupToggle">
+        <text class="record-text" :style="{ backgroundColor: c.surface, color: c.textPrimary }">{{ text }}</text>
+        <view class="record-modal" v-if="popupToggle" :style="{ backgroundColor: c.scrim }">
             <view class="wrapper">
-                <view class="modal-loading"></view>
+                <view class="modal-loading" :style="{ backgroundColor: c.accent }"></view>
             </view>
-            <text class="modal-title">{{ title }}</text>
+            <text class="modal-title" :style="{ color: c.onAccent }">{{ title }}</text>
         </view>
     </view>
 </template>
@@ -17,10 +17,13 @@ import pttClient from "../../../wfc/ptt/pttClient.uts";
 import TalkingCallback from "../../../wfc/ptt/talkingCallback.uts";
 import PttErrorCode from "../../../wfc/ptt/pttErrorCode.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: 'PttAudioInputView'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     conversationInfo: ConversationInfo
 }>()
@@ -117,7 +120,6 @@ const resetState = () => {
 
 <style scoped>
 .TUI-message-input-main {
-    background-color: #ffffff;
     flex: 1;
     height: 33px;
     margin: 0 5px;
@@ -136,7 +138,6 @@ const resetState = () => {
 .record-modal {
     height: 150px;
     width: 220px;
-    background-color: rgba(0, 0, 0, 0.8);
     position: fixed;
     top: 300px;
     z-index: 9999;
@@ -157,12 +158,10 @@ const resetState = () => {
     width: 20px;
     height: 8px;
     border-radius: 2px;
-    background-color: #006fff;
 }
 
 .modal-title {
     text-align: center;
-    color: #ffffff;
     font-size: 14px;
 }
 </style>

@@ -1,47 +1,48 @@
 <template>
-    <view class="conversation-info" v-if="conversationInfo != null">
+    <view class="conversation-info" v-if="conversationInfo != null" :style="{ backgroundColor: c.surface }">
         <view class="page-header">
             <view class="field">
-                <text class="field-label">群名称</text>
-                <input class="field-input" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
+                <text class="field-label" :style="{ color: c.textSecondary }">群名称</text>
+                <input class="field-input" :style="{ color: c.textPrimary }" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
                     v-model="newGroupName" @confirm="updateGroupName" :placeholder="groupDisplayName" />
             </view>
             <view class="field">
-                <text class="field-label">群公告</text>
-                <input class="field-input" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
+                <text class="field-label" :style="{ color: c.textSecondary }">群公告</text>
+                <input class="field-input" :style="{ color: c.textPrimary }" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
                     @confirm="updateGroupAnnouncement" v-model="newGroupAnnouncement" :placeholder="groupAnnouncement" />
             </view>
             <view class="fav-switch">
-                <text class="field-label">保存到通讯录</text>
+                <text class="field-label" :style="{ color: c.textSecondary }">保存到通讯录</text>
                 <switch class="fav-switch-control" :checked="isFavGroup" @change="onFavSwitchChange" />
             </view>
         </view>
-        <view class="search-item">
-            <input class="search-input" type="text" v-model="filterQuery" placeholder="搜索" />
+        <view class="search-item" :style="{ borderBottomColor: c.hairlineSoft }">
+            <input class="search-input" type="text" v-model="filterQuery" placeholder="搜索"
+                :style="{ borderColor: c.hairlineSoft, backgroundColor: c.surface, color: c.textPrimary }" />
         </view>
         <list-view class="member-container" direction="vertical">
             <list-item v-if="enableAddGroupMember && filterQuery == ''" @tap="showCreateConversationModal" class="action-item">
-                <view class="icon">
-                    <text class="icon-text">+</text>
+                <view class="icon" :style="{ borderColor: c.hairline }">
+                    <text class="icon-text" :style="{ color: c.textSecondary }">+</text>
                 </view>
-                <text class="action-text">添加成员</text>
+                <text class="action-text" :style="{ color: c.textPrimary }">添加成员</text>
             </list-item>
             <list-item v-if="enableRemoveGroupMember && filterQuery == ''" @tap="showRemoveGroupMemberModal" class="action-item">
-                <view class="icon">
-                    <text class="icon-text">-</text>
+                <view class="icon" :style="{ borderColor: c.hairline }">
+                    <text class="icon-text" :style="{ color: c.textSecondary }">-</text>
                 </view>
-                <text class="action-text">移除成员</text>
+                <text class="action-text" :style="{ color: c.textPrimary }">移除成员</text>
             </list-item>
             <UserListView :users="users" :show-category-label="false" padding-left="20px" />
         </list-view>
-        <view @tap="clearMessages" class="quit-group-item">
-            <text class="quit-group-text">清空聊天记录</text>
+        <view @tap="clearMessages" class="quit-group-item" :style="{ borderTopColor: c.hairlineSoft }">
+            <text class="quit-group-text" :style="{ color: c.danger }">清空聊天记录</text>
         </view>
-        <view @tap="quitGroup(false)" class="quit-group-item">
-            <text class="quit-group-text">退出群组</text>
+        <view @tap="quitGroup(false)" class="quit-group-item" :style="{ borderTopColor: c.hairlineSoft }">
+            <text class="quit-group-text" :style="{ color: c.danger }">退出群组</text>
         </view>
-        <view v-if="isOwner" @tap="quitGroup(true)" class="quit-group-item">
-            <text class="quit-group-text">解散群组</text>
+        <view v-if="isOwner" @tap="quitGroup(true)" class="quit-group-item" :style="{ borderTopColor: c.hairlineSoft }">
+            <text class="quit-group-text" :style="{ color: c.danger }">解散群组</text>
         </view>
     </view>
 </template>
@@ -61,10 +62,13 @@ import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import { clearConversationMessages } from "@/common/conversationActions.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "GroupConversationInfoPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const conversationInfo = ref<ConversationInfo | null>(null)
 const groupMemberUserInfos = ref<UserInfo[]>([] as UserInfo[])
 const filterQuery = ref<string>('')
@@ -347,7 +351,6 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     justify-content: flex-start;
     flex: 1;
     overflow: hidden;
-    background-color: #ffffff;
 }
 
 .page-header {
@@ -369,7 +372,6 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
 
 .field-label {
     font-size: 14px;
-    color: #999999;
 }
 
 .field-input {
@@ -386,7 +388,8 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     margin-top: 15px;
     padding-bottom: 15px;
     align-items: center;
-    border-bottom: 1px solid #ececec;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .fav-switch-control {
@@ -407,8 +410,8 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     padding: 0 10px 0 20px;
     height: 25px;
     border-radius: 3px;
-    border: 1px solid #ededed;
-    background-color: #ffffff;
+    border-width: 1px;
+    border-style: solid;
 }
 
 .action-item {
@@ -427,12 +430,12 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     justify-content: center;
     align-items: center;
     border-radius: 3px;
-    border: 1px dashed #d6d6d6;
+    border-width: 1px;
+    border-style: dashed;
 }
 
 .icon-text {
     font-size: 20px;
-    color: #888888;
 }
 
 .action-text {
@@ -446,11 +449,11 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     align-items: center;
     justify-content: center;
     height: 50px;
-    border-top: 1px solid #ececec;
+    border-top-width: 1px;
+    border-top-style: solid;
 }
 
 .quit-group-text {
-    color: #ff0000;
     font-size: 15px;
 }
 </style>

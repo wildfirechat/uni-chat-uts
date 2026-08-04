@@ -1,15 +1,20 @@
 <template>
-    <view class="text-message-container" :class="{ out: message.direction == 0 }">
-        <text class="text">{{ textContent }}</text>
+    <view class="text-message-container" :class="{ out: message.direction == 0 }"
+        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+        <text class="text"
+            :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
     </view>
 </template>
 
 <script setup lang="uts">
 import Message from "@/wfc/messages/message.uts";
+import { colors, AppColors } from "@/common/theme.uts";
 
 defineOptions({
     name: "TextMessageContentView"
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 
 const props = defineProps<{
     message: Message
@@ -25,7 +30,6 @@ const textContent = computed<string>((): string => {
 .text-message-container {
     margin: 0 10px;
     padding: 10px;
-    background-color: #ffffff;
     position: relative;
     border-radius: 5px;
     align-self: flex-start;
@@ -34,13 +38,12 @@ const textContent = computed<string>((): string => {
     max-width: 440rpx;
 }
 
+/* .out 只保留布局；两种气泡的底色/文字色由 :style 给（要跟明暗主题走） */
 .text-message-container.out {
-    background-color: #98ea70;
     align-self: flex-end;
 }
 
 .text {
-    color: #050505;
     font-size: 16px;
     line-height: 25px;
     /* 保留换行符；宽度占满气泡内容区，配合 max-width 实现自动换行 */

@@ -1,14 +1,16 @@
 <template>
-    <view class="nav-bar-container">
+    <view class="nav-bar-container" :style="{ backgroundColor: c.surface }">
         <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
         <view class="nav-bar">
             <view class="nav-bar-left" @tap="onBack">
-                <text v-if="showBack" class="back-icon">‹</text>
+                <text v-if="showBack" class="back-icon" :style="{ color: c.iconPrimary }">‹</text>
             </view>
-            <text class="nav-bar-title">{{ title }}</text>
+            <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: fontPx(17) }">{{ title }}</text>
             <view class="nav-bar-right">
-                <text v-if="rightIcon1 != ''" class="wxfont nav-bar-icon" @tap="onRight1Tap">{{ rightIcon1 }}</text>
-                <text v-if="rightIcon2 != ''" class="wxfont nav-bar-icon" @tap="onRight2Tap">{{ rightIcon2 }}</text>
+                <text v-if="rightIcon1 != ''" class="wxfont nav-bar-icon" :style="{ color: c.iconPrimary }"
+                    @tap="onRight1Tap">{{ rightIcon1 }}</text>
+                <text v-if="rightIcon2 != ''" class="wxfont nav-bar-icon" :style="{ color: c.iconPrimary }"
+                    @tap="onRight2Tap">{{ rightIcon2 }}</text>
             </view>
         </view>
     </view>
@@ -20,10 +22,15 @@
  * uni-app x 不支持原生 titleNView 按钮，原来配置在 pages.json 的标题栏按钮改用本组件实现。
  * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
  */
+import { colors, AppColors } from "../../common/theme.uts"
+import { fontPx } from "../../common/layoutScale.uts"
+
 defineOptions({
     name: "NavBar",
     styleIsolation: 'app'
 })
+
+const c = computed<AppColors>((): AppColors => colors())
 
 const props = withDefaults(defineProps<{
     title?: string
@@ -64,10 +71,9 @@ const onRight2Tap = () => {
 </script>
 
 <style scoped>
-.nav-bar-container {
-    background-color: #ffffff;
-}
-
+/* 颜色和字号走 :style（common/theme.uts、common/layoutScale.uts），尺寸留在这里。
+ * 图标字号（back-icon / nav-bar-icon）刻意不跟字号档位放大：它们是图形，
+ * 放大只会顶破 44px 的固定栏高。 */
 .nav-bar {
     height: 44px;
     display: flex;
@@ -86,14 +92,11 @@ const onRight2Tap = () => {
 
 .back-icon {
     font-size: 28px;
-    color: #333333;
 }
 
 .nav-bar-title {
     flex: 1;
     text-align: center;
-    font-size: 17px;
-    color: #000000;
 }
 
 .nav-bar-right {
@@ -106,7 +109,6 @@ const onRight2Tap = () => {
 
 .nav-bar-icon {
     font-size: 26px;
-    color: #333333;
     margin-left: 16px;
 }
 </style>

@@ -1,7 +1,8 @@
 <template>
-    <view class="audio-message-container" :style="{ width: containerWidth + 'px' }" @tap="playVoice">
+    <view class="audio-message-container"
+        :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }" @tap="playVoice">
         <text v-if="message.direction == 0" class="duration">{{ duration }}"</text>
-        <view class="volume-container">
+        <view class="volume-container" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">
             <text v-if="!isPlaying" class="icomoon volume-icon">&#xf3ba;</text>
             <text v-if="isPlaying" class="icomoon volume-icon">&#xf210;</text>
         </view>
@@ -14,11 +15,14 @@ import Message from "@/wfc/messages/message.uts";
 import SoundMessageContent from "@/wfc/messages/soundMessageContent.uts";
 import store from "@/store.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "AudioMessageContentView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     message: Message
 }>()
@@ -74,19 +78,16 @@ const playVoice = () => {
     flex-direction: row;
     height: 40px;
     min-width: 55px;
-    background-color: #ffffff;
     border-radius: 5px;
     padding: 5px 10px;
     align-items: center;
 }
 
 .volume-icon {
-    color: #888888;
     font-size: 18px;
 }
 
 .duration {
-    color: #b2b2b2;
     padding: 8px;
     font-size: 14px;
 }

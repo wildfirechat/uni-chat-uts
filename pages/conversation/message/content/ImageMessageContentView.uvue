@@ -1,5 +1,5 @@
 <template>
-    <view class="image-content-container">
+    <view class="image-content-container" :style="{ borderColor: c.hairlineSoft }">
         <image class="image" :style="{ width: imageWidth + 'px', height: imageHeight + 'px' }" mode="aspectFill"
             @tap="preview" :src="imageSrc" />
     </view>
@@ -11,10 +11,13 @@ import ImageMessageContent from "../../../../wfc/messages/imageMessageContent.ut
 import Config from "../../../../config.uts";
 import { conversationState } from "../../../../store.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ImageMessageContentView"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const props = withDefaults(defineProps<{
     message: Message
     isInCompositeView?: boolean
@@ -96,7 +99,8 @@ const preview = () => {
 .image-content-container {
     margin: 0 10px;
     position: relative;
-    border: 1px solid #efefef;
+    border-width: 1px;
+    border-style: solid;
     border-radius: 5px;
 }
 

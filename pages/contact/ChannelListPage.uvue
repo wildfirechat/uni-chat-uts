@@ -1,11 +1,11 @@
 <template>
-    <view class="page-container">
+    <view class="page-container" :style="{ backgroundColor: c.surface }">
         <NavBar title="频道列表" :showBack="true" :rightIcon1="searchIcon" @right1Tap="onSearchTap" />
         <scroll-view class="channel-list" direction="vertical">
             <view v-for="(channel, index) in channelList" :key="index" @tap="showChannel(channel)">
-                <view class="channel-item">
-                    <image class="avatar" :src="channel.portrait" />
-                    <text class="channel-name single-line">{{ channel.name }}</text>
+                <view class="channel-item" :style="{ borderBottomColor: c.hairlineSoft }">
+                    <image class="avatar" :src="channel.portrait" :style="{ backgroundColor: c.inputBg }" />
+                    <text class="channel-name single-line" :style="{ color: c.textPrimary }">{{ channel.name }}</text>
                 </view>
             </view>
         </scroll-view>
@@ -20,10 +20,13 @@ import ChannelInfo from "../../wfc/model/channelInfo.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import NavBar from "../common/NavBar.uvue";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "ChannelListPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const searchIcon = ref<string>('\ue636')
 
 const channelList = computed<ChannelInfo[]>((): ChannelInfo[] => {
@@ -48,7 +51,6 @@ const showChannel = (channelInfo: ChannelInfo) => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background-color: #ffffff;
 }
 
 .channel-list {

@@ -1,28 +1,29 @@
 <template>
-    <view class="multi-selection-action-container">
+    <view class="multi-selection-action-container"
+        :style="{ backgroundColor: c.bottomBarBg, borderTopColor: c.hairline }">
         <view class="action" @tap="forwardOneByOne">
-            <view class="icon">
-                <text class="icomoon action-icon">&#xf2f6;</text>
+            <view class="icon" :style="{ backgroundColor: c.surface }">
+                <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf2f6;</text>
             </view>
-            <text class="action-text">逐条转发</text>
+            <text class="action-text" :style="{ color: c.textSecondary }">逐条转发</text>
         </view>
         <view class="action" @tap="forwardComposite">
-            <view class="icon">
-                <text class="icomoon action-icon">&#xf347;</text>
+            <view class="icon" :style="{ backgroundColor: c.surface }">
+                <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf347;</text>
             </view>
-            <text class="action-text">合并转发</text>
+            <text class="action-text" :style="{ color: c.textSecondary }">合并转发</text>
         </view>
         <view class="action" @tap="deleteMultiMessage">
-            <view class="icon">
-                <text class="icomoon action-icon">&#xf37f;</text>
+            <view class="icon" :style="{ backgroundColor: c.surface }">
+                <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf37f;</text>
             </view>
-            <text class="action-text">删除</text>
+            <text class="action-text" :style="{ color: c.textSecondary }">删除</text>
         </view>
         <view class="action" @tap="hideMultiSelectionActionView">
-            <view class="icon">
-                <text class="icomoon action-icon">&#xf12a;</text>
+            <view class="icon" :style="{ backgroundColor: c.surface }">
+                <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf12a;</text>
             </view>
-            <text class="action-text">取消</text>
+            <text class="action-text" :style="{ color: c.textSecondary }">取消</text>
         </view>
     </view>
 </template>
@@ -33,11 +34,14 @@ import Message from "@/wfc/messages/message.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "MessageMultiSelectionActionView",
     styleIsolation: 'app'
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const deleteMultiMessage = () => {
     store.deleteSelectedMessages();
 }
@@ -67,8 +71,8 @@ const forwardComposite = () => {
     flex-direction: row;
     justify-content: center;
     align-items: center;
-    border-top: 1px solid #e2e2e2;
-    background-color: #f3f3f3;
+    border-top-width: 1px;
+    border-top-style: solid;
 }
 
 .action {
@@ -83,7 +87,6 @@ const forwardComposite = () => {
 .icon {
     width: 60px;
     height: 60px;
-    background-color: #ffffff;
     border-radius: 30px;
     display: flex;
     flex-direction: row;
@@ -93,7 +96,6 @@ const forwardComposite = () => {
 
 .action-icon {
     font-size: 20px;
-    color: #333333;
 }
 
 .action-text {

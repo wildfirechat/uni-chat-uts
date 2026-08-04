@@ -104,6 +104,19 @@ export default {
         "no_more": "No more files",
         "all_file_load": "All files have been loaded :("
     },
+    "discovery": {
+        "chatroom": "Chatroom",
+        "robot": "Robot",
+        "channel": "Channel",
+        "dev_guide": "Developer Guide"
+    },
+    "me": {
+        "about": "About",
+        "api_test": "API Test",
+        "logout": "Log Out",
+        "portrait_update_success": "Avatar updated",
+        "portrait_update_fail": "Failed to update avatar"
+    },
     "setting": {
         "setting": "Settings",
         "enable_notification": "Enable notification",
@@ -119,6 +132,7 @@ export default {
         "sync_draft": "Sync draft"
     },
     "common": {
+        "loading": "Loading...",
         "add": "Add",
         "remove": "Remove",
         "send": "Send",

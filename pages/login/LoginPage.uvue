@@ -1,17 +1,19 @@
 <template>
-    <view class="page-body">
-        <text class="login-type-title">验证码登录</text>
+    <view class="page-body" :style="{ backgroundColor: c.surface }">
+        <text class="login-type-title" :style="{ color: c.textPrimary }">验证码登录</text>
         <view class="mobile-container">
-            <text class="input-label">请输入手机号</text>
+            <text class="input-label" :style="{ color: c.textPrimary }">请输入手机号</text>
             <view class="mobile-input-container">
-                <input class="input" @input="bindPhoneInput" type="number" placeholder="手机号" />
+                <input class="input" @input="bindPhoneInput" type="number" placeholder="手机号"
+                    :style="{ color: c.textPrimary, borderBottomColor: c.hairline }" />
             </view>
         </view>
 
         <view class="auth-code-container">
-            <text class="input-label">请输入验证码</text>
+            <text class="input-label" :style="{ color: c.textPrimary }">请输入验证码</text>
             <view class="auth-code-input-container">
-                <input class="auth-code-input" @input="bindCodeInput" type="number" placeholder="验证码" />
+                <input class="auth-code-input" @input="bindCodeInput" type="number" placeholder="验证码"
+                    :style="{ color: c.textPrimary, borderBottomColor: c.hairline }" />
                 <button size="mini" :disabled="phone.length != 11" @tap="bindAuthCodeTap">获取验证码</button>
             </view>
         </view>
@@ -26,6 +28,9 @@ import Config from '../../config.uts';
 import { setItem } from "../util/storageHelper.uts";
 import appServerApi, { LoginResult } from "../../api/appServerApi.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
+
+const c = computed<AppColors>((): AppColors => colors())
 const focus = ref<boolean>(false)
 const phone = ref<string>('')
 const code = ref<string>('')
@@ -142,7 +147,8 @@ const go2ConversationList = () => {
 
 .input {
     font-size: 14px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .auth-code-container {
@@ -162,7 +168,8 @@ const go2ConversationList = () => {
     flex: 1;
     margin-right: 5px;
     font-size: 14px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .confirm-button {

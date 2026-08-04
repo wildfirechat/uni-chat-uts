@@ -1,50 +1,50 @@
 <template>
     <view class="user-detail-container" v-if="user != null">
-        <view class="detail-header">
+        <view class="detail-header" :style="{ borderBottomColor: c.hairline }">
             <view class="name-container">
-                <text class="user-name">{{ name }}</text>
+                <text class="user-name" :style="{ color: c.textPrimary }">{{ name }}</text>
             </view>
-            <image class="avatar" :src="user.portrait" />
+            <image class="avatar" :src="user.portrait" :style="{ backgroundColor: c.inputBg }" />
         </view>
         <view class="content">
             <view class="info-item">
-                <text class="info-label">备注名</text>
-                <input class="alias-input" type="text" :value="user.friendAlias" placeholder="备注名"
+                <text class="info-label" :style="{ color: c.textSecondary }">备注名</text>
+                <input class="alias-input" :style="{ color: c.textPrimary }" type="text" :value="user.friendAlias" placeholder="备注名"
                     @confirm="updateFriendAlias" />
             </view>
             <view class="info-item">
-                <text class="info-label">野火ID</text>
-                <text class="info-value single-line">{{ user.name }}</text>
+                <text class="info-label" :style="{ color: c.textSecondary }">野火ID</text>
+                <text class="info-value single-line" :style="{ color: c.textPrimary }">{{ user.name }}</text>
             </view>
             <view class="info-item">
-                <text class="info-label">地区</text>
-                <text class="info-value">未知</text>
+                <text class="info-label" :style="{ color: c.textSecondary }">地区</text>
+                <text class="info-value" :style="{ color: c.textPrimary }">未知</text>
             </view>
             <view class="info-item">
-                <text class="info-label">标签</text>
-                <text class="info-value">测试用户</text>
+                <text class="info-label" :style="{ color: c.textSecondary }">标签</text>
+                <text class="info-value" :style="{ color: c.textPrimary }">测试用户</text>
             </view>
         </view>
-        <view class="detail-footer">
+        <view class="detail-footer" :style="{ borderTopColor: c.hairline }">
             <view class="action" @tap="chat">
-                <text class="icomoon action-icon">&#xf3fb;</text>
-                <text class="action-label">发消息</text>
+                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf3fb;</text>
+                <text class="action-label" :style="{ color: c.accent }">发消息</text>
             </view>
             <view class="action" @tap="startAudioCall">
-                <text class="icomoon action-icon">&#xf4b8;</text>
-                <text class="action-label">语音通话</text>
+                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf4b8;</text>
+                <text class="action-label" :style="{ color: c.accent }">语音通话</text>
             </view>
             <view class="action" @tap="startVideoCall">
-                <text class="icomoon action-icon">&#xf4cc;</text>
-                <text class="action-label">视频通话</text>
+                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf4cc;</text>
+                <text class="action-label" :style="{ color: c.accent }">视频通话</text>
             </view>
             <view v-if="!isFriend && !isSelf" class="action" @tap="addFriend">
-                <text class="icomoon action-icon">&#xf39f;</text>
-                <text class="action-label">添加好友</text>
+                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf39f;</text>
+                <text class="action-label" :style="{ color: c.accent }">添加好友</text>
             </view>
             <view v-if="isFriend && !isSelf" class="action" @tap="deleteFriend">
-                <text class="icomoon action-icon delete">&#xf2f4;</text>
-                <text class="action-label delete">删除好友</text>
+                <text class="icomoon action-icon" :style="{ color: c.danger }">&#xf2f4;</text>
+                <text class="action-label" :style="{ color: c.danger }">删除好友</text>
             </view>
         </view>
     </view>
@@ -58,10 +58,13 @@ import UserInfo from "../../wfc/model/userInfo.uts";
 import wfc from "../../wfc/client/wfc.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "UserDetailPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const user = ref<UserInfo | null>(contactState.currentFriend as UserInfo | null)
 
 const name = computed<string>((): string => {
@@ -197,7 +200,8 @@ const startVideoCall = () => {
     justify-content: space-between;
     align-items: center;
     padding-bottom: 15px;
-    border-bottom: 1px solid #e6e6e6;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .avatar {
@@ -227,7 +231,6 @@ const startVideoCall = () => {
     margin-right: 20px;
     width: 60px;
     font-size: 14px;
-    color: #333333;
 }
 
 .info-value {
@@ -246,7 +249,8 @@ const startVideoCall = () => {
     flex-direction: row;
     justify-content: center;
     padding-top: 30px;
-    border-top: 1px solid #e6e6e6;
+    border-top-width: 1px;
+    border-top-style: solid;
 }
 
 .action {
@@ -260,19 +264,10 @@ const startVideoCall = () => {
 .action-label {
     font-size: 10px;
     padding-top: 1px;
-    color: #5d7ce8;
 }
 
 .action-icon {
     font-size: 20px;
-    color: #5d7ce8;
 }
 
-.action-icon.delete {
-    color: #ff0000;
-}
-
-.action-label.delete {
-    color: #ff0000;
-}
 </style>

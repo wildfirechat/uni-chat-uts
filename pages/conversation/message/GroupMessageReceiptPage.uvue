@@ -1,20 +1,20 @@
 <template>
-    <view class="receipt-page">
-        <view class="tab-bar">
+    <view class="receipt-page" :style="{ backgroundColor: c.surface }">
+        <view class="tab-bar" :style="{ borderBottomColor: c.hairlineSoft }">
             <view class="tab" @tap="switchTab(0)">
-                <text class="tab-text" :class="{ active: currentTab == 0 }">未读({{ unreadUsers.length }})</text>
-                <view class="tab-indicator" :class="{ active: currentTab == 0 }"></view>
+                <text class="tab-text" :style="{ color: currentTab == 0 ? c.accent : c.textSecondary }">未读({{ unreadUsers.length }})</text>
+                <view class="tab-indicator" :style="{ backgroundColor: currentTab == 0 ? c.accent : 'transparent' }"></view>
             </view>
             <view class="tab" @tap="switchTab(1)">
-                <text class="tab-text" :class="{ active: currentTab == 1 }">已读({{ readUsers.length }})</text>
-                <view class="tab-indicator" :class="{ active: currentTab == 1 }"></view>
+                <text class="tab-text" :style="{ color: currentTab == 1 ? c.accent : c.textSecondary }">已读({{ readUsers.length }})</text>
+                <view class="tab-indicator" :style="{ backgroundColor: currentTab == 1 ? c.accent : 'transparent' }"></view>
             </view>
         </view>
         <list-view class="user-list" direction="vertical">
             <UserListView :users="currentUsers" :show-category-label="false" padding-left="20px" />
         </list-view>
         <view v-if="currentUsers.length == 0" class="empty-container">
-            <text class="empty-text">{{ emptyTip }}</text>
+            <text class="empty-text" :style="{ color: c.textTertiary }">{{ emptyTip }}</text>
         </view>
     </view>
 </template>
@@ -28,10 +28,13 @@ import UserInfo from "@/wfc/model/userInfo.uts";
 import { gte } from "@/wfc/util/longUtil.uts";
 import { takePageOptions } from "@/common/nav.uts";
 
+import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
     name: "GroupMessageReceiptPage"
 })
 
+
+const c = computed<AppColors>((): AppColors => colors())
 const currentTab = ref<number>(0)
 const readUsers = ref<UserInfo[]>([] as UserInfo[])
 const unreadUsers = ref<UserInfo[]>([] as UserInfo[])
@@ -88,14 +91,14 @@ const switchTab = (tab: number) => {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background-color: #ffffff;
 }
 
 .tab-bar {
     display: flex;
     flex-direction: row;
     height: 44px;
-    border-bottom: 1px solid #ececec;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
 }
 
 .tab {
@@ -108,22 +111,12 @@ const switchTab = (tab: number) => {
 
 .tab-text {
     font-size: 15px;
-    color: #666666;
-}
-
-.tab-text.active {
-    color: #3B62E0;
 }
 
 .tab-indicator {
     margin-top: 6px;
     width: 30px;
     height: 2px;
-    background-color: transparent;
-}
-
-.tab-indicator.active {
-    background-color: #3B62E0;
 }
 
 .user-list {
@@ -142,6 +135,5 @@ const switchTab = (tab: number) => {
 
 .empty-text {
     font-size: 14px;
-    color: #b4b4b4;
 }
 </style>
