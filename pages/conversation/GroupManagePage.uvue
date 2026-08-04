@@ -1,0 +1,212 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-item v-if="isOwner" :title="t('group.manager_setting')" @tap="openManagerSetting" />
+            <option-item :title="t('group.mute_setting')" @tap="openMuteSetting" />
+            <option-switch-item :title="t('group.allow_private_chat')" :value="allowPrivateChat"
+                :show-bottom-divider="false" @change="onPrivateChatChange" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-item :title="t('group.join_type')" :desc="joinTypeDesc" @tap="pickJoinType" />
+            <option-item :title="t('group.searchable')" :desc="searchableDesc"
+                :show-bottom-divider="isCommercialServer" @tap="pickSearchable" />
+            <option-switch-item v-if="isCommercialServer" :title="t('group.history_message')" :value="historyMessage"
+                @change="onHistoryMessageChange" />
+            <option-item v-if="isCommercialServer" :title="t('group.max_member_count')" :desc="maxMemberCountDesc"
+                :show-right-arrow="false" :show-bottom-divider="false" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 群管理。对齐 flutter `conversation/group_manage_screen.dart`。
+ *
+ * 与 flutter 的差异：
+ * - 少「入群申请」入口 —— 那页依赖门面缺的 4 个 API（getJoinGroupRequests 等），
+ *   属于原生插件改动，按 FLUTTER_ALIGNMENT_TODO §4「原生改动攒批做」留到下一批。
+ *   **副作用**：加群方式选了「需管理员验证」后，收到的申请这一端处理不了，得去其他端批。
+ * - 选项弹窗用 `uni.showActionSheet`，没有 flutter 那个「当前项打勾」的效果；
+ *   当前值已经显示在行右侧的 desc 上，信息不缺。
+ *
+ * 「群历史消息」「群最大成员数」两项仅专业版服务端有效，社区版整行不展示（与 flutter 一致）。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import GroupInfo from "@/wfc/model/groupInfo.uts";
+import GroupType from "@/wfc/model/groupType.uts";
+import GroupMemberType from "@/wfc/model/groupMemberType.uts";
+import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
+import EventType from "@/wfc/client/wfcEvent.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { showSelectDialog, toastError } from "@/common/prompt.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "GroupManagePage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const groupInfo = ref<GroupInfo | null>(null)
+const isOwner = ref<boolean>(false)
+const isCommercialServer = ref<boolean>(false)
+
+const allowPrivateChat = computed<boolean>((): boolean => {
+    const info = groupInfo.value
+    return info != null && info.privateChat == 0
+})
+
+const historyMessage = computed<boolean>((): boolean => {
+    const info = groupInfo.value
+    return info != null && info.historyMessage == 1
+})
+
+const maxMemberCountDesc = computed<string>((): string => {
+    const info = groupInfo.value
+    if (info == null || info.maxMemberCount <= 0) {
+        return ''
+    }
+    return '' + info.maxMemberCount
+})
+
+const joinTypeLabels = computed<string[]>((): string[] => {
+    const labels = [t('group.join_free'), t('group.join_member_invite'), t('group.join_manager_invite')]
+    const info = groupInfo.value
+    if (info != null && info.type == GroupType.Restricted) {
+        labels.push(t('group.join_need_verify'))
+    }
+    return labels
+})
+
+const joinTypeDesc = computed<string>((): string => {
+    const info = groupInfo.value
+    if (info == null) {
+        return ''
+    }
+    const labels = joinTypeLabels.value
+    return info.joinType >= 0 && info.joinType < labels.length ? labels[info.joinType] : ''
+})
+
+const searchableLabels = computed<string[]>((): string[] => {
+    return [t('group.searchable_yes'), t('group.searchable_no')]
+})
+
+const searchableDesc = computed<string>((): string => {
+    const info = groupInfo.value
+    if (info == null) {
+        return ''
+    }
+    return info.searchable == 0 ? t('group.searchable_yes') : t('group.searchable_no')
+})
+
+const reload = () => {
+    const gid = groupId.value
+    if (gid == '') {
+        return
+    }
+    groupInfo.value = wfc.getGroupInfo(gid, false)
+    isOwner.value = wfc.getGroupMember(gid, wfc.getUserId()).type == GroupMemberType.Owner
+}
+
+const onGroupUpdate = (_args: Array<any | null>) => {
+    reload()
+}
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    isCommercialServer.value = wfc.isCommercialServer()
+    reload()
+})
+
+onMounted(() => {
+    wfc.eventEmitter.on(EventType.GroupInfosUpdate, onGroupUpdate)
+})
+
+onBeforeUnmount(() => {
+    wfc.eventEmitter.off(EventType.GroupInfosUpdate, onGroupUpdate)
+})
+
+const openManagerSetting = () => {
+    uni.navigateTo({
+        url: '/pages/conversation/GroupManagerPage?groupId=' + groupId.value,
+        fail: (err) => {
+            console.log('nav to GroupManagerPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const openMuteSetting = () => {
+    uni.navigateTo({
+        url: '/pages/conversation/GroupMutePage?groupId=' + groupId.value,
+        fail: (err) => {
+            console.log('nav to GroupMutePage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+/** 改完不本地改 groupInfo，等 GroupInfosUpdate 回推后 reload —— 避免和服务端状态漂移。 */
+const modify = (type: number, value: string) => {
+    wfc.modifyGroupInfo(groupId.value, type, value, [0], null, () => {
+        reload()
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+
+const onPrivateChatChange = (value: boolean) => {
+    modify(ModifyGroupInfoType.Modify_Group_PrivateChat, value ? '0' : '1')
+}
+
+const onHistoryMessageChange = (value: boolean) => {
+    modify(ModifyGroupInfoType.Modify_Group_History_Message, value ? '1' : '0')
+}
+
+const pickJoinType = () => {
+    const info = groupInfo.value
+    if (info == null) {
+        return
+    }
+    showSelectDialog(joinTypeLabels.value, (index: number) => {
+        if (index != info.joinType) {
+            modify(ModifyGroupInfoType.Modify_Group_JoinType, '' + index)
+        }
+    })
+}
+
+const pickSearchable = () => {
+    const info = groupInfo.value
+    if (info == null) {
+        return
+    }
+    showSelectDialog(searchableLabels.value, (index: number) => {
+        if (index != info.searchable) {
+            modify(ModifyGroupInfoType.Modify_Group_Searchable, '' + index)
+        }
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

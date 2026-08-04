@@ -369,6 +369,8 @@ const showConversationInfo = () => {
         navigateToPage('/pages/conversation/SingleConversationInfoPage', info);
     } else if (info.conversation.type == ConversationType.Group) {
         navigateToPage('/pages/conversation/GroupConversationInfoPage', info);
+    } else if (info.conversation.type == ConversationType.Channel) {
+        navigateToPage('/pages/conversation/ChannelConversationInfoPage', info);
     } else {
         uni.showToast({
             title: 'TODO 暂不支持该会话类型',

@@ -1,0 +1,225 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-switch-item :title="t('group.mute_all')" :value="muteAll" :show-bottom-divider="false"
+                @change="onMuteAllChange" />
+        </form-card>
+
+        <view class="section-title">
+            <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_SM) }">{{ t('group.muted_members') }}</text>
+        </view>
+        <form-card>
+            <member-row v-for="member in mutedMembers" :key="member.uid" :user="member"
+                :action-label="t('common.remove')" @actionTap="unmute(member)" />
+            <option-button-item :title="t('group.add_muted_member')" tone="accent" :show-bottom-divider="false"
+                @tap="addMutedMembers" />
+        </form-card>
+
+        <view class="section-title">
+            <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_SM) }">{{ t('group.allowed_members') }}</text>
+        </view>
+        <form-card>
+            <member-row v-for="member in allowedMembers" :key="member.uid" :user="member"
+                :action-label="t('common.remove')" @actionTap="unallow(member)" />
+            <option-button-item :title="t('group.add_allowed_member')" tone="accent" :show-bottom-divider="false"
+                @tap="addAllowedMembers" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 禁言设置。对齐 flutter `conversation/group_mute_screen.dart`。
+ *
+ * 两份名单的语义是反的，别弄混：
+ * - 全员禁言**关**时，「禁言名单」里的人不能发言（点名禁言）；
+ * - 全员禁言**开**时，只有「白名单」里的人能发言。
+ * 所以两份名单同时存在、各自独立维护，与 flutter 一致。
+ *
+ * 与 flutter 的差异：加人入口从 ListTile 改成 option-item 一行，和管理员设置页对称。
+ */
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import GroupInfo from "@/wfc/model/groupInfo.uts";
+import GroupMember from "@/wfc/model/groupMember.uts";
+import GroupMemberType from "@/wfc/model/groupMemberType.uts";
+import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
+import EventType from "@/wfc/client/wfcEvent.uts";
+import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+import { toast, toastError } from "@/common/prompt.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_SM } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "GroupMutePage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const groupInfo = ref<GroupInfo | null>(null)
+const allMembers = ref<UserInfo[]>([] as UserInfo[])
+
+const muteAll = computed<boolean>((): boolean => {
+    const info = groupInfo.value
+    return info != null && info.mute == 1
+})
+
+const memberTypeOf = (user: UserInfo): number => {
+    const member = user._groupMember
+    if (member != null && member instanceof GroupMember) {
+        return (member as GroupMember).type
+    }
+    return GroupMemberType.Normal
+}
+
+const membersOfType = (type: number): UserInfo[] => {
+    return allMembers.value.filter((u: UserInfo): boolean => memberTypeOf(u) == type)
+}
+
+const mutedMembers = computed<UserInfo[]>((): UserInfo[] => membersOfType(GroupMemberType.Muted))
+
+const allowedMembers = computed<UserInfo[]>((): UserInfo[] => membersOfType(GroupMemberType.Allowed))
+
+const reload = () => {
+    const gid = groupId.value
+    if (gid == '') {
+        return
+    }
+    groupInfo.value = wfc.getGroupInfo(gid, false)
+    allMembers.value = store.getGroupMemberUserInfos(gid, true)
+}
+
+const onUpdate = (_args: Array<any | null>) => {
+    reload()
+}
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    reload()
+})
+
+onMounted(() => {
+    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onUpdate)
+    wfc.eventEmitter.on(EventType.GroupInfosUpdate, onUpdate)
+    wfc.eventEmitter.on(EventType.UserInfosUpdate, onUpdate)
+})
+
+onBeforeUnmount(() => {
+    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onUpdate)
+    wfc.eventEmitter.off(EventType.GroupInfosUpdate, onUpdate)
+    wfc.eventEmitter.off(EventType.UserInfosUpdate, onUpdate)
+})
+
+const onMuteAllChange = (value: boolean) => {
+    wfc.modifyGroupInfo(groupId.value, ModifyGroupInfoType.Modify_Group_Mute, value ? '1' : '0', [0], null, () => {
+        reload()
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+
+/** 群主不进候选；已在目标名单里的置为选中且不可取消（与 flutter 的 disabledCheckedUsers 一致）。 */
+const pickMembers = (targetType: number, title: string, action: (ids: string[]) => void) => {
+    const candidates: UserInfo[] = []
+    const checked: UserInfo[] = []
+    for (let i = 0; i < allMembers.value.length; i++) {
+        const user = allMembers.value[i]
+        const type = memberTypeOf(user)
+        if (type == GroupMemberType.Owner) {
+            continue
+        }
+        candidates.push(user)
+        if (type == targetType) {
+            checked.push(user)
+        }
+    }
+    if (candidates.length == 0) {
+        toast(t('group.no_mute_candidate'))
+        return
+    }
+
+    const options = new PickUsersOptions()
+    options.users = candidates
+    options.initialCheckedUsers = checked
+    options.uncheckableUsers = checked
+    options.showCategoryLabel = false
+    options.confirmTitle = title
+    options.successCB = (users: UserInfo[]) => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        if (ids.length > 0) {
+            action(ids)
+        }
+    }
+    pickUsers(options)
+}
+
+const addMutedMembers = () => {
+    pickMembers(GroupMemberType.Muted, t('common.add'), (ids: string[]) => {
+        wfc.muteGroupMembers(groupId.value, true, ids, [0], null, () => {
+            reload()
+        }, (err: number) => {
+            toastError(err)
+        })
+    })
+}
+
+const addAllowedMembers = () => {
+    pickMembers(GroupMemberType.Allowed, t('common.add'), (ids: string[]) => {
+        wfc.allowGroupMembers(groupId.value, true, ids, [0], null, () => {
+            reload()
+        }, (err: number) => {
+            toastError(err)
+        })
+    })
+}
+
+const unmute = (user: UserInfo) => {
+    wfc.muteGroupMembers(groupId.value, false, [user.uid], [0], null, () => {
+        toast(t('group.unmute_success'))
+        reload()
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+
+const unallow = (user: UserInfo) => {
+    wfc.allowGroupMembers(groupId.value, false, [user.uid], [0], null, () => {
+        toast(t('group.unallow_success'))
+        reload()
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.section-title {
+    width: 100%;
+    padding: 16px 15px 8px 15px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

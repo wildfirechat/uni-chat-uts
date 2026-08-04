@@ -1,0 +1,112 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <view class="search-bar" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
+            <view class="search-box" :style="{ backgroundColor: c.inputBg }">
+                <input class="search-input" type="text" :placeholder="t('common.search')"
+                    :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }" v-model="filterQuery" />
+            </view>
+        </view>
+
+        <list-view class="list" direction="vertical">
+            <UserListView :users="visibleMembers" :show-category-label="filterQuery == ''" padding-left="15px" />
+        </list-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 群成员列表独立页。
+ *
+ * flutter 侧这一项其实是个空实现（`group_conversation_info_screen.dart` 里
+ * `OptionItem(l10n.groupMemberList, onTap: () {})`，成员网格的「查看更多」也是 `// TODO`），
+ * 所以这里没有可对齐的版式，按本项目通讯录页的形态做：搜索框 + 拼音分组列表。
+ *
+ * 成员多的群（几千人）靠 UserListView 自己的分批渲染扛，不要改成一次性铺开。
+ */
+import store from "@/store.uts";
+import UserListView from "@/pages/user/UserListView.uvue";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import EventType from "@/wfc/client/wfcEvent.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_BASE } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "GroupMemberListPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const members = ref<UserInfo[]>([] as UserInfo[])
+const filterQuery = ref<string>('')
+
+const visibleMembers = computed<UserInfo[]>((): UserInfo[] => {
+    if (filterQuery.value == '') {
+        return members.value
+    }
+    return store.filterUsers(members.value, filterQuery.value)
+})
+
+const reload = () => {
+    if (groupId.value != '') {
+        // sortByPinyin = true：独立页按拼音分组，与通讯录一致（会话信息页的网格保持入群顺序）
+        members.value = store.getGroupMemberUserInfos(groupId.value, true, true)
+    }
+}
+
+const onMembersUpdate = (_args: Array<any | null>) => {
+    reload()
+}
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    reload()
+})
+
+onMounted(() => {
+    wfc.eventEmitter.on(EventType.UserInfosUpdate, onMembersUpdate)
+    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onMembersUpdate)
+})
+
+onBeforeUnmount(() => {
+    wfc.eventEmitter.off(EventType.UserInfosUpdate, onMembersUpdate)
+    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onMembersUpdate)
+})
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.search-bar {
+    width: 100%;
+    padding: 8px 15px;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+    flex-shrink: 0;
+}
+
+.search-box {
+    width: 100%;
+    height: 34px;
+    border-radius: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.search-input {
+    flex: 1;
+    background-color: transparent;
+}
+
+.list {
+    flex: 1;
+}
+</style>

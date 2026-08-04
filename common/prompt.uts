@@ -1,0 +1,77 @@
+/**
+ * 设置类页面反复用到的三种轻量弹窗与提示，避免每个页面各抄一遍 uni.showModal。
+ *
+ * 对齐 flutter `group_conversation_info_screen.dart` 的 `_showEditDialog` /
+ * `_showXxxConfirmDialog`，以及各处 `Fluttertoast.showToast`。
+ */
+import { t, t1 } from '@/i18n/i18n.uts'
+
+/**
+ * 单行编辑弹窗：预填 [initialValue]，确认后回调新值。
+ *
+ * 走 `uni.showModal({ editable: true })` —— 三端都支持（鸿蒙 runtime 里是一个 textarea，
+ * 已核实 uni-modal 的 app-harmony 实现读了 editable/placeholderText）。
+ * 值没变或为空时不回调，省掉每个调用点自己判重。
+ */
+export function showEditDialog(title: string, initialValue: string, placeholder: string, onConfirm: (value: string) => void): void {
+    uni.showModal({
+        title: title,
+        editable: true,
+        placeholderText: placeholder,
+        content: initialValue,
+        success: (res) => {
+            if (!res.confirm) {
+                return
+            }
+            const value = (res.content ?? '').trim()
+            if (value == '' || value == initialValue) {
+                return
+            }
+            onConfirm(value)
+        }
+    } as ShowModalOptions)
+}
+
+/** 二次确认。[danger] 为 true 时确认按钮标红（退群、解散、取消订阅这类）。 */
+export function showConfirmDialog(title: string, content: string, danger: boolean, onConfirm: () => void): void {
+    uni.showModal({
+        title: title,
+        content: content,
+        confirmColor: danger ? '#ED4C4D' : null,
+        success: (res) => {
+            if (res.confirm) {
+                onConfirm()
+            }
+        }
+    } as ShowModalOptions)
+}
+
+/** 单选弹窗，选中项回调其在 [labels] 里的下标。用 actionSheet 实现，没有「当前项打勾」。 */
+export function showSelectDialog(labels: string[], onSelected: (index: number) => void): void {
+    uni.showActionSheet({
+        itemList: labels,
+        success: (res) => {
+            onSelected(res.tapIndex)
+        },
+        fail: (err) => {
+            console.log('showSelectDialog fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+export function toast(message: string): void {
+    uni.showToast({
+        title: message,
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
+/** 统一的失败提示：「操作失败：<错误码>」。 */
+export function toastError(errorCode: number): void {
+    toast(t1('common.operate_fail', '' + errorCode))
+}
+
+/** 统一的成功提示：「设置成功」。 */
+export function toastSetSuccess(): void {
+    toast(t('setting.set_success'))
+}

@@ -1,0 +1,192 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <form-card>
+            <view class="header">
+                <image class="portrait" :src="portrait"
+                    :style="{ width: iconPx(80), height: iconPx(80), backgroundColor: c.inputBg }" />
+                <text class="channel-name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ channelName }}</text>
+                <text v-if="channelDesc != ''" class="channel-desc"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ channelDesc }}</text>
+            </view>
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-item :title="t('conversation.search_chat_content')" @tap="searchMessages" />
+            <option-item :title="t('conversation.chat_files')" :show-bottom-divider="false" @tap="openFiles" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-switch-item :title="t('conversation.disable_notification')" :value="isSilent"
+                @change="onSilentChange" />
+            <option-switch-item :title="t('conversation.sticky_top')" :value="isTop" :show-bottom-divider="false"
+                @change="onTopChange" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-button-item :title="t('conversation.clear_chat_history')" @tap="clearMessages" />
+            <option-button-item :title="t('channel.unsubscribe')" :show-bottom-divider="false"
+                @tap="confirmUnsubscribe" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 频道会话信息页。对齐 flutter `conversation/channel_conversation_info_screen.dart`。
+ *
+ * 与 flutter 的差异：多显示一行频道简介（`ChannelInfo.desc`）—— flutter 这页只放头像+名字，
+ * 但简介本来就在 ChannelInfo 里，不显示反而要用户再去频道详情页看一次。
+ */
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import ChannelInfo from "@/wfc/model/channelInfo.uts";
+import Config from "@/config.uts";
+import { takePageOptions } from "@/common/nav.uts";
+import { clearConversationMessages, searchConversationMessages, openConversationFiles } from "@/common/conversationActions.uts";
+import { showConfirmDialog, toast, toastError } from "@/common/prompt.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_BASE } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "ChannelConversationInfoPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const conversationInfo = ref<ConversationInfo | null>(null)
+const channelInfo = ref<ChannelInfo | null>(null)
+const isSilent = ref<boolean>(false)
+const isTop = ref<boolean>(false)
+
+const channelName = computed<string>((): string => {
+    const info = channelInfo.value
+    return info != null ? info.name : ''
+})
+
+const channelDesc = computed<string>((): string => {
+    const info = channelInfo.value
+    return info != null ? info.desc : ''
+})
+
+const portrait = computed<string>((): string => {
+    const info = channelInfo.value
+    if (info != null && info.portrait != '') {
+        return info.portrait
+    }
+    return Config.DEFAULT_PORTRAIT_URL
+})
+
+onLoad((_options: OnLoadOptions) => {
+    const pageOptions = takePageOptions()
+    if (pageOptions == null || !(pageOptions instanceof ConversationInfo)) {
+        return
+    }
+    const info = pageOptions as ConversationInfo
+    conversationInfo.value = info
+    isSilent.value = info.isSilent
+    isTop.value = info.top > 0
+    // refresh = true，与 flutter 的 getChannelInfo(refresh: true) 对齐
+    channelInfo.value = wfc.getChannelInfo(info.conversation.target, true)
+})
+
+const searchMessages = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        searchConversationMessages(info.conversation)
+    }
+}
+
+const openFiles = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        openConversationFiles(info.conversation, channelName.value)
+    }
+}
+
+const onSilentChange = (value: boolean) => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    isSilent.value = value
+    store.setConversationSilent(info.conversation, value)
+}
+
+const onTopChange = (value: boolean) => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    isTop.value = value
+    store.setConversationTop(info.conversation, value ? 1 : 0)
+}
+
+const clearMessages = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        clearConversationMessages(info.conversation)
+    }
+}
+
+const confirmUnsubscribe = () => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    showConfirmDialog(t('channel.unsubscribe'), t('channel.unsubscribe_confirm'), true, () => {
+        wfc.listenChannel(info.conversation.target, false, () => {
+            toast(t('channel.unsubscribe_success'))
+            uni.switchTab({
+                url: '/pages/conversationList/ConversationListPage',
+            } as SwitchTabOptions)
+        }, (err: number) => {
+            toastError(err)
+        })
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.header {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 20px 20px 20px;
+}
+
+.portrait {
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.channel-name {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.channel-desc {
+    margin-top: 6px;
+    text-align: center;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

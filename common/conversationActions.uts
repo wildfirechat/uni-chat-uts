@@ -3,6 +3,46 @@
  */
 import Conversation from "../wfc/model/conversation.uts";
 import wfc from "../wfc/client/wfc.uts";
+import { searchState } from "../store.uts";
+import { FileListOptions, setFileListOptions, FILE_LIST_CONVERSATION } from "../pages/me/fileListOptions.uts";
+
+/**
+ * 查找聊天内容：复用搜索模块的会话内消息搜索页。
+ *
+ * flutter 移动端是 `SearchConversationResultView(conversation, keyword: '')`，同一个页面
+ * 既被搜索门户复用也被会话信息页复用，这里是一样的结构。keyword 必须显式清空 ——
+ * searchState.query 是全局的，上一次门户搜索的词会漏进来。
+ */
+export function searchConversationMessages(conversation: Conversation): void {
+    searchState.query = ''
+    searchState.conversation = conversation
+    uni.navigateTo({
+        url: '/pages/search/SearchConversationMessagePage',
+        fail: (err) => {
+            console.log('nav to SearchConversationMessagePage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+/**
+ * 会话文件：复用 M1 的 FileListPage（它本来就支持「指定会话」这一档）。
+ *
+ * flutter 有独立的 `conversation_files_screen.dart`，但那页做的事和 FileListPage 一致，
+ * 没必要再写一个。真正缺的是会话链接页（M3）。
+ */
+export function openConversationFiles(conversation: Conversation, title: string): void {
+    const options = new FileListOptions()
+    options.type = FILE_LIST_CONVERSATION
+    options.title = title
+    options.conversation = conversation
+    setFileListOptions(options)
+    uni.navigateTo({
+        url: '/pages/me/FileListPage',
+        fail: (err) => {
+            console.log('nav to FileListPage err', err)
+        }
+    } as NavigateToOptions)
+}
 
 /**
  * 清空聊天记录：先选清空范围（仅本机 / 本机和服务器），再二次确认

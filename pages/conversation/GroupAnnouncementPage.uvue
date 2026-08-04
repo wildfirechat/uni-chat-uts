@@ -1,0 +1,136 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="card" :style="{ backgroundColor: c.surface }">
+            <textarea v-if="editing" class="editor" v-model="draft" :maxlength="-1" :auto-height="false"
+                :placeholder="t('group.announcement_placeholder')"
+                :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }" />
+            <text v-else-if="announcement != ''" class="content"
+                :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ announcement }}</text>
+            <text v-else class="content" :style="{ color: c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('group.announcement_empty') }}</text>
+        </view>
+
+        <view v-if="canEdit" class="actions">
+            <button v-if="!editing" class="btn" type="primary" @tap="startEdit">{{ t('group.announcement_edit') }}</button>
+            <button v-else class="btn" type="primary" :loading="saving" @tap="save">{{ t('common.done') }}</button>
+            <button v-if="editing" class="btn btn-plain" @tap="cancelEdit">{{ t('common.cancel') }}</button>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 群公告。对齐 flutter `conversation/group_announcement_screen.dart`。
+ *
+ * 与 flutter 的差异：flutter 把「编辑 / 完成」放在 AppBar 右上角；uni-app x 的原生导航栏
+ * 加不了自定义按钮（除非整页改 navigationStyle: custom 自己画一条），所以改成页面底部按钮。
+ * 编辑态多一个「取消」——按钮在底部时用户更需要一个退出编辑的出口。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import appServerApi from "@/api/appServerApi.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_LG } from "@/common/layoutScale.uts";
+import { toast } from "@/common/prompt.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "GroupAnnouncementPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const canEdit = ref<boolean>(false)
+const announcement = ref<string>('')
+const draft = ref<string>('')
+const editing = ref<boolean>(false)
+const saving = ref<boolean>(false)
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    canEdit.value = (options['canEdit'] ?? '0') == '1'
+    load()
+})
+
+const load = () => {
+    if (groupId.value == '') {
+        return
+    }
+    appServerApi.getGroupAnnouncement(groupId.value)
+        .then((result): void => {
+            announcement.value = result?.getString('text') ?? ''
+        })
+        .catch((err): void => {
+            console.log('getGroupAnnouncement error', err)
+        })
+}
+
+const startEdit = () => {
+    draft.value = announcement.value
+    editing.value = true
+}
+
+const cancelEdit = () => {
+    editing.value = false
+}
+
+const save = () => {
+    const text = draft.value.trim()
+    if (text == '') {
+        toast(t('group.announcement_empty_tip'))
+        return
+    }
+    saving.value = true
+    appServerApi.updateGroupAnnouncement(wfc.getUserId(), groupId.value, text)
+        .then((_result): void => {
+            saving.value = false
+            announcement.value = text
+            editing.value = false
+            toast(t('group.announcement_update_success'))
+        })
+        .catch((err): void => {
+            saving.value = false
+            console.log('updateGroupAnnouncement error', err)
+            toast(t('group.announcement_update_fail'))
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.card {
+    flex: 1;
+    width: 100%;
+    padding: 15px;
+}
+
+.editor {
+    width: 100%;
+    flex: 1;
+    background-color: transparent;
+}
+
+.content {
+    width: 100%;
+}
+
+.actions {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 15px 24px 15px;
+}
+
+.btn {
+    width: 100%;
+}
+
+.btn-plain {
+    margin-top: 10px;
+}
+</style>

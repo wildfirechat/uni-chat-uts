@@ -1,0 +1,223 @@
+<template>
+    <view class="member-grid">
+        <view class="grid">
+            <view v-for="user in visibleUsers" :key="user.uid" class="cell" :style="{ height: cellHeight }"
+                hover-class="cell-pressed" hover-stay-time="80" @tap="onMemberTap(user)">
+                <image class="avatar" :src="portraitOf(user)"
+                    :style="{ width: avatarSize, height: avatarSize, backgroundColor: c.inputBg }" />
+                <text class="name" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ nameOf(user) }}</text>
+            </view>
+
+            <view v-if="showAdd" class="cell" :style="{ height: cellHeight }" hover-class="cell-pressed"
+                hover-stay-time="80" @tap="onAddTap">
+                <view class="action-icon"
+                    :style="{ width: avatarSize, height: avatarSize, borderColor: c.hairline }">
+                    <text class="action-glyph" :style="{ color: c.textTertiary, fontSize: iconPx(24) }">+</text>
+                </view>
+            </view>
+
+            <view v-if="showRemove" class="cell" :style="{ height: cellHeight }" hover-class="cell-pressed"
+                hover-stay-time="80" @tap="onRemoveTap">
+                <view class="action-icon"
+                    :style="{ width: avatarSize, height: avatarSize, borderColor: c.hairline }">
+                    <text class="action-glyph" :style="{ color: c.textTertiary, fontSize: iconPx(24) }">-</text>
+                </view>
+            </view>
+        </view>
+
+        <view v-if="hasMore" class="more" hover-class="cell-pressed" hover-stay-time="80" @tap="toggleExpand">
+            <text :style="{ color: c.accent, fontSize: fontPx(FONT_BASE) }">{{ moreLabel }}</text>
+        </view>
+        <view v-else class="tail"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会话信息页顶部的成员头像网格。对齐 flutter `conversation_info_member_item.dart` +
+ * `conversation_info_member_action_item.dart` + `group_conversation_info_members_view.dart`。
+ *
+ * 与 flutter 的差异：
+ * - flutter 用 GridView + childAspectRatio 算格子；uni-app x 没有 aspect-ratio，
+ *   改成 `flex-wrap` + 20% 定宽 + 显式行高（`rowPx` 上限，装得下头像+名字）。
+ * - flutter 展开后成员超过 50 会切成内部滚动的固定高度 GridView；这里展开只是全量渲染，
+ *   成员多的群走「查看全部成员」进 GroupMemberListPage（那页是 list-view，带虚拟化）。
+ * - 加号/减号 flutter 用 PNG，这里用描边方块 + 字形，省两个静态资源。
+ *
+ * 本组件**不能放进 list-view** —— 里面用了动态 `:style` 尺寸，复用渲染路径下整行会塌成 0 高。
+ * 放在 scroll-view 里。
+ */
+import UserInfo from '@/wfc/model/userInfo.uts'
+import Config from '@/config.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, iconPx, rowPx, FONT_XS, FONT_BASE } from '@/common/layoutScale.uts'
+import { t } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'member-grid'
+})
+
+const props = withDefaults(defineProps<{
+    users: UserInfo[]
+    /** 展示「+」格子。 */
+    showAdd?: boolean
+    /** 展示「-」格子。 */
+    showRemove?: boolean
+    /** 收起状态下最多显示几行（每行 5 个，与 flutter 移动端一致）。 */
+    showLines?: number
+}>(), {
+    showAdd: false,
+    showRemove: false,
+    showLines: 4
+})
+
+const emit = defineEmits(['memberTap', 'addTap', 'removeTap'])
+
+const COLUMN_COUNT = 5
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const expanded = ref<boolean>(false)
+
+const avatarSize = computed<string>((): string => iconPx(48))
+// 头像(iconCap) + 名字(完整跟随字号)，行高要按 rowPx 放大才装得下最大档位
+const cellHeight = computed<string>((): string => rowPx(80))
+
+/** 加号/减号也占格子，收起时要从成员配额里扣掉，否则最后一行会挤到第五行去。 */
+const actionCellCount = computed<number>((): number => {
+    let count = 0
+    if (props.showAdd) {
+        count++
+    }
+    if (props.showRemove) {
+        count++
+    }
+    return count
+})
+
+const maxCellCount = computed<number>((): number => COLUMN_COUNT * props.showLines)
+
+const hasMore = computed<boolean>((): boolean => {
+    return props.users.length + actionCellCount.value > maxCellCount.value
+})
+
+const visibleUsers = computed<UserInfo[]>((): UserInfo[] => {
+    if (!hasMore.value || expanded.value) {
+        return props.users
+    }
+    return props.users.slice(0, maxCellCount.value - actionCellCount.value)
+})
+
+const moreLabel = computed<string>((): string => {
+    return expanded.value ? t('group.collapse_members') : t('group.view_more_members')
+})
+
+const portraitOf = (user: UserInfo): string => {
+    return user.portrait != '' ? user.portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const nameOf = (user: UserInfo): string => {
+    if (user._displayName != '') {
+        return user._displayName
+    }
+    if (user.groupAlias != '') {
+        return user.groupAlias
+    }
+    if (user.friendAlias != '') {
+        return user.friendAlias
+    }
+    return user.displayName
+}
+
+const toggleExpand = () => {
+    expanded.value = !expanded.value
+}
+
+const onMemberTap = (user: UserInfo) => {
+    emit('memberTap', user)
+}
+
+const onAddTap = () => {
+    emit('addTap')
+}
+
+const onRemoveTap = () => {
+    emit('removeTap')
+}
+</script>
+
+<style scoped>
+.member-grid {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.grid {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding-top: 12px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+/* 5 列。没有 gap，靠格子自身的左右 padding 撑开间距 */
+.cell {
+    width: 20%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.cell-pressed {
+    opacity: 0.6;
+}
+
+.avatar {
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+/* 单行截断不能用 lines：vapor 下鸿蒙不支持 */
+.name {
+    width: 100%;
+    margin-top: 6px;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.action-icon {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border-width: 1px;
+    border-style: dashed;
+    flex-shrink: 0;
+}
+
+.action-glyph {
+    line-height: 1;
+}
+
+.more {
+    width: 100%;
+    height: 40px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.tail {
+    width: 100%;
+    height: 12px;
+}
+</style>

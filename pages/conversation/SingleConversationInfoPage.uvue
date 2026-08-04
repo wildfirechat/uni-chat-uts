@@ -1,60 +1,105 @@
 <template>
-    <view class="conversation-info" :style="{ backgroundColor: c.surface }">
-        <list-view class="member-list" direction="vertical">
-            <list-item @tap="showCreateConversationModal" class="action-item">
-                <view class="icon" :style="{ borderColor: c.hairline }">
-                    <text class="icon-text" :style="{ color: c.textSecondary }">+</text>
-                </view>
-                <text class="action-text" :class="fs13" :style="{ color: c.textPrimary }">添加成员</text>
-            </list-item>
-            <UserListView :users="users" :show-category-label="false" padding-left="20px" />
-        </list-view>
-        <view @tap="clearMessages" class="danger-item" :style="{ borderTopColor: c.hairlineSoft }">
-            <text class="danger-text" :style="{ fontSize: fontPx(15), color: c.danger }">清空聊天记录</text>
-        </view>
-    </view>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <form-card>
+            <member-grid :users="members" :show-add="true" @memberTap="openUserDetail" @addTap="createGroupWith" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-item :title="t('conversation.search_chat_content')" @tap="searchMessages" />
+            <option-item :title="t('conversation.chat_files')" :show-bottom-divider="false" @tap="openFiles" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-switch-item :title="t('conversation.disable_notification')" :value="isSilent"
+                @change="onSilentChange" />
+            <option-switch-item :title="t('conversation.sticky_top')" :value="isTop" :show-bottom-divider="false"
+                @change="onTopChange" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-button-item :title="t('conversation.clear_chat_history')" :show-bottom-divider="false"
+                @tap="clearMessages" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
 </template>
 
 <script setup lang="uts">
-import UserListView from "@/pages/user/UserListView.uvue";
+/**
+ * 单聊会话信息页。对齐 flutter `conversation/single_conversation_info_screen.dart`。
+ *
+ * 与 flutter 的差异：
+ * - 少一项「会话链接」—— 链接页归 M3，等那页落地再把入口补上。
+ * - 「会话文件」直接复用 FileListPage（见 common/conversationActions.uts 的说明）。
+ * - 成员格子只有对方 + 加号，点加号是「拉人建群」（flutter 同样是 createGroup），
+ *   不是「往单聊里加人」—— 单聊没有成员概念。
+ */
 import store, { contactState } from "@/store.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
-import { clearConversationMessages } from "@/common/conversationActions.uts";
-
+import { clearConversationMessages, searchConversationMessages, openConversationFiles } from "@/common/conversationActions.uts";
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx, fontClass } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
 defineOptions({
     name: "SingleConversationInfoPage"
 })
 
-
 const c = computed<AppColors>((): AppColors => colors())
 
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs13 = computed<string>((): string => fontClass(13))
 const conversationInfo = ref<ConversationInfo | null>(null)
-const users = ref<UserInfo[]>([] as UserInfo[])
+const members = ref<UserInfo[]>([] as UserInfo[])
+const isSilent = ref<boolean>(false)
+const isTop = ref<boolean>(false)
 
 onLoad((_options: OnLoadOptions) => {
-    console.log('SingleConversationInfoPage onLoad')
     const pageOptions = takePageOptions()
-    if (pageOptions != null && pageOptions instanceof ConversationInfo) {
-        const info = pageOptions as ConversationInfo
-        conversationInfo.value = info;
-        users.value = store.getConversationMemberUsrInfos(info.conversation);
-
-        const target = store.ensureConversationTarget(info.conversation)
-        uni.setNavigationBarTitle({
-            title: target != null ? target._displayName : '',
-        } as SetNavigationBarTitleOptions);
+    if (pageOptions == null || !(pageOptions instanceof ConversationInfo)) {
+        return
     }
+    const info = pageOptions as ConversationInfo
+    conversationInfo.value = info
+    isSilent.value = info.isSilent
+    isTop.value = info.top > 0
+
+    // 只展示对方，不含自己 —— 与 flutter SingleConversationMemberView 一致
+    members.value = [store.getUserInfos([info.conversation.target], '')[0]]
+
+    // 进页面强刷一次对方资料，与 flutter 的 getUserInfo(refresh: true) 对齐
+    wfc.getUserInfo(info.conversation.target, true)
 })
 
-const showCreateConversationModal = () => {
+const conversationTitle = computed<string>((): string => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return ''
+    }
+    const target = store.ensureConversationTarget(info.conversation)
+    return target != null ? target._displayName : ''
+})
+
+const openUserDetail = (user: UserInfo) => {
+    store.setCurrentFriend(user)
+    uni.navigateTo({
+        url: '/pages/contact/UserDetailPage',
+        fail: (err) => {
+            console.log('nav to UserDetailPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+/** 单聊里点「+」= 拉上对方和新选的人建群。 */
+const createGroupWith = () => {
     const info = conversationInfo.value
     if (info == null) {
         return
@@ -64,74 +109,63 @@ const showCreateConversationModal = () => {
     options.users = contactState.favContactList.concat(contactState.friendList)
     options.initialCheckedUsers = [targetUserInfo]
     options.uncheckableUsers = [targetUserInfo]
-    options.confirmTitle = '添加'
+    options.confirmTitle = t('common.add')
     options.successCB = (users: UserInfo[]) => {
-        const newPickedUsers = users.slice(0);
+        const newPickedUsers = users.slice(0)
         newPickedUsers.push(targetUserInfo)
-        store.createConversation(newPickedUsers, null, null);
+        store.createConversation(newPickedUsers, null, null)
     }
     pickUsers(options)
 }
 
-const clearMessages = () => {
+const searchMessages = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        searchConversationMessages(info.conversation)
+    }
+}
+
+const openFiles = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        openConversationFiles(info.conversation, conversationTitle.value)
+    }
+}
+
+const onSilentChange = (value: boolean) => {
     const info = conversationInfo.value
     if (info == null) {
         return
     }
-    clearConversationMessages(info.conversation)
+    isSilent.value = value
+    store.setConversationSilent(info.conversation, value)
+}
+
+const onTopChange = (value: boolean) => {
+    const info = conversationInfo.value
+    if (info == null) {
+        return
+    }
+    isTop.value = value
+    store.setConversationTop(info.conversation, value ? 1 : 0)
+}
+
+const clearMessages = () => {
+    const info = conversationInfo.value
+    if (info != null) {
+        clearConversationMessages(info.conversation)
+    }
 }
 </script>
 
 <style scoped>
-.conversation-info {
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    justify-content: flex-start;
-    flex: 1;
-    overflow: hidden;
-}
-
-.member-list {
+.page {
+    width: 100%;
     flex: 1;
 }
 
-.action-item {
-    height: 50px;
-    display: flex;
-    flex-direction: row;
-    padding-left: 20px;
-    align-items: center;
+.tail {
+    width: 100%;
+    height: 18px;
 }
-
-.icon {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    border-radius: 3px;
-    border-width: 1px;
-    border-style: dashed;
-}
-
-.icon-text {
-    font-size: 20px;
-}
-
-.action-text {
-    margin-left: 10px;
-}
-
-.danger-item {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    height: 50px;
-    border-top-width: 1px;
-    border-top-style: solid;
-}
-
 </style>

@@ -1,0 +1,136 @@
+<template>
+    <view class="member-row" :style="{ backgroundColor: c.surface }">
+        <view class="row" :style="{ minHeight: rowPx(56) }">
+            <image class="avatar" :src="portrait"
+                :style="{ width: iconPx(40), height: iconPx(40), backgroundColor: c.inputBg }" />
+            <view class="texts">
+                <text class="name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ name }}</text>
+                <text v-if="subtitle != ''" class="subtitle"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ subtitle }}</text>
+            </view>
+            <text v-if="actionLabel != ''" class="action" :style="{ color: c.danger, fontSize: fontPx(FONT_BASE) }"
+                @tap="onActionTap">{{ actionLabel }}</text>
+        </view>
+        <view v-if="showBottomDivider" class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 群管理类页面里的成员行：头像 + 名字 + 角色副标题 + 右侧危险操作文字。
+ * 对齐 flutter `group_manager_screen.dart` / `group_mute_screen.dart` 里的 `_buildMemberTile`。
+ *
+ * 只用于成员数很少的场景（管理员名单、禁言名单、白名单），所以放在 scroll-view 里、
+ * 尺寸走 `:style` 跟随字号档位。成员全量列表请用 list-view + UserListView，
+ * 那条路径不能用动态尺寸（见 FLUTTER_ALIGNMENT_TODO「list-view 的坑」）。
+ */
+import UserInfo from '@/wfc/model/userInfo.uts'
+import Config from '@/config.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, iconPx, rowPx, FONT_LG, FONT_BASE, FONT_XS } from '@/common/layoutScale.uts'
+
+defineOptions({
+    name: 'member-row'
+})
+
+const props = withDefaults(defineProps<{
+    user: UserInfo | null
+    /** 角色说明（群主 / 管理员），空则不占位。 */
+    subtitle?: string
+    /** 右侧操作文字（移除），空则不展示。 */
+    actionLabel?: string
+    showBottomDivider?: boolean
+}>(), {
+    user: null,
+    subtitle: '',
+    actionLabel: '',
+    showBottomDivider: true
+})
+
+const emit = defineEmits(['actionTap'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const portrait = computed<string>((): string => {
+    const u = props.user
+    if (u == null || u.portrait == '') {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    return u.portrait
+})
+
+const name = computed<string>((): string => {
+    const u = props.user
+    if (u == null) {
+        return ''
+    }
+    if (u._displayName != '') {
+        return u._displayName
+    }
+    if (u.groupAlias != '') {
+        return u.groupAlias
+    }
+    if (u.friendAlias != '') {
+        return u.friendAlias
+    }
+    return u.displayName != '' ? u.displayName : u.uid
+})
+
+const onActionTap = () => {
+    emit('actionTap')
+}
+</script>
+
+<style scoped>
+.member-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 15px 8px 15px;
+}
+
+.avatar {
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.texts {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 单行截断不能用 lines：vapor 下鸿蒙不支持 */
+.name {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.subtitle {
+    margin-top: 3px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.action {
+    flex-shrink: 0;
+    margin-left: 12px;
+    padding: 6px 4px;
+}
+
+.divider {
+    height: 0.5px;
+    margin-left: 15px;
+    margin-right: 12px;
+}
+</style>

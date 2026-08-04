@@ -1,0 +1,172 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <member-row v-if="owner != null" :user="owner" :subtitle="t('group.owner')"
+                :show-bottom-divider="managers.length > 0" />
+            <member-row v-for="(manager, index) in managers" :key="manager.uid" :user="manager"
+                :subtitle="t('group.manager')" :action-label="t('common.remove')"
+                :show-bottom-divider="index < managers.length - 1" @actionTap="confirmRemoveManager(manager)" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-button-item :title="t('group.add_manager')" tone="accent" :show-bottom-divider="false"
+                @tap="addManager" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 管理员设置。对齐 flutter `conversation/group_manager_screen.dart`。
+ *
+ * 与 flutter 的差异：flutter 的「添加管理员」是右下角 FloatingActionButton，
+ * 这里改成列表末尾的一行 —— 与本项目其他设置页的形态一致，也和禁言设置页的加人入口对称。
+ */
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import GroupMember from "@/wfc/model/groupMember.uts";
+import GroupMemberType from "@/wfc/model/groupMemberType.uts";
+import EventType from "@/wfc/client/wfcEvent.uts";
+import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+import { showConfirmDialog, toast, toastError } from "@/common/prompt.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "GroupManagerPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const owner = ref<UserInfo | null>(null)
+const managers = ref<UserInfo[]>([] as UserInfo[])
+const allMembers = ref<UserInfo[]>([] as UserInfo[])
+
+const memberTypeOf = (user: UserInfo): number => {
+    const member = user._groupMember
+    if (member != null && member instanceof GroupMember) {
+        return (member as GroupMember).type
+    }
+    return GroupMemberType.Normal
+}
+
+const reload = () => {
+    const gid = groupId.value
+    if (gid == '') {
+        return
+    }
+    const users = store.getGroupMemberUserInfos(gid, true)
+    allMembers.value = users
+
+    let ownerUser: UserInfo | null = null
+    const managerUsers: UserInfo[] = []
+    for (let i = 0; i < users.length; i++) {
+        const type = memberTypeOf(users[i])
+        if (type == GroupMemberType.Owner) {
+            ownerUser = users[i]
+        } else if (type == GroupMemberType.Manager) {
+            managerUsers.push(users[i])
+        }
+    }
+    owner.value = ownerUser
+    managers.value = managerUsers
+}
+
+const onMembersUpdate = (_args: Array<any | null>) => {
+    reload()
+}
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    reload()
+})
+
+onMounted(() => {
+    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onMembersUpdate)
+    wfc.eventEmitter.on(EventType.UserInfosUpdate, onMembersUpdate)
+})
+
+onBeforeUnmount(() => {
+    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onMembersUpdate)
+    wfc.eventEmitter.off(EventType.UserInfosUpdate, onMembersUpdate)
+})
+
+const addManager = () => {
+    // 群主不能被设成管理员，从候选里去掉；已是管理员的置为选中且不可取消
+    const candidates: UserInfo[] = []
+    const checked: UserInfo[] = []
+    for (let i = 0; i < allMembers.value.length; i++) {
+        const user = allMembers.value[i]
+        const type = memberTypeOf(user)
+        if (type == GroupMemberType.Owner) {
+            continue
+        }
+        candidates.push(user)
+        if (type == GroupMemberType.Manager) {
+            checked.push(user)
+        }
+    }
+    if (candidates.length == 0) {
+        toast(t('group.no_manager_candidate'))
+        return
+    }
+
+    const options = new PickUsersOptions()
+    options.users = candidates
+    options.initialCheckedUsers = checked
+    options.uncheckableUsers = checked
+    options.showCategoryLabel = false
+    options.confirmTitle = t('common.add')
+    options.successCB = (users: UserInfo[]) => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        if (ids.length == 0) {
+            return
+        }
+        wfc.setGroupManager(groupId.value, true, ids, [0], null, () => {
+            reload()
+        }, (err: number) => {
+            toastError(err)
+        })
+    }
+    pickUsers(options)
+}
+
+const confirmRemoveManager = (user: UserInfo) => {
+    showConfirmDialog(t('group.remove_manager'), t1('group.remove_manager_confirm', user._displayName), true, () => {
+        wfc.setGroupManager(groupId.value, false, [user.uid], [0], null, () => {
+            toast(t('group.remove_manager_success'))
+            reload()
+        }, (err: number) => {
+            toastError(err)
+        })
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

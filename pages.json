@@ -64,6 +64,42 @@
             }
         },
         {
+            "path": "pages/conversation/ChannelConversationInfoPage",
+            "style": {
+                "navigationBarTitleText": "频道信息"
+            }
+        },
+        {
+            "path": "pages/conversation/GroupMemberListPage",
+            "style": {
+                "navigationBarTitleText": "群成员"
+            }
+        },
+        {
+            "path": "pages/conversation/GroupAnnouncementPage",
+            "style": {
+                "navigationBarTitleText": "群公告"
+            }
+        },
+        {
+            "path": "pages/conversation/GroupManagePage",
+            "style": {
+                "navigationBarTitleText": "群管理"
+            }
+        },
+        {
+            "path": "pages/conversation/GroupManagerPage",
+            "style": {
+                "navigationBarTitleText": "管理员设置"
+            }
+        },
+        {
+            "path": "pages/conversation/GroupMutePage",
+            "style": {
+                "navigationBarTitleText": "禁言设置"
+            }
+        },
+        {
             "path": "pages/contact/SearchUserPage",
             "style": {
                 "navigationBarTitleText": "搜索用户"

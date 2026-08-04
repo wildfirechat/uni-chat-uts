@@ -1,0 +1,85 @@
+<template>
+    <view class="option-button-item" :hover-class="pressedClass" hover-stay-time="80" @tap="onTap">
+        <view class="row" :style="{ minHeight: rowPx(32) }">
+            <text class="title" :style="{ color: titleColor, fontSize: fontPx(FONT_LG) }">{{ title }}</text>
+        </view>
+        <view v-if="showBottomDivider" class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 分组列表里的「按钮行」：居中、着色的一行文字，没有左图标也没有右箭头。
+ * 对齐 flutter `widget/option_button_item.dart`，用于清空聊天记录 / 退群 / 解散这类动作。
+ *
+ * [tone] 决定颜色：`danger`（默认，删除/退出）、`accent`（添加/正向操作）。
+ * 不写死色值 —— 硬编码的红跟不了明暗主题（flutter 那边的注释也是这么说的）。
+ */
+import { colors, AppColors, isDark } from '@/common/theme.uts'
+import { fontPx, rowPx, FONT_LG } from '@/common/layoutScale.uts'
+
+defineOptions({
+    name: 'option-button-item'
+})
+
+const props = withDefaults(defineProps<{
+    title?: string
+    /** 'danger' | 'accent' */
+    tone?: string
+    showBottomDivider?: boolean
+}>(), {
+    title: '',
+    tone: 'danger',
+    showBottomDivider: true
+})
+
+const emit = defineEmits(['tap'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const titleColor = computed<string>((): string => {
+    return props.tone == 'accent' ? colors().accent : colors().danger
+})
+
+// hover-class 只认静态类名，明暗两个按下态色值只能各写一份，值对应 theme.uts 的 pressedOverlay
+const pressedClass = computed<string>((): string => isDark() ? 'row-pressed-dark' : 'row-pressed-light')
+
+const onTap = () => {
+    emit('tap')
+}
+</script>
+
+<style scoped>
+.option-button-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.row-pressed-light {
+    background-color: #0000000A;
+}
+
+.row-pressed-dark {
+    background-color: #FFFFFF14;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 15px 10px 15px;
+}
+
+.title {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.divider {
+    height: 0.5px;
+    margin-left: 15px;
+    margin-right: 12px;
+}
+</style>
