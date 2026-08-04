@@ -19,7 +19,9 @@
             "path": "pages/conversationList/ConversationListPage",
             "style": {
                 "navigationBarTitleText": "会话列表",
-                "navigationStyle": "custom"
+                "navigationStyle": "custom",
+                // 自定义导航栏时必须禁用页面滚动，否则页面级 bounce 会把导航栏一起拖动
+                "disableScroll": true
             }
         },
         {
@@ -77,7 +79,8 @@
             "path": "pages/contact/ChannelListPage",
             "style": {
                 "navigationBarTitleText": "频道列表",
-                "navigationStyle": "custom"
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {
@@ -108,14 +111,16 @@
             "path": "pages/contact/ContactListPage",
             "style": {
                 "navigationBarTitleText": "好友",
-                "navigationStyle": "custom"
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {
             "path": "pages/contact/NewFriendListPage",
             "style": {
                 "navigationBarTitleText": "新朋友",
-                "navigationStyle": "custom"
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {
