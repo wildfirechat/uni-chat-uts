@@ -35,7 +35,7 @@ import { getItem } from "../util/storageHelper.uts";
 import organizationServerApi from "../../api/organizationServerApi.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import { getTouchPoint } from "../../common/touch.uts";
-import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
+import { PopupMenuItem } from "../../common/popupMenu.uts";
 import PCOnlineType from "../../wfc/model/pcOnlineType.uts";
 import { colors, AppColors } from "../../common/theme.uts";
 import { fontPx } from "../../common/layoutScale.uts";

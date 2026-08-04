@@ -53,9 +53,9 @@ const portraitOf = (organization: UTSJSONObject): string => {
 const showOrganization = (organization: UTSJSONObject) => {
     store.setCurrentOrganization(organization)
     uni.navigateTo({
-        url: '/pages/contact/OrganizationTreePage',
+        url: '/pages/contact/OrganizationPage',
         fail: (err) => {
-            console.log('nav to OrganizationTreePage err', err);
+            console.log('nav to OrganizationPage err', err);
         }
     } as NavigateToOptions)
 }

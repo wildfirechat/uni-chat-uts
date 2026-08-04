@@ -1,0 +1,45 @@
+/**
+ * 发起单人音视频通话的统一入口。
+ * 对齐 `../flutter-chat/chat/lib/call/av_call_launcher.dart` 的 `startSingleAvCall`。
+ *
+ * 原来这段逻辑只长在 MessageInputView 里（会话页的「+」面板），用户详情页要发起通话就得
+ * 再抄一遍「开关检查 → 权限 → 占线检查 → startSingleCall → 跳页」四步，
+ * 所以按 M3 抽 report.uts 的同一思路抽出来共用。
+ *
+ * 群通话不在这里：它要先弹选人（见 MessageInputView 的 showPickGroupMemberToVoipModal），
+ * 流程和单聊不是一回事。
+ */
+import Config from '@/config.uts'
+import avEngineKit from '@/wfc/av/engine/avEngineKit.uts'
+import CallState from '@/wfc/av/engine/callState.uts'
+import checkVoipPermissions from '@/wfc/av/voipUtil.uts'
+import { navigateToPage } from '@/common/nav.uts'
+import { toast } from '@/common/prompt.uts'
+import { t } from '@/i18n/i18n.uts'
+
+/**
+ * 发起与 [userId] 的单人通话。[audioOnly] 为 true 是语音通话。
+ * 各步失败都自己 toast，调用方不用处理。
+ */
+export function startSingleCall(userId: string, audioOnly: boolean): void {
+    if (!Config.ENABLE_VOIP) {
+        toast(t('voip.not_supported'))
+        return
+    }
+    checkVoipPermissions(audioOnly).then((granted: boolean): void => {
+        if (!granted) {
+            return
+        }
+        const curSession = avEngineKit.currentCallSession()
+        if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
+            toast(t('voip.in_progress'))
+            return
+        }
+        const callSession = avEngineKit.startSingleCall(userId, audioOnly)
+        if (callSession != null) {
+            navigateToPage('/pages/voip/Single', callSession)
+        } else {
+            toast(t('voip.start_fail'))
+        }
+    })
+}

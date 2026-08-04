@@ -1,0 +1,487 @@
+<template>
+    <view class="organization-page" :style="{ backgroundColor: c.surface }">
+        <!-- interceptBack 恒为 true：退一级还是关页面由 onBack 自己判断，
+             交给 NavBar 判断的话在根层级会退两次（NavBar 一次 + onBack 一次） -->
+        <NavBar :title="t('organization.title')" :showBack="true" :interceptBack="true" :rightText="selectMode ? doneLabel : ''"
+            @rightTextTap="onDone" @backTap="onBack" />
+
+        <!-- 面包屑。根层级也显示「组织架构」这一节，点上级回上级 -->
+        <scroll-view class="breadcrumb" direction="horizontal" :style="{ backgroundColor: c.conversationBg }">
+            <view class="breadcrumb-list">
+                <view class="breadcrumb-item">
+                    <text class="breadcrumb-link"
+                        :style="{ fontSize: fontPx(14), color: pathList.length == 0 ? c.textPrimary : c.accent }"
+                        @tap="popToRoot">{{ t('organization.title') }}</text>
+                    <text v-if="pathList.length > 0" class="icomoon breadcrumb-sep"
+                        :style="{ fontSize: iconPx(14), color: c.textSecondary }">&#xf3d1;</text>
+                </view>
+                <view v-for="(org, index) in pathList" :key="index" class="breadcrumb-item">
+                    <text class="breadcrumb-link"
+                        :style="{ fontSize: fontPx(14), color: index == pathList.length - 1 ? c.textPrimary : c.accent }"
+                        @tap="popToDepth(index)">{{ org.name }}</text>
+                    <text v-if="index != pathList.length - 1" class="icomoon breadcrumb-sep"
+                        :style="{ fontSize: iconPx(14), color: c.textSecondary }">&#xf3d1;</text>
+                </view>
+            </view>
+        </scroll-view>
+
+        <view class="search-bar" :style="{ backgroundColor: c.surface }">
+            <view class="search-box" :style="{ backgroundColor: c.inputBg }">
+                <text class="icomoon search-icon" :style="{ color: c.iconSecondary, fontSize: iconPx(16) }">&#xf21f;</text>
+                <input class="search-input" type="text" :placeholder="t('organization.search_member')" v-model="searchQuery"
+                    :style="{ color: c.textPrimary, fontSize: fontPx(14) }" @input="onSearchInput" />
+            </view>
+        </view>
+
+        <view v-if="loading" class="state-container">
+            <text class="state-text" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('common.loading') }}</text>
+        </view>
+        <view v-else-if="errorMessage != ''" class="state-container">
+            <text class="state-text" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ errorMessage }}</text>
+            <text class="retry" :style="{ fontSize: fontPx(14), color: c.accent }" @tap="reload">{{ t('organization.reload') }}</text>
+        </view>
+        <scroll-view v-else class="content-list" direction="vertical">
+            <!-- 搜索态：只列命中的员工 -->
+            <template v-if="searchQuery != ''">
+                <view v-if="searchResults.length == 0" class="state-container">
+                    <text class="state-text" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('organization.no_matched_member') }}</text>
+                </view>
+                <view v-for="(emp, index) in searchResults" :key="'s-' + index" class="employee-row"
+                    :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft, opacity: isDisabled(emp.employeeId) ? 0.5 : 1 }"
+                    @tap="onEmployeeTap(emp)">
+                    <round-checkbox v-if="selectMode" class="row-checkbox" :disabled="isDisabled(emp.employeeId)"
+                        :checked="isChecked(emp.employeeId)" />
+                    <image class="row-portrait" :src="emp.portrait" :style="{ backgroundColor: c.inputBg }" />
+                    <view class="row-text">
+                        <text class="row-title single-line" :style="{ fontSize: fontPx(16), color: c.textPrimary }">{{ emp.name }}</text>
+                        <text v-if="emp.title != ''" class="row-subtitle single-line"
+                            :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ emp.title }}</text>
+                    </view>
+                </view>
+            </template>
+
+            <!-- 正常态：下级部门 + 本部门成员 -->
+            <template v-else>
+                <view v-if="subOrganizations.length == 0 && employees.length == 0" class="state-container">
+                    <text class="state-text" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('organization.no_sub_or_member') }}</text>
+                </view>
+
+                <template v-if="subOrganizations.length > 0">
+                    <view class="section-header" :style="{ backgroundColor: c.conversationBg }">
+                        <text class="section-header-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">{{ t('organization.sub_departments') }}</text>
+                    </view>
+                    <view v-for="(org, index) in subOrganizations" :key="'o-' + index" class="org-row"
+                        :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="enterOrganization(org)">
+                        <text class="icomoon row-icon" :style="{ color: c.accent, fontSize: iconPx(22) }">&#xf26c;</text>
+                        <text class="org-row-title single-line" :style="{ fontSize: fontPx(16), color: c.textPrimary }">{{ org.name }}({{ org.memberCount }})</text>
+                        <text class="icomoon row-arrow" :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d1;</text>
+                    </view>
+                </template>
+
+                <template v-if="employees.length > 0">
+                    <view class="section-header" :style="{ backgroundColor: c.conversationBg }">
+                        <text class="section-header-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">{{ t('organization.members') }}</text>
+                    </view>
+                    <view v-for="(emp, index) in employees" :key="'e-' + index" class="employee-row"
+                        :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft, opacity: isDisabled(emp.employeeId) ? 0.5 : 1 }"
+                        @tap="onEmployeeTap(emp)">
+                        <round-checkbox v-if="selectMode" class="row-checkbox" :disabled="isDisabled(emp.employeeId)"
+                            :checked="isChecked(emp.employeeId)" />
+                        <image class="row-portrait" :src="emp.portrait" :style="{ backgroundColor: c.inputBg }" />
+                        <view class="row-text">
+                            <text class="row-title single-line" :style="{ fontSize: fontPx(16), color: c.textPrimary }">{{ emp.name }}</text>
+                            <text v-if="emp.title != ''" class="row-subtitle single-line"
+                                :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ emp.title }}</text>
+                        </view>
+                    </view>
+                </template>
+            </template>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 组织架构页。对齐 `../flutter-chat/chat/lib/organization/organization_screen.dart`（移动端形态）。
+ * 取代原来的 OrganizationTreePage —— 那一版只有面包屑 + 一个混排列表，没有搜索、没有分组、
+ * 没有选人模式，也没有层级内后退。
+ *
+ * 两种用法：
+ * - 浏览（默认）：点部门进下级，点成员进用户详情
+ * - 选人（`?selectMode=1`，由 [common/picker.uts] 的 `pickOrganizationUsers` 打开）：
+ *   成员行带勾选框，右上角「确定(n/max)」回传选中的 employeeId
+ *
+ * ## 层级内后退
+ *
+ * flutter 用 `PopScope` 拦截返回键：还在下级部门时先退一级，退到根才真正关页面。
+ * 这里同样由 NavBar 的 interceptBack 转成 backTap 事件自己处理。
+ *
+ * ## 与 flutter 的刻意差异
+ *
+ * - flutter 搜索走 `OrganizationViewModel.search`，范围是**当前部门**（`searchEmployee(orgId, keyword)`），
+ *   这里一致；但 flutter 的搜索是即时触发，这里加了 300ms 防抖（与本项目其他搜索页一致）
+ * - flutter 有一个跨页的 OrganizationCache，这里没做缓存层：移动端一次只看一个部门，
+ *   进出重拉一次的代价小于维护一份缓存的一致性
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import organizationServerApi from "@/api/organizationServerApi.uts";
+import { Organization, Employee, OrganizationEx } from "@/api/organizationModel.uts";
+import { currentPickOrganizationUsersOptions, notifyPickedOrganizationUsers } from "@/common/picker.uts";
+import { toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "OrganizationPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const selectMode = ref<boolean>(false)
+const maxSelected = ref<number>(1024)
+const selectedIds = ref<string[]>([] as string[])
+const disabledIds = ref<string[]>([] as string[])
+
+/** 面包屑路径，最后一项就是当前部门；为空表示还在根层级 */
+const pathList = ref<Organization[]>([] as Organization[])
+const subOrganizations = ref<Organization[]>([] as Organization[])
+const employees = ref<Employee[]>([] as Employee[])
+const loading = ref<boolean>(true)
+const errorMessage = ref<string>('')
+
+const searchQuery = ref<string>('')
+const searchResults = ref<Employee[]>([] as Employee[])
+let searchDebounceTimer = 0
+
+const canGoUpInHierarchy = computed<boolean>((): boolean => pathList.value.length > 1)
+
+const doneLabel = computed<string>((): string => {
+    const n = selectedIds.value.length
+    return n > 0 ? '确定(' + n + '/' + maxSelected.value + ')' : '确定'
+})
+
+onLoad((options: OnLoadOptions) => {
+    selectMode.value = options['selectMode'] == '1'
+    if (selectMode.value) {
+        const pickOptions = currentPickOrganizationUsersOptions()
+        if (pickOptions != null) {
+            maxSelected.value = pickOptions.maxSelected
+            selectedIds.value = pickOptions.initialSelectedUserIds.slice(0)
+            disabledIds.value = pickOptions.disabledUserIds.slice(0)
+        }
+    }
+    reload()
+})
+
+/**
+ * 进页面先拉根部门。组织服务的 authToken 是登录后由 ConversationListPage 换的，
+ * 这里再兜一次 login()，避免用户直接从选人页进来时 token 还没拿到。
+ */
+const reload = () => {
+    loading.value = true
+    errorMessage.value = ''
+    organizationServerApi.getRootOrganizationList()
+        .then((orgs: Organization[]): void => {
+            loading.value = false
+            if (orgs.length == 0) {
+                errorMessage.value = t('organization.no_data')
+                return
+            }
+            // 与 flutter 一致：只支持单个根部门，直接进根部门内部
+            pathList.value = [orgs[0]]
+            loadOrganization(orgs[0])
+        })
+        .catch((_err): void => {
+            organizationServerApi.login()
+                .then((_r): void => {
+                    organizationServerApi.getRootOrganizationList()
+                        .then((orgs: Organization[]): void => {
+                            loading.value = false
+                            if (orgs.length == 0) {
+                                errorMessage.value = t('organization.no_data')
+                                return
+                            }
+                            pathList.value = [orgs[0]]
+                            loadOrganization(orgs[0])
+                        })
+                        .catch((_e): void => {
+                            loading.value = false
+                            errorMessage.value = t('organization.load_fail')
+                        })
+                })
+                .catch((_e): void => {
+                    loading.value = false
+                    errorMessage.value = t('organization.service_unavailable')
+                })
+        })
+}
+
+const loadOrganization = (org: Organization) => {
+    loading.value = true
+    organizationServerApi.getOrganizationExInfo(org.id)
+        .then((ex: OrganizationEx | null): void => {
+            loading.value = false
+            if (ex == null) {
+                subOrganizations.value = [] as Organization[]
+                employees.value = [] as Employee[]
+                return
+            }
+            subOrganizations.value = ex.subOrganizations
+            employees.value = ex.employees
+        })
+        .catch((err): void => {
+            loading.value = false
+            console.log('getOrganizationEx error', err)
+            errorMessage.value = t('organization.department_load_fail')
+        })
+}
+
+const enterOrganization = (org: Organization) => {
+    const path = pathList.value.slice(0)
+    path.push(org)
+    pathList.value = path
+    loadOrganization(org)
+}
+
+/** 点面包屑第 index 节：截断到那一级并重新加载 */
+const popToDepth = (index: number) => {
+    if (index == pathList.value.length - 1) {
+        return
+    }
+    const path = pathList.value.slice(0, index + 1)
+    pathList.value = path
+    loadOrganization(path[path.length - 1])
+}
+
+const popToRoot = () => {
+    if (pathList.value.length <= 1) {
+        return
+    }
+    popToDepth(0)
+}
+
+/** 返回键：还在下级部门时先退一级，退到根部门才真的关页面 */
+const onBack = () => {
+    if (canGoUpInHierarchy.value) {
+        popToDepth(pathList.value.length - 2)
+        return
+    }
+    uni.navigateBack({} as NavigateBackOptions)
+}
+
+const onSearchInput = () => {
+    if (searchDebounceTimer != 0) {
+        clearTimeout(searchDebounceTimer)
+    }
+    const keyword = searchQuery.value
+    if (keyword == '') {
+        searchResults.value = [] as Employee[]
+        return
+    }
+    searchDebounceTimer = setTimeout(() => {
+        searchDebounceTimer = 0
+        const path = pathList.value
+        if (path.length == 0) {
+            return
+        }
+        organizationServerApi.searchEmployeeList(path[path.length - 1].id, keyword)
+            .then((list: Employee[]): void => {
+                // 防抖期间关键字可能又变了，过期结果直接丢掉
+                if (searchQuery.value == keyword) {
+                    searchResults.value = list
+                }
+            })
+            .catch((err): void => {
+                console.log('searchEmployee error', err)
+            })
+    }, 300)
+}
+
+const isDisabled = (employeeId: string): boolean => {
+    return disabledIds.value.indexOf(employeeId) >= 0
+}
+
+const isChecked = (employeeId: string): boolean => {
+    return selectedIds.value.indexOf(employeeId) >= 0 || isDisabled(employeeId)
+}
+
+const onEmployeeTap = (emp: Employee) => {
+    if (!selectMode.value) {
+        // 员工详情就是用户详情页（flutter 也是 push UserInfoWidget(employeeId)）
+        wfc.getUserInfoEx(emp.employeeId, false, (userInfo: UserInfo) => {
+            store.setCurrentFriend(userInfo);
+            uni.navigateTo({
+                url: '/pages/contact/UserDetailPage',
+                fail: (err) => {
+                    console.log('nav to UserDetailPage err', err);
+                }
+            } as NavigateToOptions)
+        }, (err: number) => {
+            console.log('getUserInfoEx error', err)
+        })
+        return
+    }
+
+    if (isDisabled(emp.employeeId)) {
+        return
+    }
+    const ids = selectedIds.value.slice(0)
+    const at = ids.indexOf(emp.employeeId)
+    if (at >= 0) {
+        ids.splice(at, 1)
+        selectedIds.value = ids
+        return
+    }
+    if (ids.length >= maxSelected.value) {
+        toast(t1('pick.max_user_limit', '' + maxSelected.value))
+        return
+    }
+    ids.push(emp.employeeId)
+    selectedIds.value = ids
+}
+
+const onDone = () => {
+    const result = selectedIds.value.slice(0)
+    uni.navigateBack({} as NavigateBackOptions)
+    notifyPickedOrganizationUsers(result)
+}
+</script>
+
+<style scoped>
+/* 组件/页面样式隔离下拿不到全局 .icomoon，自己声明一份（见 M0「写组件的两个静默坑」） */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.organization-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.breadcrumb {
+    height: 36px;
+    padding: 0 12px;
+}
+
+.breadcrumb-list {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 36px;
+}
+
+.breadcrumb-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.breadcrumb-sep {
+    margin: 0 4px;
+}
+
+.search-bar {
+    padding: 8px 16px;
+}
+
+.search-box {
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.search-icon {
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.search-input {
+    flex: 1;
+    height: 30px;
+}
+
+.content-list {
+    flex: 1;
+}
+
+.section-header {
+    padding: 6px 16px;
+}
+
+.org-row,
+.employee-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 16px;
+    min-height: 56px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+
+.row-checkbox {
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.row-icon {
+    width: 24px;
+    margin-right: 16px;
+    flex-shrink: 0;
+}
+
+.row-portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.row-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 0;
+}
+
+/* 要截断的文字自己 flex:1，右侧箭头 flex-shrink:0，不放占位 view（见 M0 第 2 个坑）。
+ * 部门行的标题直接躺在 flex 行里，所以自己 flex:1；成员行的标题包在 .row-text 里，
+ * 由 .row-text 负责 flex:1。
+ * uni-app x 不支持后代选择器（`.org-row .row-title` 会报 Invalid selector），
+ * 所以两者用两个独立类名，不要写成嵌套。 */
+.org-row-title {
+    flex: 1;
+    text-align: left;
+}
+
+.row-title,
+.row-subtitle {
+    text-align: left;
+}
+
+.row-arrow {
+    flex-shrink: 0;
+}
+
+.state-container {
+    padding: 40px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.retry {
+    margin-top: 16px;
+}
+</style>

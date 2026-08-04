@@ -12,6 +12,8 @@
             <option-item :title="t('conversation.group_name')" :desc="groupName" @tap="editGroupName" />
             <option-item :title="t('conversation.group_announcement')" :desc="announcementDesc"
                 @tap="openAnnouncement" />
+            <!-- M2 时项目里还没有二维码生成能力，这一行是空着的；M4 补上编码器后接上 -->
+            <option-item :title="t('group.qr_code')" @tap="openGroupQrCode" />
             <option-item :title="t('group.remark')" :desc="groupRemark" :show-bottom-divider="canManageGroup"
                 @tap="editGroupRemark" />
             <option-item v-if="canManageGroup" :title="t('group.management')" :show-bottom-divider="false"
@@ -258,6 +260,15 @@ const openGroupManage = () => {
     } as NavigateToOptions)
 }
 
+const openGroupQrCode = () => {
+    uni.navigateTo({
+        url: '/pages/conversation/GroupQrCodePage?groupId=' + groupId.value,
+        fail: (err) => {
+            console.log('nav to GroupQrCodePage err', err)
+        }
+    } as NavigateToOptions)
+}
+
 const openAnnouncement = () => {
     uni.navigateTo({
         url: '/pages/conversation/GroupAnnouncementPage?groupId=' + groupId.value
@@ -271,6 +282,7 @@ const openAnnouncement = () => {
 const addMembers = () => {
     const gid = groupId.value
     const options = new PickUsersOptions()
+    options.title = t('group.add_members')
     options.users = contactState.favContactList.concat(contactState.friendList)
     options.initialCheckedUsers = members.value
     options.uncheckableUsers = members.value
@@ -292,9 +304,12 @@ const addMembers = () => {
 const removeMembers = () => {
     const gid = groupId.value
     const options = new PickUsersOptions()
+    options.title = t('group.remove_members')
     options.users = store.getGroupMemberUserInfos(gid, false)
     options.confirmTitle = t('common.remove')
     options.showCategoryLabel = false
+    // 群成员本来就不在组织架构这条线上，flutter 这里也关掉了组织入口
+    options.showOrganizationEntry = false
     options.successCB = (users: UserInfo[]) => {
         const ids: string[] = []
         for (let i = 0; i < users.length; i++) {

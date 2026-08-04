@@ -3,6 +3,11 @@ import { getItem, setItem } from "../pages/util/storageHelper.uts";
 import wfc from "../wfc/client/wfc.uts";
 import OrganizationServerError from "./organizationServerError.uts";
 import UserInfo from "../wfc/model/userInfo.uts";
+import {
+    Organization, Employee, OrganizationEx, EmployeeEx,
+    organizationListFromJson, employeeListFromJson,
+    organizationExFromJson, employeeExFromJson, toJsonObject
+} from "./organizationModel.uts";
 
 export class OrganizationServerApi {
     isServiceAvailable = true;
@@ -72,7 +77,9 @@ export class OrganizationServerApi {
     }
 
     getOrgEmployees(orgId: number): Promise<any | null> {
-        return this._post('/api/organization/employees', { ids: orgId } as UTSJSONObject);
+        // 参数名是 id 不是 ids（对齐 flutter organization_service.dart:217；
+        // 原来写的 ids 服务端解析不到，会返回空列表）
+        return this._post('/api/organization/employees', { id: orgId } as UTSJSONObject);
     }
 
     getEmployee(employeeId: string): Promise<any | null> {
@@ -87,8 +94,46 @@ export class OrganizationServerApi {
         return this._post('/api/employee/query_list', { employeeIds: employeeIds } as UTSJSONObject)
     }
 
-    searchEmployee(orgId: number, keyword: string): Promise<any | null> {
-        return this._post('/api/employee/search', { organizationId: orgId, keyword: keyword } as UTSJSONObject);
+    /**
+     * 搜索员工。服务端是分页接口，必须带 count/page（对齐 flutter organization_service.dart:270），
+     * 返回体是 `{ contents: [...] }` 而不是裸数组 —— 用 [searchEmployeeList] 拿已解包的结果。
+     */
+    searchEmployee(orgId: number, keyword: string, page: number = 0, count: number = 50): Promise<any | null> {
+        return this._post('/api/employee/search', {
+            organizationId: orgId,
+            keyword: keyword,
+            count: count,
+            page: page
+        } as UTSJSONObject);
+    }
+
+    // ---- 以下是带解析的封装，页面用这些，不要自己解 UTSJSONObject ----
+
+    getRootOrganizationList(): Promise<Organization[]> {
+        return this.getRootOrganization().then((res): Organization[] => organizationListFromJson(res))
+    }
+
+    getOrganizationExInfo(orgId: number): Promise<OrganizationEx | null> {
+        return this.getOrganizationEx(orgId).then((res): OrganizationEx | null => organizationExFromJson(res))
+    }
+
+    getOrganizationList(orgIds: number[]): Promise<Organization[]> {
+        return this.getOrganizations(orgIds).then((res): Organization[] => organizationListFromJson(res))
+    }
+
+    getEmployeeExInfo(employeeId: string): Promise<EmployeeEx | null> {
+        return this.getEmployeeEx(employeeId).then((res): EmployeeEx | null => employeeExFromJson(res))
+    }
+
+    /** 搜索结果已从 `{ contents: [...] }` 里解包 */
+    searchEmployeeList(orgId: number, keyword: string): Promise<Employee[]> {
+        return this.searchEmployee(orgId, keyword).then((res): Employee[] => {
+            const obj = toJsonObject(res)
+            if (obj != null) {
+                return employeeListFromJson(obj.get('contents'))
+            }
+            return employeeListFromJson(res)
+        })
     }
 
     employeeToUserInfo(employee: UTSJSONObject): UserInfo {

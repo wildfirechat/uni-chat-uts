@@ -1,79 +1,135 @@
 <template>
-    <view class="user-detail-container" v-if="user != null">
-        <view class="detail-header" :style="{ borderBottomColor: c.hairline }">
-            <view class="name-container">
-                <text class="user-name" :style="{ fontSize: fontPx(20), color: c.textPrimary }">{{ name }}</text>
+    <view class="user-detail-page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('user.user_info')" :showBack="true" :rightIcon1="isSelf ? '' : moreIcon"
+            @right1Tap="openMoreMenu" />
+
+        <scroll-view v-if="user != null" class="page-scroll" direction="vertical">
+            <!-- 头像 + 名字 + 备注 + 野火号 -->
+            <view class="header" :style="{ backgroundColor: c.surface }">
+                <image class="header-portrait" :src="(user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
+                <view class="header-text">
+                    <text class="header-name single-line" :style="{ fontSize: fontPx(16), color: c.textPrimary }">{{ displayName }}</text>
+                    <text v-if="aliasLine != ''" class="header-sub single-line"
+                        :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ aliasLine }}</text>
+                    <view class="header-id-row">
+                        <text class="header-sub single-line" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ wildfireIdLine }}</text>
+                        <!-- 星标朋友标记，对齐 flutter 的 Icons.star(amber) -->
+                        <text v-if="isFriend && isStarred" class="icomoon star-icon" :style="{ color: '#FFC107', fontSize: iconPx(14) }">&#xf2fc;</text>
+                    </view>
+                </view>
             </view>
-            <image class="avatar" :src="user.portrait" :style="{ backgroundColor: c.inputBg }" />
-        </view>
-        <view class="content">
-            <view class="info-item">
-                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">备注名</text>
-                <input class="alias-input" :style="{ fontSize: fontPx(14), color: c.textPrimary }" type="text" :value="user.friendAlias" placeholder="备注名"
-                    @confirm="updateFriendAlias" />
+
+            <!-- 所在组织。没有从属关系时整段不展示 -->
+            <template v-if="organizations.length > 0">
+                <section-divider />
+                <view :style="{ backgroundColor: c.surface }">
+                    <option-item v-for="(org, index) in organizations" :key="index" :title="org.name"
+                        :showBottomDivider="index < organizations.length - 1" @tap="openOrganization(org)" />
+                </view>
+            </template>
+
+            <section-divider />
+            <view :style="{ backgroundColor: c.surface }">
+                <option-item v-if="isSelf" :title="t('user.modify_nickname')" :showBottomDivider="false"
+                    @tap="editDisplayName" />
+                <option-item v-else-if="isFriend" :title="t('user.set_alias')" :desc="(user as UserInfo).friendAlias"
+                    :showBottomDivider="false" @tap="editAlias" />
             </view>
-            <view class="info-item">
-                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">野火ID</text>
-                <text class="info-value single-line" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ user.name }}</text>
+
+            <section-divider />
+            <view :style="{ backgroundColor: c.surface }">
+                <option-button-item :title="isSelf || isFriend ? t('user.send_msg') : t('friend_request.add_friend')"
+                    tone="accent" :showBottomDivider="showCallAction" @tap="onPrimaryAction" />
+                <option-button-item v-if="showCallAction" :title="t('user.audio_video_call')" tone="accent"
+                    :showBottomDivider="false" @tap="showCallSheet = true" />
             </view>
-            <view class="info-item">
-                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">地区</text>
-                <text class="info-value" :style="{ fontSize: fontPx(14), color: c.textPrimary }">未知</text>
-            </view>
-            <view class="info-item">
-                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">标签</text>
-                <text class="info-value" :style="{ fontSize: fontPx(14), color: c.textPrimary }">测试用户</text>
-            </view>
-        </view>
-        <view class="detail-footer" :style="{ borderTopColor: c.hairline }">
-            <view class="action" @tap="chat">
-                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf3fb;</text>
-                <text class="action-label" :style="{ fontSize: fontPx(10), color: c.accent }">发消息</text>
-            </view>
-            <view class="action" @tap="startAudioCall">
-                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf4b8;</text>
-                <text class="action-label" :style="{ fontSize: fontPx(10), color: c.accent }">语音通话</text>
-            </view>
-            <view class="action" @tap="startVideoCall">
-                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf4cc;</text>
-                <text class="action-label" :style="{ fontSize: fontPx(10), color: c.accent }">视频通话</text>
-            </view>
-            <view v-if="!isFriend && !isSelf" class="action" @tap="addFriend">
-                <text class="icomoon action-icon" :style="{ color: c.accent }">&#xf39f;</text>
-                <text class="action-label" :style="{ fontSize: fontPx(10), color: c.accent }">添加好友</text>
-            </view>
-            <view v-if="isFriend && !isSelf" class="action" @tap="deleteFriend">
-                <text class="icomoon action-icon" :style="{ color: c.danger }">&#xf2f4;</text>
-                <text class="action-label" :style="{ fontSize: fontPx(10), color: c.danger }">删除好友</text>
-            </view>
-        </view>
+            <view class="bottom-gap"></view>
+        </scroll-view>
+
+        <bottom-action-sheet v-model="showCallSheet" :items="callSheetItems" @select="onCallSheetSelect" />
+        <popup-menu v-model="showMoreMenu" :items="moreMenuItems" @select="onMoreMenuSelect"
+            :targetX="moreMenuX" :targetY="moreMenuY" :crossAxisCount="3" :popupWidth="220" />
     </view>
 </template>
 
 <script setup lang="uts">
-import store, { contactState } from "../../store.uts";
-import ConversationType from "../../wfc/model/conversationType.uts";
-import Conversation from "../../wfc/model/conversation.uts";
-import UserInfo from "../../wfc/model/userInfo.uts";
-import wfc from "../../wfc/client/wfc.uts";
-import { go2ConversationPage } from "../../common/nav.uts";
+/**
+ * 用户详情页。对齐 `../flutter-chat/chat/lib/user_info_widget.dart` 的移动端形态
+ * （`_buildMobileBody`）：凹槽灰底 + 白卡片分组。
+ *
+ * 改版前这一页是「备注名/野火ID/地区/标签」四行表格 + 底部一排图标动作，和 flutter 完全不是
+ * 一个版式，也没有黑名单、星标朋友、所在组织。
+ *
+ * ## 刻意没做的两项
+ *
+ * - **更多信息**：flutter 有这一行，但点了只是 `showToast(methodNotImpl)` —— 它自己也没实现。
+ *   按 §M2「宁可不放入口，也不放一个点了弹『暂未实现』的行」，这里不放。
+ * - **朋友圈入口**：flutter 那行由 `Config.ENABLE_MOMENTS` 控制，依赖 M6，等朋友圈落地再补。
+ *
+ * ## 与 flutter 的刻意差异
+ *
+ * - flutter 右上角是 PopupMenuButton（系统下拉菜单），这里复用消息长按那套 popup-menu 深色面板，
+ *   省得再引入第二种菜单形态；菜单项集合与 flutter 一致
+ * - flutter 的「删除好友」二次确认是 AlertDialog，这里走 showConfirmDialog（同项目其他页）
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import store, { contactState } from "@/store.uts";
+import Config from "@/config.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import ModifyMyInfoEntry from "@/wfc/model/modifyMyInfoEntry.uts";
+import ModifyMyInfoType from "@/wfc/model/modifyMyInfoType.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import organizationServerApi from "@/api/organizationServerApi.uts";
+import { Organization, EmployeeEx, OrganizationRelationship } from "@/api/organizationModel.uts";
+import { go2ConversationPage } from "@/common/nav.uts";
+import { PopupMenuItem } from "@/common/popupMenu.uts";
+import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
+import { showEditDialog, showConfirmDialog, toast, toastError } from "@/common/prompt.uts";
+import { startSingleCall } from "@/common/avcall.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx } from "@/common/layoutScale.uts";
+import { fontPx, iconPx } from "@/common/layoutScale.uts";
+
 defineOptions({
     name: "UserDetailPage"
 })
 
-
 const c = computed<AppColors>((): AppColors => colors())
-const user = ref<UserInfo | null>(contactState.currentFriend as UserInfo | null)
+const moreIcon = ref<string>('')
 
-const name = computed<string>((): string => {
+const user = ref<UserInfo | null>(contactState.currentFriend as UserInfo | null)
+const isStarred = ref<boolean>(false)
+const isBlacklisted = ref<boolean>(false)
+const organizations = ref<Organization[]>([] as Organization[])
+
+const showCallSheet = ref<boolean>(false)
+const showMoreMenu = ref<boolean>(false)
+const moreMenuX = ref<number>(0)
+const moreMenuY = ref<number>(0)
+
+const displayName = computed<string>((): string => {
     const friend = user.value;
     if (friend == null) {
         return '';
     }
     return friend.displayName != '' ? friend.displayName : friend.name;
+})
+
+/** 有备注时单独一行「备注:xxx」，对齐 flutter 的 nameList */
+const aliasLine = computed<string>((): string => {
+    const friend = user.value
+    if (friend == null || !isFriend.value || friend.friendAlias == '') {
+        return ''
+    }
+    return t('common.alias') + ':' + friend.friendAlias
+})
+
+const wildfireIdLine = computed<string>((): string => {
+    const friend = user.value
+    return friend == null ? '' : t1('user.wildfire_id', friend.name)
 })
 
 const isFriend = computed<boolean>((): boolean => {
@@ -86,16 +142,110 @@ const isSelf = computed<boolean>((): boolean => {
     return friend != null && friend.uid == wfc.getUserId();
 })
 
+/** 给自己打电话没意义；机器人也没有音视频能力（对齐 flutter 的 AI_ROBOTS 判断） */
+const showCallAction = computed<boolean>((): boolean => {
+    return isFriend.value && !isSelf.value && !Config.isAiRobot(user.value?.uid ?? '')
+})
+
+const callSheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
+    const video = new ActionSheetItem(t('user.video_call'), 'video')
+    video.icon = ''
+    const audio = new ActionSheetItem(t('user.audio_call'), 'audio')
+    audio.icon = ''
+    return [video, audio]
+})
+
+/** 菜单项集合与 flutter `_handleMenuSelection` 的 itemBuilder 一致 */
+const moreMenuItems = computed<PopupMenuItem[]>((): PopupMenuItem[] => {
+    const items: PopupMenuItem[] = []
+    items.push(new PopupMenuItem(isBlacklisted.value ? t('user.remove_from_blacklist') : t('user.add_to_blacklist'),
+        'blacklist', ''))
+    if (isFriend.value) {
+        items.push(new PopupMenuItem(isStarred.value ? t('user.cancel_starred') : t('user.set_starred'),
+            'star', ''))
+        items.push(new PopupMenuItem(t('user.delete_friend'), 'delete', ''))
+    } else {
+        items.push(new PopupMenuItem(t('friend_request.add_friend'), 'add_friend', ''))
+    }
+    return items
+})
+
 onMounted(() => {
     const friend = user.value
-    if (friend != null) {
-        wfc.getUserInfo(friend.uid, true);
+    if (friend == null) {
+        return
     }
+    wfc.getUserInfo(friend.uid, true);
+    isStarred.value = wfc.isFavUser(friend.uid)
+    isBlacklisted.value = wfc.isBlackListed(friend.uid)
+    loadOrganizations(friend.uid)
 })
 
 onUnload(() => {
     store.setCurrentFriend(null);
 })
+
+/**
+ * 「所在组织」只显示末级部门（`bottom == true` 的从属关系），与 flutter 一致。
+ * 没配组织服务就整段不展示。
+ */
+const loadOrganizations = (userId: string) => {
+    if (Config.ORGANIZATION_SERVER == '') {
+        return
+    }
+    organizationServerApi.getEmployeeExInfo(userId)
+        .then((ex: EmployeeEx | null): void => {
+            if (ex == null) {
+                return
+            }
+            const bottomIds: number[] = []
+            for (let i = 0; i < ex.relationships.length; i++) {
+                const rel: OrganizationRelationship = ex.relationships[i]
+                if (rel.bottom) {
+                    bottomIds.push(rel.organizationId)
+                }
+            }
+            if (bottomIds.length == 0) {
+                return
+            }
+            organizationServerApi.getOrganizationList(bottomIds)
+                .then((orgs: Organization[]): void => {
+                    organizations.value = orgs
+                })
+                .catch((err): void => {
+                    console.log('getOrganizations error', err)
+                })
+        })
+        .catch((err): void => {
+            console.log('getEmployeeEx error', err)
+        })
+}
+
+const openOrganization = (_org: Organization) => {
+    // 组织架构页自己从根部门进，参数只用于将来定位；当前与 flutter 一样是整页打开
+    uni.navigateTo({
+        url: '/pages/contact/OrganizationPage',
+        fail: (err) => {
+            console.log('nav to OrganizationPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const openMoreMenu = () => {
+    // 菜单锚在标题栏右上角（没有 element API 拿不到按钮矩形，用窗口宽度反推）
+    const sysInfo = uni.getSystemInfoSync()
+    moreMenuX.value = sysInfo.windowWidth - 24
+    moreMenuY.value = sysInfo.statusBarHeight + 44
+    showMoreMenu.value = true
+}
+
+const onPrimaryAction = () => {
+    if (isSelf.value || isFriend.value) {
+        chat()
+    } else {
+        openInviteFriend()
+    }
+}
 
 const chat = () => {
     const friend = user.value
@@ -107,21 +257,100 @@ const chat = () => {
     go2ConversationPage();
 }
 
-const updateFriendAlias = (e: UniInputConfirmEvent) => {
+const openInviteFriend = () => {
     const friend = user.value
     if (friend == null) {
         return
     }
-    const friendAlias = e.detail.value;
-    if (friendAlias.trim() != '' && friendAlias != friend.friendAlias) {
-        wfc.setFriendAlias(friend.uid, friendAlias,
-            () => {
-                console.log('setFriendAlias success', friendAlias);
-            },
-            (error: number) => {
-                console.log('setFriendAlias error', error);
-            })
+    uni.navigateTo({
+        url: '/pages/contact/InviteFriendPage?userId=' + friend.uid,
+        fail: (err) => {
+            console.log('nav to InviteFriendPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const onCallSheetSelect = (item: ActionSheetItem) => {
+    const friend = user.value
+    if (friend == null) {
+        return
     }
+    startSingleCall(friend.uid, item.tag == 'audio')
+}
+
+const onMoreMenuSelect = (item: PopupMenuItem) => {
+    switch (item.tag) {
+        case 'blacklist':
+            toggleBlacklist()
+            break
+        case 'star':
+            toggleStar()
+            break
+        case 'delete':
+            deleteFriend()
+            break
+        case 'add_friend':
+            openInviteFriend()
+            break
+    }
+}
+
+const toggleBlacklist = () => {
+    const friend = user.value
+    if (friend == null) {
+        return
+    }
+    const next = !isBlacklisted.value
+    wfc.setBlackList(friend.uid, next, () => {
+        isBlacklisted.value = next
+        toast(t('common.operate_success'))
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+
+const toggleStar = () => {
+    const friend = user.value
+    if (friend == null) {
+        return
+    }
+    const next = !isStarred.value
+    wfc.setFavUser(friend.uid, next, () => {
+        isStarred.value = next
+        toast(t('common.operate_success'))
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+
+const editDisplayName = () => {
+    const friend = user.value
+    if (friend == null) {
+        return
+    }
+    showEditDialog(t('user.modify_nickname'), friend.displayName, t('user.input_nickname'), (value: string) => {
+        wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_DisplayName, value)], () => {
+            toast(t('common.operate_success'))
+            wfc.getUserInfo(friend.uid, true)
+        }, (err: number) => {
+            toastError(err)
+        })
+    })
+}
+
+const editAlias = () => {
+    const friend = user.value
+    if (friend == null) {
+        return
+    }
+    showEditDialog(t('user.set_alias'), friend.friendAlias, t('user.input_alias'), (value: string) => {
+        wfc.setFriendAlias(friend.uid, value, () => {
+            toast(t('common.operate_success'))
+            wfc.getUserInfo(friend.uid, true)
+        }, (err: number) => {
+            toastError(err)
+        })
+    })
 }
 
 const deleteFriend = () => {
@@ -129,141 +358,80 @@ const deleteFriend = () => {
     if (friend == null) {
         return
     }
-    wfc.deleteFriend(friend.uid, () => {
-        uni.showToast({
-            title: '删除好友成功',
-            icon: 'none'
-        } as ShowToastOptions);
-        setTimeout(() => {
-            uni.navigateBack({
-                delta: 1
-            } as NavigateBackOptions)
-        }, 1000)
-    }, (err: number) => {
-        uni.showToast({
-            title: '删除好友失败' + err,
-            icon: 'none'
-        } as ShowToastOptions);
+    showConfirmDialog(t('user.delete_friend'), t('user.delete_friend_confirm'), true, () => {
+        wfc.deleteFriend(friend.uid, () => {
+            toast(t('common.operate_success'))
+            setTimeout(() => {
+                uni.navigateBack({} as NavigateBackOptions)
+            }, 800)
+        }, (err: number) => {
+            toastError(err)
+        })
     })
-}
-
-const addFriend = () => {
-    const friend = user.value
-    if (friend == null) {
-        return
-    }
-    const userInfo = wfc.getUserInfo(wfc.getUserId());
-    const reason = '你好，我是' + userInfo.displayName;
-    wfc.sendFriendRequest(friend.uid, reason, '', () => {
-        uni.showToast({
-            title: '好友请求发送成功',
-            icon: 'none'
-        } as ShowToastOptions);
-        setTimeout(() => {
-            uni.navigateBack({
-                delta: 1
-            } as NavigateBackOptions)
-        }, 1000)
-    }, (err: number) => {
-        uni.showToast({
-            title: '好友请求发送失败 ' + err,
-            icon: 'none'
-        } as ShowToastOptions);
-    })
-}
-
-const startAudioCall = () => {
-    uni.showToast({
-        title: '当前版本暂不支持音视频通话',
-        icon: 'none'
-    } as ShowToastOptions)
-}
-
-const startVideoCall = () => {
-    uni.showToast({
-        title: '当前版本暂不支持音视频通话',
-        icon: 'none'
-    } as ShowToastOptions)
 }
 </script>
 
 <style scoped>
-.user-detail-container {
-    margin-left: 30px;
-    margin-right: 30px;
-    flex: 1;
+/* 页面默认 styleIsolation: 'app' 能吃到全局 .icomoon，但这一页有独立组件插槽，
+ * 保险起见自己声明一份（见 M0「写组件的两个静默坑」） */
+.icomoon {
+    font-family: "icomoon";
 }
 
-.detail-header {
-    margin-top: 30px;
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 15px;
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
-}
-
-.avatar {
-    width: 80px;
-    height: 80px;
-    border-radius: 2px;
-}
-
-.user-name {
-    margin-bottom: 5px;
-}
-
-.content {
-    width: 100%;
-    margin: 20px 0;
-}
-
-.info-item {
-    height: 40px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-}
-
-.info-label {
-    margin-right: 20px;
-    width: 60px;
-}
-
-.info-value {
-    flex: 1;
-}
-
-.alias-input {
-    flex: 1;
-    height: 20px;
-}
-
-.detail-footer {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    padding-top: 30px;
-    border-top-width: 1px;
-    border-top-style: solid;
-}
-
-.action {
+.user-detail-page {
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: space-around;
+}
+
+.page-scroll {
+    flex: 1;
+}
+
+.header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+    min-height: 80px;
+}
+
+.header-portrait {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    margin-right: 16px;
+    flex-shrink: 0;
+}
+
+.header-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.header-name {
+    text-align: left;
+}
+
+.header-sub {
+    margin-top: 3px;
+    text-align: left;
+}
+
+.header-id-row {
+    display: flex;
+    flex-direction: row;
     align-items: center;
 }
 
-.action-label {
-    padding-top: 1px;
+.star-icon {
+    margin-left: 4px;
+    flex-shrink: 0;
 }
 
-.action-icon {
-    font-size: 20px;
+/* 最后一组卡片下面留一段凹槽，不然卡片直接贴到屏幕底 */
+.bottom-gap {
+    height: 16px;
 }
-
 </style>

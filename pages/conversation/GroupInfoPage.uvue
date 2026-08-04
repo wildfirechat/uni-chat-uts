@@ -1,0 +1,155 @@
+<template>
+    <view class="group-info-page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('group.info')" :showBack="true" />
+        <view class="content">
+            <image class="group-portrait" :src="groupPortrait" :style="{ backgroundColor: c.inputBg }" />
+            <text class="group-name single-line" :style="{ fontSize: fontPx(20), color: c.textPrimary }">{{ groupName }}</text>
+            <text v-if="memberCount > 0" class="member-count"
+                :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t1('group.member_count', '' + memberCount) }}</text>
+
+            <view class="action-button" :style="{ backgroundColor: c.accent }" @tap="onPrimaryAction">
+                <text class="action-button-text" :style="{ fontSize: fontPx(16), color: c.onAccent }">{{ isMember ? t('group.chat') : t('group.join') }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 扫群二维码后的「加入群聊」预览页。
+ * 对齐 `../flutter-chat/chat/lib/group/group_info_screen.dart` 的移动端主干：
+ * 群头像 / 群名 / 人数 + 一个主按钮（已在群里就是「进入群聊」，不在就是「加入群聊」）。
+ *
+ * **这一页不是会话信息页**。会话信息页（GroupConversationInfoPage）是从已有会话点进去的，
+ * 参数走 `takePageOptions()` 传一个 ConversationInfo；扫码进来时手上只有一个 groupId，
+ * 拿不到 ConversationInfo，所以 flutter 也是分成两个页面，这里保持一致。
+ *
+ * 加群走 `addGroupMembers(groupId, [自己])`，`from`（邀请人）作为 extra 带给服务端。
+ * 群设了「需管理员验证」时服务端会返回错误码，这里如实提示 —— 真正的入群申请审批要等
+ * 门面补 `getJoinGroupRequests` 那批原生方法（见 §4 台账）。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import GroupInfo from "@/wfc/model/groupInfo.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import { go2ConversationPage } from "@/common/nav.uts";
+import { toast, toastError } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "GroupInfoPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const from = ref<string>('')
+const groupInfo = ref<GroupInfo | null>(null)
+const isMember = ref<boolean>(false)
+
+const groupName = computed<string>((): string => {
+    const info = groupInfo.value
+    return info == null ? '' : info.name
+})
+
+const groupPortrait = computed<string>((): string => {
+    const info = groupInfo.value
+    if (info == null || info.portrait == '') {
+        return Config.DEFAULT_GROUP_PORTRAIT_URL
+    }
+    return info.portrait
+})
+
+const memberCount = computed<number>((): number => {
+    const info = groupInfo.value
+    return info == null ? 0 : info.memberCount
+})
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    from.value = options['from'] ?? ''
+    if (groupId.value == '') {
+        return
+    }
+    groupInfo.value = wfc.getGroupInfo(groupId.value, true)
+    refreshMembership()
+})
+
+const refreshMembership = () => {
+    const ids = wfc.getGroupMemberIds(groupId.value, false)
+    isMember.value = ids.indexOf(wfc.getUserId()) >= 0
+}
+
+const onPrimaryAction = () => {
+    if (isMember.value) {
+        enterConversation()
+    } else {
+        joinGroup()
+    }
+}
+
+const enterConversation = () => {
+    const conversation = new Conversation(ConversationType.Group, groupId.value, 0)
+    store.setCurrentConversation(conversation)
+    go2ConversationPage()
+}
+
+const joinGroup = () => {
+    wfc.addGroupMembers(groupId.value, [wfc.getUserId()], from.value, [0], null, () => {
+        toast(t('group.join_success'))
+        isMember.value = true
+        enterConversation()
+    }, (err: number) => {
+        // 群开了「需管理员验证」时会走这里；本端还批不了申请，只能提示去其他端处理
+        toastError(err)
+    })
+}
+</script>
+
+<style scoped>
+.group-info-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 32px;
+}
+
+.group-portrait {
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+}
+
+.group-name {
+    margin-top: 16px;
+    width: 100%;
+    text-align: center;
+}
+
+.member-count {
+    margin-top: 8px;
+}
+
+.action-button {
+    margin-top: 40px;
+    width: 200px;
+    height: 46px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>

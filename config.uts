@@ -96,6 +96,30 @@ export default class Config {
     // 文件传输助手ID
     static FILE_HELPER_ID = 'wfc_file_transfer';
 
+    /**
+     * AI 机器人账号。这些账号 `isMyFriend` 恒为 true，但没有音视频能力，
+     * 用户详情页不给它们显示通话入口。对齐 flutter `Config.AI_ROBOTS`。
+     */
+    static AI_ROBOTS = ['FireRobot'];
+
+    static isAiRobot(userId: string): boolean {
+        return Config.AI_ROBOTS.indexOf(userId) >= 0;
+    }
+
+    // 用户协议和隐私政策，上线前请替换成您自己的内容。
+    // 登录页的勾选项和「我的 → 设置」里的两行都读这两个值。
+    static USER_AGREEMENT_URL = 'https://static.wildfirechat.cn/agreement.html';
+    static PRIVACY_AGREEMENT_URL = 'https://static.wildfirechat.cn/privacy.html';
+
+    /**
+     * 发验证码/登录/改密码前是否要过滑块验证。对齐 flutter `Config.ENABLE_SLIDE_VERIFY`。
+     * 需要 app server 提供 `/slide_verify/generate` 与 `/slide_verify/verify`。
+     */
+    static ENABLE_SLIDE_VERIFY = true;
+
+    /** 登录页默认用密码登录还是验证码登录。对齐 flutter `Config.Prefer_Password_Login`。 */
+    static PREFER_PASSWORD_LOGIN = false;
+
     // 发送日志命令，当发送此文本消息时，会把协议栈日志发送到当前会话中，为空时关闭此功能。
     static SEND_LOG_COMMAND = '*#marslog#';
 

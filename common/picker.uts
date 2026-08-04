@@ -11,10 +11,24 @@ import { contactState } from "@/store.uts";
 
 export class PickUsersOptions {
     users: UserInfo[] = []
+    /**
+     * 预先选中的人。与 [uncheckableUsers] 一起传就等价于 flutter 的 `disabledCheckedUsers`
+     * （已在群里的成员：显示为勾选、不可取消、也不出现在回调结果里）。
+     */
     initialCheckedUsers: UserInfo[] = []
     uncheckableUsers: UserInfo[] = []
     showCategoryLabel = true
     confirmTitle = '确定'
+    /** 标题栏文案，空则用「选择联系人」。对齐 flutter `showPickUserScreen` 的 title */
+    title = ''
+    /** 最多可选人数，对齐 flutter 的 maxSelected（默认 1024，超出时提示） */
+    maxSelected = 1024
+    /**
+     * 是否显示顶部「从组织架构选择」入口。对齐 flutter 的 showOrganizationEntry。
+     * 实际是否渲染还要看 `Config.ORGANIZATION_SERVER` 有没有配 —— 没配组织服务时
+     * 这一行点了也拉不到数据，不如不放（同 §M2「宁可不放入口」）。
+     */
+    showOrganizationEntry = true
     successCB: ((users: UserInfo[]) => void) | null = null
 }
 
@@ -22,6 +36,8 @@ export class PickUserOptions {
     users: UserInfo[] = []
     showCategoryLabel = true
     confirmTitle = '确定'
+    /** 标题栏文案，空则用「选择联系人」 */
+    title = ''
     successCB: ((user: UserInfo) => void) | null = null
 }
 
@@ -77,6 +93,46 @@ export function notifyPickedUser(user: UserInfo): void {
     pickUserOptions = null
     if (options != null) {
         options.successCB?.(user)
+    }
+}
+
+/**
+ * 从组织架构里选人。对齐 flutter `PickUserScreen._openOrganizationPicker` —— 它 push 一个
+ * `OrganizationScreen(selectMode: true, ...)` 并等 pop 的返回值。
+ * uni 侧没有「等页面返回值」的机制，同样走模块级暂存 + 回调。
+ */
+export class PickOrganizationUsersOptions {
+    /** 还能再选几个（调用方已选人数要先扣掉） */
+    maxSelected = 1024
+    /** 已经选中的人，进去后显示为勾选 */
+    initialSelectedUserIds: string[] = []
+    /** 不可选（已在群里等） */
+    disabledUserIds: string[] = []
+    successCB: ((userIds: string[]) => void) | null = null
+}
+
+let pickOrganizationUsersOptions: PickOrganizationUsersOptions | null = null
+
+export function pickOrganizationUsers(options: PickOrganizationUsersOptions): void {
+    pickOrganizationUsersOptions = options
+    uni.navigateTo({
+        url: '/pages/contact/OrganizationPage?selectMode=1',
+        fail: (err) => {
+            console.log('nav to OrganizationPage err', err)
+            pickOrganizationUsersOptions = null
+        }
+    } as NavigateToOptions)
+}
+
+export function currentPickOrganizationUsersOptions(): PickOrganizationUsersOptions | null {
+    return pickOrganizationUsersOptions
+}
+
+export function notifyPickedOrganizationUsers(userIds: string[]): void {
+    const options = pickOrganizationUsersOptions
+    pickOrganizationUsersOptions = null
+    if (options != null) {
+        options.successCB?.(userIds)
     }
 }
 

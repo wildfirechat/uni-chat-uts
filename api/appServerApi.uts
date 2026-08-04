@@ -110,6 +110,32 @@ export class AppServerApi {
         return this._post('/fav/del/' + favId, {} as UTSJSONObject)
     }
 
+    /**
+     * 扫到 PC 登录二维码后，先把这个 token 标成「已扫描」。
+     * 服务端返回的 result.status：1 = 已扫描待确认，其它值都是异常（过期/已用掉）。
+     * 对齐 flutter `AppServer.scanPCLogin`。
+     */
+    scanPcLogin(token: string): Promise<UTSJSONObject | null> {
+        return this._post('/scan_pc/' + token, {} as UTSJSONObject)
+    }
+
+    /**
+     * 确认 PC 登录。`quick_login` 固定传 1，与 flutter 一致。
+     * 成功时服务端返回 result.status == 2。
+     */
+    confirmPcLogin(token: string, userId: string): Promise<UTSJSONObject | null> {
+        return this._post('/confirm_pc', {
+            token: token,
+            user_id: userId,
+            quick_login: 1
+        } as UTSJSONObject)
+    }
+
+    /** 取消 PC 登录（用户在确认页点了取消） */
+    cancelPcLogin(token: string): Promise<UTSJSONObject | null> {
+        return this._post('/cancel_pc', { token: token } as UTSJSONObject)
+    }
+
     getGroupAnnouncement(groupId: string): Promise<UTSJSONObject | null> {
         return this._post('/get_group_announcement', { groupId: groupId } as UTSJSONObject)
     }

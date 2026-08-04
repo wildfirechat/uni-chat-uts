@@ -12,4 +12,59 @@ export default class WfcScheme {
         }
         return link;
     }
+
+    /**
+     * 群二维码内容。[source] 是邀请人（当前用户），被扫的一方据此知道是谁拉的。
+     * 对齐 flutter `WfcScheme.buildGroupScheme`。
+     */
+    static buildGroupLink(groupId: string, source: string): string {
+        let link = WfcScheme.QR_CODE_PREFIX_GROUP + groupId;
+        if (source != '') {
+            link += '?from=' + source
+        }
+        return link;
+    }
+
+    /**
+     * 从扫到的二维码里切出前缀和值。
+     * 规则与 flutter `home.dart _handleQrCode` 一致：按最后一个 '/' 切前缀，
+     * 值取到 '?' 为止（查询参数另外解析）。切不出来时返回 null。
+     */
+    static parse(qrcode: string): WfcSchemeResult | null {
+        const lastSlash = qrcode.lastIndexOf('/')
+        if (lastSlash < 0 || lastSlash >= qrcode.length - 1) {
+            return null
+        }
+        const prefix = qrcode.substring(0, lastSlash + 1)
+        const questionMark = qrcode.indexOf('?')
+        const value = questionMark > lastSlash
+            ? qrcode.substring(lastSlash + 1, questionMark)
+            : qrcode.substring(lastSlash + 1)
+        const result = new WfcSchemeResult()
+        result.prefix = prefix
+        result.value = value
+        return result
+    }
+
+    /** 取查询参数，没有就返回空串。只处理 `?a=1&b=2` 这种最简形式，够用。 */
+    static queryParam(qrcode: string, key: string): string {
+        const questionMark = qrcode.indexOf('?')
+        if (questionMark < 0) {
+            return ''
+        }
+        const query = qrcode.substring(questionMark + 1)
+        const pairs = query.split('&')
+        for (let i = 0; i < pairs.length; i++) {
+            const eq = pairs[i].indexOf('=')
+            if (eq > 0 && pairs[i].substring(0, eq) == key) {
+                return pairs[i].substring(eq + 1)
+            }
+        }
+        return ''
+    }
+}
+
+export class WfcSchemeResult {
+    prefix = ''
+    value = ''
 }

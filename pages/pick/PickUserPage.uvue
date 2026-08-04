@@ -1,63 +1,133 @@
 <template>
-    <view class="pick-contact-container" :style="{ backgroundColor: c.bottomBarBg }">
-        <view class="contact-list-container">
-            <view class="input-container">
-                <input class="search-input" type="text" placeholder="搜索" v-model="filterQuery"
-                    :style="{ borderColor: c.hairlineSoft, backgroundColor: c.surface, color: c.textPrimary }" />
-            </view>
-            <list-view class="friend-list-container" direction="vertical">
-                <CheckableUserListView :users="filteredUsers" :initial-checked-users="initialCheckedUsers"
-                    :uncheckable-users="uncheckableUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
-                    padding-left="20px" />
-            </list-view>
+    <view class="pick-user-page" :style="{ backgroundColor: c.conversationBg }">
+        <NavBar :title="pageTitle" :showBack="true" :rightText="confirmLabel" :rightTextDisabled="checkedUsers.length == 0"
+            @rightTextTap="confirm" />
+
+        <!-- 「从组织架构选择」。没配组织服务时整行不展示（同 §M2「宁可不放入口」） -->
+        <view v-if="showOrganizationEntry" class="org-entry" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+            @tap="pickFromOrganization">
+            <!-- flutter 用的是 Icons.corporate_fare（一栋楼），icomoon(Ionicons) 里没有对应字形，
+                 取最接近的公文包 ion-briefcase 代替 -->
+            <text class="icomoon org-entry-icon" :style="{ color: c.accent, fontSize: iconPx(22) }">&#xf26c;</text>
+            <text class="org-entry-title" :style="{ color: c.textPrimary, fontSize: fontPx(16) }">{{ t('pick.from_organization') }}</text>
+            <text class="icomoon org-entry-arrow" :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d1;</text>
         </view>
-        <view class="checked-contact-list-container"
-            :style="{ backgroundColor: c.surface, borderTopColor: c.hairlineSoft }">
-            <view class="panel-header">
-                <text class="panel-desc" :style="{ fontSize: fontPx(13), color: c.textSecondary }" v-if="checkedUsers.length == 0">已选择联系人</text>
-                <text class="panel-desc" :style="{ fontSize: fontPx(13), color: c.textSecondary }" v-else>已选择联系人 {{ checkedUsers.length }}</text>
-                <button size="mini" :disabled="checkedUsers.length == 0" @tap="confirm">{{ confirmTitle }}</button>
+
+        <!--
+            已选头像 + 搜索框同处一条（对齐 flutter conversation 的 PickUserScreen）：
+            头像横向滚动区限宽，输入框占剩下的部分。
+        -->
+        <view class="search-bar" :style="{ backgroundColor: c.surface }">
+            <view class="search-box" :style="{ backgroundColor: c.inputBg }">
+                <text class="icomoon search-icon" :style="{ color: c.iconSecondary, fontSize: iconPx(16) }">&#xf21f;</text>
+                <scroll-view v-if="checkedUsers.length > 0" class="picked-strip" direction="horizontal"
+                    :style="{ width: pickedStripWidth + 'px' }">
+                    <view class="picked-strip-inner">
+                        <image v-for="(user, index) in checkedUsers" :key="index" class="picked-avatar"
+                            :src="user.portrait" :style="{ backgroundColor: c.inputBg }" @tap="unpick(user)" />
+                    </view>
+                </scroll-view>
+                <input class="search-input" type="text" :placeholder="t('common.search')" v-model="filterQuery"
+                    :style="{ color: c.textPrimary, fontSize: fontPx(14) }" />
             </view>
-            <scroll-view class="picked-content" direction="horizontal">
-                <view class="picked-user" v-for="(user, index) in checkedUsers" :key="index" @tap="unpick(user)">
-                    <image class="avatar" :src="user.portrait" :style="{ backgroundColor: c.inputBg }" />
-                    <text class="name single-line" :style="{ fontSize: fontPx(12), color: c.textPrimary }">{{ user.displayName }}</text>
-                </view>
-            </scroll-view>
+        </view>
+
+        <list-view class="friend-list" direction="vertical" :scroll-into-view="scrollIntoViewId">
+            <CheckableUserListView ref="userListView" :users="filteredUsers" :initial-checked-users="initialCheckedUsers"
+                :uncheckable-users="uncheckableUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
+                :anchor-prefix="ANCHOR_PREFIX" :max-checked-count="maxSelected" @maxExceeded="onMaxExceeded"
+                padding-left="16px" />
+        </list-view>
+
+        <!-- 右侧字母索引条。搜索态下分类标签本来就不显示，索引条一并收起 -->
+        <view v-if="quickIndexCategories.length > 0" class="quick-index-bar">
+            <view v-for="(category, ci) in quickIndexCategories" :key="ci" class="quick-index-item"
+                @tap="jumpToCategory(category)">
+                <text class="quick-index-text" :style="{ color: category == quickIndexActiveCategory ? c.accent : c.textSecondary }">{{ quickIndexTagOf(category) }}</text>
+            </view>
         </view>
     </view>
 </template>
 
 <script setup lang="uts">
+/**
+ * 多选联系人页。对齐 `../flutter-chat/chat/lib/contact/pick_user_screen.dart`（移动端形态）。
+ *
+ * 与改版前的差别（这一版是 M4 按 flutter 重做的）：
+ * - 确认按钮从底部面板挪到标题栏右上角，文案是「完成(n)」——「已选联系人」那块底部面板
+ *   在 flutter 里不存在，已选的人以头像形式内嵌在搜索框左侧
+ * - 补上右侧字母索引条（flutter `widget/sidebar_index.dart`）
+ * - 补上 maxSelected 上限与「从组织架构选择」入口
+ *
+ * 与 flutter 的刻意差异：
+ * - flutter 按住索引条时屏幕中央有一个大字母气泡（SidebarIndex 的 onTouch），这里只做点击跳转、
+ *   不做拖动追踪 —— uni 侧索引条是一排独立 view，拿不到「手指滑过第几个」而不引入手势换算
+ * - flutter 单选（maxSelected == 1）也走同一个页面，点一下就回调；uni 侧单选一直是独立的
+ *   PickSingleUserPage，保持不动
+ */
 import store, { pickState } from "@/store.uts";
+import Config from "@/config.uts";
+import NavBar from "@/pages/common/NavBar.uvue";
 import CheckableUserListView from "@/pages/user/CheckableUserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
-import { currentPickUsersOptions, notifyPickedUsers } from "@/common/picker.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import {
+    currentPickUsersOptions, notifyPickedUsers,
+    pickOrganizationUsers, PickOrganizationUsersOptions
+} from "@/common/picker.uts";
+import { anchorIdForCategory, quickIndexTagOf } from "@/common/pinyin.uts";
+import { toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx } from "@/common/layoutScale.uts";
+import { fontPx, iconPx } from "@/common/layoutScale.uts";
+
 defineOptions({
     name: "PickUserPage"
 })
 
+const ANCHOR_PREFIX = 'pick-label-'
 
 const c = computed<AppColors>((): AppColors => colors())
 const users = ref<UserInfo[]>([] as UserInfo[])
 const initialCheckedUsers = ref<UserInfo[]>([] as UserInfo[])
 const uncheckableUsers = ref<UserInfo[]>([] as UserInfo[])
 const confirmTitle = ref<string>('确定')
+const pageTitle = ref<string>(t('pick.pick_contact'))
+const maxSelected = ref<number>(1024)
+const showOrganizationEntry = ref<boolean>(false)
 const showCategoryLabel = ref<boolean>(true)
 const filterQuery = ref<string>('')
-const confirmed = ref<boolean>(false)
 
+const userListView = ref<ComponentPublicInstance | null>(null)
+const scrollIntoViewId = ref<string>('')
+const quickIndexActiveCategory = ref<string>('')
+
+/**
+ * 已选头像条的宽度。窗口宽减去搜索图标、内边距和留给输入框的最小宽度，
+ * 不给定宽的话头像条会把输入框挤没。
+ */
+const pickedStripWidth = computed<number>((): number => {
+    const winWidth = uni.getSystemInfoSync().windowWidth
+    const avail = winWidth - 140
+    const want = checkedUsers.value.length * 34
+    return want < avail ? want : avail
+})
+
+/** 回调只给「新选中的」，预先勾上的（已在群里那些）不算 */
 const checkedUsers = computed<UserInfo[]>((): UserInfo[] => {
-    const users = pickState.users;
+    const picked = pickState.users;
     if (initialCheckedUsers.value.length == 0) {
-        return users;
+        return picked;
     }
-    return users.filter((u: UserInfo): boolean => {
+    return picked.filter((u: UserInfo): boolean => {
         return initialCheckedUsers.value.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1
     })
+})
+
+const confirmLabel = computed<string>((): string => {
+    const n = checkedUsers.value.length
+    return n > 0 ? confirmTitle.value + '(' + n + ')' : confirmTitle.value
 })
 
 const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
@@ -68,8 +138,25 @@ const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
     }
 })
 
+/** 索引条只在非搜索态、且确实分了组时出现 */
+const quickIndexCategories = computed<string[]>((): string[] => {
+    if (filterQuery.value != '' || !showCategoryLabel.value) {
+        return [] as string[]
+    }
+    const categories: string[] = []
+    const list = filteredUsers.value
+    let last = ''
+    for (let i = 0; i < list.length; i++) {
+        const category = list[i]._category
+        if (category != last) {
+            last = category
+            categories.push(category)
+        }
+    }
+    return categories
+})
+
 onLoad((_options: OnLoadOptions) => {
-    console.log('PickUserPage onLoad')
     const options = currentPickUsersOptions()
     if (options != null) {
         users.value = options.users;
@@ -77,6 +164,12 @@ onLoad((_options: OnLoadOptions) => {
         uncheckableUsers.value = options.uncheckableUsers;
         showCategoryLabel.value = options.showCategoryLabel;
         confirmTitle.value = options.confirmTitle;
+        maxSelected.value = options.maxSelected;
+        if (options.title != '') {
+            pageTitle.value = options.title
+        }
+        // 没配组织服务时这一行点了也拉不到数据，直接不放
+        showOrganizationEntry.value = options.showOrganizationEntry && Config.ORGANIZATION_SERVER != ''
     }
 })
 
@@ -95,27 +188,83 @@ const isUserUncheckable = (user: UserInfo): boolean => {
     return uncheckableUsers.value.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
 }
 
+const onMaxExceeded = () => {
+    toast(t1('pick.max_user_limit', '' + maxSelected.value))
+}
+
+const jumpToCategory = (category: string) => {
+    quickIndexActiveCategory.value = category
+    // 还没进渲染窗口的分类没有锚点节点，先让列表把那一段渲染出来
+    const listView = userListView.value
+    if (listView != null) {
+        (listView as ComponentPublicInstance).$callMethod('ensureCategoryRendered', category)
+    }
+    const targetId = anchorIdForCategory(ANCHOR_PREFIX, category)
+    // 连点同一个分类时要能重复滚动，先清空再置值
+    scrollIntoViewId.value = ''
+    setTimeout(() => {
+        scrollIntoViewId.value = targetId
+    }, 16)
+}
+
+/**
+ * 从组织架构补选。把「还能选几个」和「已选/不可选」带过去，回来后按 uid 取 UserInfo 补进已选。
+ * 对齐 flutter `_openOrganizationPicker`。
+ */
+const pickFromOrganization = () => {
+    const remaining = maxSelected.value - checkedUsers.value.length
+    if (remaining <= 0) {
+        onMaxExceeded()
+        return
+    }
+    const selectedIds: string[] = []
+    const picked = pickState.users
+    for (let i = 0; i < picked.length; i++) {
+        selectedIds.push(picked[i].uid)
+    }
+    const disabledIds: string[] = []
+    for (let i = 0; i < uncheckableUsers.value.length; i++) {
+        disabledIds.push(uncheckableUsers.value[i].uid)
+    }
+
+    const options = new PickOrganizationUsersOptions()
+    options.maxSelected = remaining
+    options.initialSelectedUserIds = selectedIds
+    options.disabledUserIds = disabledIds
+    options.successCB = (userIds: string[]) => {
+        for (let i = 0; i < userIds.length; i++) {
+            if (checkedUsers.value.length >= maxSelected.value) {
+                break
+            }
+            const uid = userIds[i]
+            if (pickState.users.findIndex((u: UserInfo): boolean => u.uid == uid) >= 0) {
+                continue
+            }
+            store.pickOrUnpickUser(wfc.getUserInfo(uid, false))
+        }
+    }
+    pickOrganizationUsers(options)
+}
+
 /**
  * 不包含默认选中的用户
  */
 const confirm = () => {
-    let pickedUsers: UserInfo[]
-    if (initialCheckedUsers.value.length > 0) {
-        pickedUsers = pickState.users.filter((u: UserInfo): boolean => initialCheckedUsers.value.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1);
-    } else {
-        pickedUsers = pickState.users;
-    }
-    const users = pickedUsers.slice(0);
+    const picked = checkedUsers.value.slice(0);
     pickState.users = []
-    confirmed.value = true
 
     uni.navigateBack({} as NavigateBackOptions);
-    notifyPickedUsers(users);
+    notifyPickedUsers(picked);
 }
 </script>
 
 <style scoped>
-.pick-contact-container {
+/* 组件吃不到全局 class（样式隔离 2.0），图标字体自己声明一份，见 M0「写组件的两个静默坑」 */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.pick-user-page {
     display: flex;
     flex-direction: column;
     position: relative;
@@ -124,78 +273,101 @@ const confirm = () => {
     overflow: hidden;
 }
 
-.contact-list-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    overflow: hidden;
-}
-
-.input-container {
-    position: relative;
+.org-entry {
+    height: 56px;
     display: flex;
     flex-direction: row;
     align-items: center;
-    width: 100%;
+    padding: 0 16px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+
+.org-entry-icon {
+    width: 24px;
+    margin-right: 16px;
+}
+
+/* 要截断的文字自己 flex:1，右侧箭头 flex-shrink:0，不放占位 view（见 M0 第 2 个坑） */
+.org-entry-title {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.org-entry-arrow {
+    flex-shrink: 0;
+}
+
+.search-bar {
+    padding: 8px 16px;
+}
+
+.search-box {
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.search-icon {
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.picked-strip {
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.picked-strip-inner {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.picked-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    margin-right: 4px;
 }
 
 .search-input {
-    height: 25px;
-    margin: 15px 20px 0 15px;
     flex: 1;
-    border-radius: 3px;
-    border-width: 1px;
-    border-style: solid;
-    padding-left: 10px;
+    height: 30px;
 }
 
-.friend-list-container {
+.friend-list {
     flex: 1;
-    margin-top: 10px;
 }
 
-.checked-contact-list-container {
-    display: flex;
-    height: 150px;
-    flex-direction: column;
-    border-top-width: 1px;
-    border-top-style: solid;
-}
-
-.panel-header {
-    height: 45px;
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 20px;
-}
-
-.picked-content {
-    flex: 1;
-    display: flex;
-    flex-direction: row;
-    padding: 0 20px;
-}
-
-.picked-user {
-    width: 60px;
+.quick-index-bar {
+    position: absolute;
+    right: 3px;
+    top: 160px;
+    bottom: 16px;
+    width: 18px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 5px;
 }
 
-.avatar {
-    width: 45px;
-    height: 45px;
-    border-radius: 3px;
-}
-
-.name {
+.quick-index-item {
+    height: 15px;
     width: 100%;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 索引条是图形化导航，字号刻意不跟档位放大：放大就排不下 26 个字母 */
+.quick-index-text {
+    font-size: 10px;
+    line-height: 1;
 }
 </style>

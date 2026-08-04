@@ -1,0 +1,282 @@
+<template>
+    <!--
+        遮罩与面板都是 fixed，且面板是遮罩的子节点 —— 这是本项目里已验证可用的结构
+        （原 chunLei-popups 就是这么写的）：鸿蒙上嵌套 fixed 节点会被提到独立层、
+        事件不一定冒泡回父节点，正好符合「点面板不关、点空白关」的需求。
+        面板上仍显式写 @tap.stop，不依赖冒泡行为。
+    -->
+    <view v-if="modelValue" class="popup-menu-mask" @tap="dismiss">
+        <view class="popup-menu-panel" :style="{ top: panelTop + 'px', left: panelLeft + 'px', width: popupWidth + 'px' }"
+            @tap.stop="onPanelTap">
+            <!-- 面板在目标下方时，三角在上边指向目标 -->
+            <view v-if="!showAbove" class="arrow-row" :style="{ width: popupWidth + 'px' }">
+                <view class="arrow-up" :style="{ marginLeft: (arrowLeft - ARROW_HALF) + 'px' }"></view>
+            </view>
+
+            <!-- 网格：图标在上、文字在下，每行 crossAxisCount 项 -->
+            <view class="menu-card">
+                <view v-for="(item, index) in items" :key="index" class="grid-item"
+                    :style="{ width: itemWidth + 'px', height: GRID_ITEM_HEIGHT + 'px', opacity: item.disabled ? 0.4 : 1 }"
+                    @tap.stop="tapItem(item)">
+                    <text class="icomoon grid-item-icon" :style="{ fontSize: iconPx(22) }">{{ item.icon }}</text>
+                    <text class="grid-item-label" :style="{ fontSize: fontPx(11) }">{{ item.title }}</text>
+                </view>
+            </view>
+
+            <!-- 面板在目标上方时，三角在下边指向目标 -->
+            <view v-if="showAbove" class="arrow-row" :style="{ width: popupWidth + 'px' }">
+                <view class="arrow-down" :style="{ marginLeft: (arrowLeft - ARROW_HALF) + 'px' }"></view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 消息长按菜单 —— 深色卡片 + 4 列图标网格 + 指向目标的小三角，
+ * 自动在目标上方/下方择一并避让屏幕边缘。
+ * 对齐 `../flutter-chat/chat/lib/widget/popup_menu_overlay.dart` 的 `PopupMenuPanel`
+ * 网格形态（`listMode: false`）。
+ *
+ * flutter 那个面板还有一个竖排列表形态（`listMode: true`，首页「+」菜单在用）。
+ * 这里**没有**把它一起搬过来：uni 侧的 [main-action-menu](../main-action-menu/main-action-menu.uvue)
+ * 早就是那个形态了，且它锚在导航栏按钮上、不需要目标矩形，搬过来只会多一层参数。
+ *
+ * ## 与 flutter 的一处刻意差异：锚点是触点而不是气泡矩形
+ *
+ * flutter 传的是气泡的全局 Rect，菜单指向气泡中心。uni-app x vapor 下本项目没有用过
+ * element API，拿不到节点矩形，所以这里传 longpress 的触点坐标，退化成一个零尺寸的
+ * 矩形。效果是三角指向手指而不是气泡中心 —— 位置更贴手，可接受。
+ *
+ * ## 尺寸不跟字号档位放大
+ *
+ * 面板宽度、格子高度、三角都是图形，按 M0 的约定不跟 `fontPx` 放大（放大只会让
+ * 4 列格子把文字挤出去）；只有 `title` 文字和图标字形跟随。
+ */
+import { PopupMenuItem } from '../../common/popupMenu.uts'
+import { fontPx, iconPx } from '../../common/layoutScale.uts'
+
+// 组件默认样式隔离，吃不到 global.css 的 .icomoon（见 M0「写组件的两个静默坑」），
+// 所以下面样式块里自己声明了一份 .icomoon，这里不用开 styleIsolation: 'app'。
+//
+// 注意：注释要写在 defineOptions 外面。**注释放在 defineOptions({...}) 的最后一个属性之后，
+// Android 端的 SFC 转换会把它甩到对象字面量外面**，生成
+// `}\n// 注释\n, props, {` 这种残缺代码，报 "Unexpected token `:` ... for the computed key"，
+// 而且报的是编译产物的行号，很难定位。鸿蒙（vapor）那条编译路径不受影响，只有 Android 会炸。
+defineOptions({
+    name: 'popup-menu'
+})
+
+const props = withDefaults(defineProps<{
+    modelValue?: boolean
+    items?: PopupMenuItem[]
+    /** 目标（气泡/按钮）在屏幕坐标系里的矩形；长按场景传触点，宽高给 0 即可 */
+    targetX?: number
+    targetY?: number
+    targetWidth?: number
+    targetHeight?: number
+    popupWidth?: number
+    crossAxisCount?: number
+}>(), {
+    modelValue: false,
+    items: (): PopupMenuItem[] => [] as PopupMenuItem[],
+    targetX: 0,
+    targetY: 0,
+    targetWidth: 0,
+    targetHeight: 0,
+    popupWidth: 250,
+    crossAxisCount: 4
+})
+
+const emit = defineEmits(['update:modelValue', 'select'])
+
+// 与 flutter PopupMenuPanel 的常量一一对应
+const PANEL_PADDING = 10
+const ARROW_HEIGHT = 10
+const ARROW_HALF = 10
+const GRID_ITEM_HEIGHT = 60
+const EDGE_MARGIN = 10
+const SAFE_GAP = 20
+
+const itemWidth = computed<number>((): number => {
+    return (props.popupWidth - PANEL_PADDING * 2) / props.crossAxisCount
+})
+
+const menuHeight = computed<number>((): number => {
+    const count = props.items.length
+    if (count == 0) {
+        return 0
+    }
+    const rows = Math.ceil(count / props.crossAxisCount)
+    return rows * GRID_ITEM_HEIGHT + PANEL_PADDING * 2
+})
+
+const targetTop = computed<number>((): number => props.targetY)
+const targetBottom = computed<number>((): number => props.targetY + props.targetHeight)
+const targetCenterX = computed<number>((): number => props.targetX + props.targetWidth / 2)
+
+/**
+ * 上方放得下就放上方（与 flutter 一致：优先上方，长按时手指不会挡住菜单），
+ * 否则放下方；都放不下就选空间大的一侧并夹进安全区。
+ */
+const showAbove = computed<boolean>((): boolean => {
+    const sysInfo = uni.getSystemInfoSync()
+    const minTop = sysInfo.statusBarHeight + SAFE_GAP
+    const maxBottom = sysInfo.windowHeight - SAFE_GAP
+    const h = menuHeight.value + ARROW_HEIGHT
+    if (targetTop.value - h > minTop) {
+        return true
+    }
+    if (targetBottom.value + h < maxBottom) {
+        return false
+    }
+    return (targetTop.value - minTop) > (maxBottom - targetBottom.value)
+})
+
+const panelTop = computed<number>((): number => {
+    const sysInfo = uni.getSystemInfoSync()
+    const minTop = sysInfo.statusBarHeight + SAFE_GAP
+    const maxBottom = sysInfo.windowHeight - SAFE_GAP
+    // 面板整体高度含三角
+    const total = menuHeight.value + ARROW_HEIGHT
+    let top: number
+    if (showAbove.value) {
+        top = targetTop.value - total
+        if (top < minTop) {
+            top = minTop
+        }
+    } else {
+        top = targetBottom.value
+        if (top + total > maxBottom) {
+            top = maxBottom - total
+        }
+        if (top < minTop) {
+            top = minTop
+        }
+    }
+    return top
+})
+
+const panelLeft = computed<number>((): number => {
+    const winWidth = uni.getSystemInfoSync().windowWidth
+    let left = targetCenterX.value - props.popupWidth / 2
+    if (left < EDGE_MARGIN) {
+        left = EDGE_MARGIN
+    }
+    if (left + props.popupWidth > winWidth - EDGE_MARGIN) {
+        left = winWidth - props.popupWidth - EDGE_MARGIN
+    }
+    return left
+})
+
+/** 三角相对面板左边缘的位置，夹在两端 20px 以内，避免戳出圆角 */
+const arrowLeft = computed<number>((): number => {
+    let x = targetCenterX.value - panelLeft.value
+    if (x < 20) {
+        x = 20
+    }
+    if (x > props.popupWidth - 20) {
+        x = props.popupWidth - 20
+    }
+    return x
+})
+
+const dismiss = () => {
+    emit('update:modelValue', false)
+}
+
+// 点在面板空隙上不关闭菜单，也不要穿透到下层气泡
+const onPanelTap = () => {
+}
+
+const tapItem = (item: PopupMenuItem) => {
+    if (item.disabled) {
+        return
+    }
+    emit('update:modelValue', false)
+    emit('select', item)
+}
+</script>
+
+<style scoped>
+/* 组件吃不到全局 .icomoon（样式隔离 2.0 下组件默认 isolated），自己声明一份。
+ * 字体本身由 App.uvue 的 loadFontFace({ global: true }) 加载，全局可用。 */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.popup-menu-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+    /* 鸿蒙上完全透明的节点可能不参与命中测试，用极低的不透明度保证能收到 tap */
+    background-color: rgba(0, 0, 0, 0.01);
+}
+
+.popup-menu-panel {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 菜单卡片。深色浮层两端都是这个形态，刻意不跟随主题（同 main-action-menu，见 M0） */
+.menu-card {
+    width: 100%;
+    background-color: #4C4C4C;
+    border-radius: 8px;
+    overflow: hidden;
+    padding: 10px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.grid-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.grid-item-icon {
+    color: #FFFFFF;
+    margin-bottom: 6px;
+}
+
+.grid-item-label {
+    color: #FFFFFF;
+    text-align: center;
+    /* 4 列格子只有约 57px 宽，长词必须能截断，否则会把整行顶开 */
+    width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 三角。uni-app x 支持 border 拼三角（main-action-menu 已在用这个写法） */
+.arrow-row {
+    height: 10px;
+    display: flex;
+    flex-direction: row;
+}
+
+.arrow-up {
+    width: 0px;
+    height: 0px;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 10px solid #4C4C4C;
+}
+
+.arrow-down {
+    width: 0px;
+    height: 0px;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 10px solid #4C4C4C;
+}
+</style>

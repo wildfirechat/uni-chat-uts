@@ -1,0 +1,98 @@
+<template>
+    <!-- 二维码必须白底黑码才扫得出来，深色模式下也钉死白色，做成一块白板（同 flutter 的处理） -->
+    <view class="qr-code" :style="{ width: boxSize + 'px', height: boxSize + 'px', padding: quietPx + 'px' }">
+        <view v-for="(row, y) in rows" :key="y" class="qr-row" :style="{ height: moduleSize + 'px' }">
+            <view v-for="(run, i) in row" :key="i" class="qr-run"
+                :style="{ width: (run.length * moduleSize) + 'px', backgroundColor: run.dark ? '#000000' : '#FFFFFF' }"></view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 二维码渲染。编码在 [common/qrcode.uts](../../common/qrcode.uts)，这里只负责画。
+ *
+ * ## 为什么不用 canvas
+ *
+ * uni-app x 有 canvas，但要拿 `getContext('2d')` 就得走 element API，而本项目是 vapor 模式、
+ * 全项目没有用过 element API，没有可参照的先例；相比之下用 view 画是纯声明式的，三端行为一致。
+ *
+ * ## 为什么按行做游程合并
+ *
+ * 一个模块一个 view 的话，版本 4（33×33）就是 1089 个节点，鸿蒙上明显卡。
+ * 按行合并连续同色区间后，一行通常只剩十几段，整体降到两三百个节点（见 `rowRuns`）。
+ *
+ * 模块边长取整（`Math.floor`）后再反推整体宽度，避免小数宽度在三端出现 1px 缝。
+ */
+import { encodeQrCode, rowRuns, QrCode, QrRun, ECL_MEDIUM } from '@/common/qrcode.uts'
+
+defineOptions({
+    name: 'qr-code'
+})
+
+const props = withDefaults(defineProps<{
+    /** 要编码的内容 */
+    text?: string
+    /** 期望边长（px），实际会向下取整到模块边长的整数倍 */
+    size?: number
+    /** 静区（模块数）。标准要求 4 个模块，别调小 */
+    quiet?: number
+}>(), {
+    text: '',
+    size: 226,
+    quiet: 4
+})
+
+const qr = computed<QrCode | null>((): QrCode | null => {
+    if (props.text == '') {
+        return null
+    }
+    return encodeQrCode(props.text, ECL_MEDIUM)
+})
+
+/** 单个模块的边长，取整避免累计出小数缝 */
+const moduleSize = computed<number>((): number => {
+    const code = qr.value
+    if (code == null) {
+        return 0
+    }
+    const totalModules = code.size + props.quiet * 2
+    const s = Math.floor(props.size / totalModules)
+    return s < 1 ? 1 : s
+})
+
+const quietPx = computed<number>((): number => props.quiet * moduleSize.value)
+
+const boxSize = computed<number>((): number => {
+    const code = qr.value
+    if (code == null) {
+        return 0
+    }
+    return (code.size + props.quiet * 2) * moduleSize.value
+})
+
+const rows = computed<QrRun[][]>((): QrRun[][] => {
+    const code = qr.value
+    if (code == null) {
+        return [] as QrRun[][]
+    }
+    const result: QrRun[][] = []
+    for (let y = 0; y < code.size; y++) {
+        result.push(rowRuns(code, y))
+    }
+    return result
+})
+</script>
+
+<style scoped>
+.qr-code {
+    background-color: #FFFFFF;
+    display: flex;
+    flex-direction: column;
+}
+
+.qr-row {
+    display: flex;
+    flex-direction: row;
+}
+</style>

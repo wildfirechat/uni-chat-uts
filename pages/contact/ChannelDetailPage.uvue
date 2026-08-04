@@ -1,0 +1,161 @@
+<template>
+    <view class="channel-detail-page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('channel.details')" :showBack="true" />
+
+        <view v-if="channelInfo == null" class="state-container">
+            <text class="state-text" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ loading ? t('common.loading') : t('channel.not_exist') }}</text>
+        </view>
+
+        <scroll-view v-else class="page-scroll" direction="vertical">
+            <view class="header" :style="{ backgroundColor: c.surface }">
+                <image class="channel-portrait" :src="channelPortrait" :style="{ backgroundColor: c.inputBg }" />
+                <text class="channel-name single-line" :style="{ fontSize: fontPx(20), color: c.textPrimary }">{{ (channelInfo as ChannelInfo).name }}</text>
+            </view>
+
+            <section-divider />
+            <view :style="{ backgroundColor: c.surface }">
+                <option-item :title="t('channel.intro')" :desc="descText" :showRightArrow="false" />
+                <option-item :title="t('channel.owner')" :desc="ownerName" :showRightArrow="false"
+                    :showBottomDivider="false" />
+            </view>
+
+            <section-divider />
+            <view :style="{ backgroundColor: c.surface }">
+                <option-button-item v-if="isListened" :title="t('channel.enter_conversation')" tone="accent"
+                    @tap="enterConversation" />
+                <option-button-item :title="isListened ? t('channel.unsubscribe') : t('channel.subscribe')"
+                    :tone="isListened ? 'danger' : 'accent'" :showBottomDivider="false" @tap="toggleSubscription" />
+            </view>
+            <view class="bottom-gap"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 频道详情 / 订阅。对齐 `../flutter-chat/chat/lib/channel/channel_info_widget.dart`
+ * 的移动端形态（头像、名字、简介、拥有者、订阅/取消订阅、进入会话）。
+ *
+ * 入口有两个：扫频道二维码，以及频道列表点进来。
+ *
+ * flutter 那一版还有一行「清空消息」，但它的 onTap 是空的（`onTap: () {}`），
+ * 按 §M2「宁可不放入口」这里不放。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import store from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import ChannelInfo from "@/wfc/model/channelInfo.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import { go2ConversationPage } from "@/common/nav.uts";
+import { toast, toastError } from "@/common/prompt.uts";
+import { t } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "ChannelDetailPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const channelId = ref<string>('')
+const channelInfo = ref<ChannelInfo | null>(null)
+const isListened = ref<boolean>(false)
+const loading = ref<boolean>(true)
+
+const channelPortrait = computed<string>((): string => {
+    const info = channelInfo.value
+    if (info == null || info.portrait == '') {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    return info.portrait
+})
+
+const descText = computed<string>((): string => {
+    const info = channelInfo.value
+    if (info == null || info.desc == '') {
+        return t('channel.no_intro')
+    }
+    return info.desc
+})
+
+const ownerName = computed<string>((): string => {
+    const info = channelInfo.value
+    if (info == null || info.owner == '') {
+        return ''
+    }
+    return wfc.getUserDisplayName(info.owner)
+})
+
+onLoad((options: OnLoadOptions) => {
+    channelId.value = options['channelId'] ?? ''
+    if (channelId.value == '') {
+        loading.value = false
+        return
+    }
+    channelInfo.value = wfc.getChannelInfo(channelId.value, true)
+    isListened.value = wfc.isListenedChannel(channelId.value)
+    loading.value = false
+})
+
+const enterConversation = () => {
+    const conversation = new Conversation(ConversationType.Channel, channelId.value, 0)
+    store.setCurrentConversation(conversation)
+    go2ConversationPage()
+}
+
+const toggleSubscription = () => {
+    const next = !isListened.value
+    wfc.listenChannel(channelId.value, next, () => {
+        isListened.value = next
+        toast(next ? t('channel.subscribed') : t('channel.unsubscribed'))
+    }, (err: number) => {
+        toastError(err)
+    })
+}
+</script>
+
+<style scoped>
+.channel-detail-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.page-scroll {
+    flex: 1;
+}
+
+.header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+}
+
+.channel-portrait {
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+}
+
+.channel-name {
+    margin-top: 12px;
+    width: 100%;
+    text-align: center;
+}
+
+.state-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bottom-gap {
+    height: 16px;
+}
+</style>

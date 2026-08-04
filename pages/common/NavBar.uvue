@@ -6,7 +6,10 @@
                 <text v-if="showBack" class="back-icon" :style="{ color: c.iconPrimary }">‹</text>
             </view>
             <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: px(17, ROW_CAP) }">{{ title }}</text>
-            <view class="nav-bar-right">
+            <view class="nav-bar-right" :style="{ width: rightText != '' ? 'auto' : '70px' }">
+                <text v-if="rightText != ''" class="nav-bar-text-action"
+                    :style="{ color: rightTextDisabled ? c.textTertiary : c.accent, fontSize: px(16, ROW_CAP) }"
+                    @tap="onRightTextTap">{{ rightText }}</text>
                 <text v-if="rightIcon1 != ''" class="wxfont nav-bar-icon" :style="{ color: c.iconPrimary }"
                     @tap="onRight1Tap">{{ rightIcon1 }}</text>
                 <text v-if="rightIcon2 != ''" class="wxfont nav-bar-icon" :style="{ color: c.iconPrimary }"
@@ -37,14 +40,26 @@ const props = withDefaults(defineProps<{
     showBack?: boolean
     rightIcon1?: string
     rightIcon2?: string
+    /** 右上角文字操作（「完成」「发送」「确定(2)」这类），对齐 flutter `widget/app_bar_actions.dart` */
+    rightText?: string
+    /** 置灰且不响应点击。flutter 那边是 onPressed: null，这里保留节点只改色，避免按钮位置跳动 */
+    rightTextDisabled?: boolean
+    /**
+     * 为 true 时返回键**只**抛 backTap，不自己 navigateBack —— 页面内部有层级要先退
+     * （组织架构页在下级部门时先退一级）时用，对齐 flutter 的 PopScope。
+     */
+    interceptBack?: boolean
 }>(), {
     title: '',
     showBack: false,
     rightIcon1: '',
-    rightIcon2: ''
+    rightIcon2: '',
+    rightText: '',
+    rightTextDisabled: false,
+    interceptBack: false
 })
 
-const emit = defineEmits(['right1Tap', 'right2Tap'])
+const emit = defineEmits(['right1Tap', 'right2Tap', 'rightTextTap', 'backTap'])
 
 const statusBarHeight = ref<number>(0)
 
@@ -52,13 +67,18 @@ const sysInfo = uni.getSystemInfoSync()
 statusBarHeight.value = sysInfo.statusBarHeight
 
 const onBack = () => {
-    if (props.showBack) {
-        uni.navigateBack({
-            fail: (err) => {
-                console.log('nav back err', err)
-            }
-        } as NavigateBackOptions)
+    if (!props.showBack) {
+        return
     }
+    emit('backTap')
+    if (props.interceptBack) {
+        return
+    }
+    uni.navigateBack({
+        fail: (err) => {
+            console.log('nav back err', err)
+        }
+    } as NavigateBackOptions)
 }
 
 const onRight1Tap = () => {
@@ -67,6 +87,13 @@ const onRight1Tap = () => {
 
 const onRight2Tap = () => {
     emit('right2Tap')
+}
+
+const onRightTextTap = () => {
+    if (props.rightTextDisabled) {
+        return
+    }
+    emit('rightTextTap')
 }
 </script>
 

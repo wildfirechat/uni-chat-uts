@@ -1,5 +1,6 @@
 <template>
-    <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" class="checkable-user-row-item">
+    <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" :id="item.anchorId"
+        class="checkable-user-row-item">
         <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft, backgroundColor: c.sectionGap }">
             <text class="label-text" :class="fs13" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
         </view>
@@ -22,8 +23,11 @@ import UserInfo from "../../wfc/model/userInfo.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
+import { anchorIdForCategory } from "@/common/pinyin.uts";
 class FlatUserListItem {
     category = ''
+    /** 分类标签行的锚点 id，供外层 list-view 的 scroll-into-view 用；用户行为空串 */
+    anchorId = ''
     isLabel = false
     user: UserInfo | null = null
 }
@@ -46,12 +50,24 @@ const props = withDefaults(defineProps<{
     uncheckableUsers?: UserInfo[]
     showCategoryLabel?: boolean
     paddingLeft?: string
+    /**
+     * 非空时给分类标签行加上 `anchorPrefix + 归一化后的分类名` 作为 id，
+     * 外层用 list-view 的 scroll-into-view 跳转（右侧字母索引条要用）。
+     * 归一化规则必须与调用方一致，见 [anchorIdForCategory]。
+     */
+    anchorPrefix?: string
+    /** 最多可勾选人数；超出时不勾上并回调 maxExceeded，由页面提示 */
+    maxCheckedCount?: number
 }>(), {
     initialCheckedUsers: (): UserInfo[] => [] as UserInfo[],
     uncheckableUsers: (): UserInfo[] => [] as UserInfo[],
     showCategoryLabel: true,
-    paddingLeft: '5px'
+    paddingLeft: '5px',
+    anchorPrefix: '',
+    maxCheckedCount: 1024
 })
+
+const emit = defineEmits(['maxExceeded'])
 
 const displayNameOf = (user: UserInfo): string => {
     if (user._displayName != '') {
@@ -73,6 +89,11 @@ const clickUserItem = (user: UserInfo) => {
     if (isUserUncheckable(user)) {
         return;
     }
+    // 只有「从未选到选中」这一个方向要卡上限，取消勾选任何时候都放行
+    if (!isUserChecked(user) && pickState.users.length >= props.maxCheckedCount) {
+        emit('maxExceeded')
+        return
+    }
     store.pickOrUnpickUser(user)
 }
 
@@ -86,6 +107,8 @@ const isUserChecked = (user: UserInfo): boolean => {
 
 const INITIAL_RENDER_USER_COUNT = 180
 const RENDER_BATCH_USER_COUNT = 220
+// 索引条跳到某分类时，连带把那一段往后多渲染一批，免得跳过去只有一个标签行
+const QUICK_INDEX_PRELOAD_COUNT = 120
 
 const renderUserCount = ref<number>(0)
 
@@ -106,6 +129,9 @@ const visibleFlatItems = computed<FlatUserListItem[]>((): FlatUserListItem[] => 
             const label = new FlatUserListItem()
             label.category = category
             label.isLabel = true
+            if (props.anchorPrefix != '') {
+                label.anchorId = anchorIdForCategory(props.anchorPrefix, category)
+            }
             items.push(label)
         }
 
@@ -139,6 +165,33 @@ watch(() => props.users, (_newValue, _oldValue) => {
 
 watch(() => props.showCategoryLabel, (_newValue, _oldValue) => {
     resetRenderWindow()
+})
+
+/**
+ * 保证 [category] 这一段已经渲染出来 —— 分批渲染下，还没进渲染窗口的分类
+ * 根本没有锚点节点，scroll-into-view 会静默失败。
+ * 索引条跳转前先调它，同 ContactListPage 的 QUICK_INDEX_PRELOAD_COUNT 处理。
+ */
+const ensureCategoryRendered = (category: string) => {
+    let firstIndex = -1
+    for (let i = 0; i < props.users.length; i++) {
+        if (props.users[i]._category == category) {
+            firstIndex = i
+            break
+        }
+    }
+    if (firstIndex < 0) {
+        return
+    }
+    const need = firstIndex + QUICK_INDEX_PRELOAD_COUNT
+    const target = need < props.users.length ? need : props.users.length
+    if (target > renderUserCount.value) {
+        renderUserCount.value = target
+    }
+}
+
+defineExpose({
+    ensureCategoryRendered
 })
 
 onMounted(() => {

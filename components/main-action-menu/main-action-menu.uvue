@@ -37,6 +37,8 @@ import Conversation from "../../wfc/model/conversation.uts";
 import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import { fontPx } from "../../common/layoutScale.uts";
+import { t, t1 } from "../../i18n/i18n.uts";
+import { toast } from "../../common/prompt.uts";
 
 defineOptions({
     name: "MainActionMenu",
@@ -64,6 +66,7 @@ const go2CreateGroup = () => {
         return u.uid != Config.FILE_HELPER_ID
     });
     const options = new PickUsersOptions()
+    options.title = t('pick.start_chat')
     options.users = users
     options.successCB = (pickedUsers: UserInfo[]) => {
         store.createConversation(pickedUsers, (conversation: Conversation) => {
@@ -125,12 +128,21 @@ const hide = () => {
     }
 }
 
+/**
+ * 扫码结果分支。对齐 flutter `home.dart` 的 `_handleQrCode`：
+ * 用户 / 群 / PC 扫码登录 / 频道 / 会议，各走各的页面，识别不了的原样提示。
+ *
+ * 原来这里只处理用户二维码，其余一律「不支持该二维码」。
+ */
 const onScanQrCode = (qrcode: string) => {
-    const prefix = qrcode.substring(0, qrcode.lastIndexOf('/') + 1)
-    const value = qrcode.substring(qrcode.lastIndexOf('/') + 1)
-    switch (prefix) {
+    const parsed = WfcScheme.parse(qrcode)
+    if (parsed == null) {
+        toast(t1('qrcode.invalid', qrcode))
+        return
+    }
+    switch (parsed.prefix) {
         case WfcScheme.QR_CODE_PREFIX_USER:
-            wfc.getUserInfoEx(value, false, (userInfo: UserInfo) => {
+            wfc.getUserInfoEx(parsed.value, false, (userInfo: UserInfo) => {
                 store.setCurrentFriend(userInfo);
                 uni.navigateTo({
                     url: '/pages/contact/UserDetailPage',
@@ -142,11 +154,39 @@ const onScanQrCode = (qrcode: string) => {
                 console.log('getUserInfoEx error', err)
             })
             break;
+        case WfcScheme.QR_CODE_PREFIX_GROUP: {
+            // from 是邀请人，加群时要带给服务端
+            const from = WfcScheme.queryParam(qrcode, 'from')
+            uni.navigateTo({
+                url: '/pages/conversation/GroupConversationInfoPage?groupId=' + parsed.value + '&from=' + from,
+                fail: (err) => {
+                    console.log('nav to GroupConversationInfoPage err', err);
+                }
+            } as NavigateToOptions)
+            break;
+        }
+        case WfcScheme.QR_CODE_PREFIX_PC_SESSION:
+            uni.navigateTo({
+                url: '/pages/me/PcLoginConfirmPage?token=' + parsed.value,
+                fail: (err) => {
+                    console.log('nav to PcLoginConfirmPage err', err);
+                }
+            } as NavigateToOptions)
+            break;
+        case WfcScheme.QR_CODE_PREFIX_CHANNEL:
+            uni.navigateTo({
+                url: '/pages/contact/ChannelDetailPage?channelId=' + parsed.value,
+                fail: (err) => {
+                    console.log('nav to ChannelDetailPage err', err);
+                }
+            } as NavigateToOptions)
+            break;
+        case WfcScheme.QR_CODE_PREFIX_CONFERENCE:
+            // 会议属于 M7，SDK 侧的会议能力还没接，先如实提示而不是装作能进
+            toast(t('qrcode.conference_not_support'))
+            break;
         default:
-            uni.showToast({
-                title: '不支持该二维码: ' + qrcode,
-                icon: 'none',
-            } as ShowToastOptions);
+            toast(t1('qrcode.invalid', qrcode))
             break;
     }
 }

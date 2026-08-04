@@ -18,6 +18,11 @@ export default {
         "channel": "频道"
     },
     "friend_request": {
+        "add_friend": "添加朋友",
+        "invite_reason_hint": "你需要发送验证申请，等对方通过",
+        "input_reason": "填写验证信息",
+        "default_reason": "你好，我是{0}",
+        "request_sent": "好友请求已发送",
         "request": "好友请求",
         "send_request_tip": "向{0}发送好球请求",
         "accepted": "已添加",
@@ -27,6 +32,13 @@ export default {
         "intro": "你好"
     },
     "group": {
+        "info": "群信息",
+        "join": "加入群聊",
+        "join_success": "已加入群聊",
+        "qr_code": "群二维码",
+        "scan_to_join": "扫描二维码，加入群聊",
+        "add_members": "添加群成员",
+        "remove_members": "移除群成员",
         "name": "群名称{0}",
         "chat": "进入群聊",
         "fav": "保存到通讯录",
@@ -82,7 +94,16 @@ export default {
         "unallow_success": "已移出白名单"
     },
     "channel": {
+        "details": "频道详情",
+        "not_exist": "频道不存在",
+        "intro": "频道介绍",
+        "no_intro": "暂无介绍",
+        "owner": "拥有者",
+        "subscribe": "订阅频道",
         "unsubscribe": "取消订阅",
+        "subscribed": "已订阅",
+        "unsubscribed": "已取消订阅",
+        "enter_conversation": "进入会话",
         "unsubscribe_confirm": "取消订阅后将不再接收该频道消息",
         "unsubscribe_success": "已取消订阅"
     },
@@ -155,12 +176,18 @@ export default {
         "fav_fail": "收藏失败：{0}"
     },
     "voip": {
+        "not_supported": "当前版本暂不支持音视频通话",
+        "in_progress": "音视频通话正在进行中...",
+        "start_fail": "发起通话失败",
         "desc": "音视频通话",
         "not_answer": "对方未接听",
         "ongoing": "通话中",
         "duration": "通话时长"
     },
     "pick": {
+        "start_chat": "发起群聊",
+        "max_user_limit": "最多只能选择 {0} 人",
+        "from_organization": "从组织架构选择",
         "pick_contact": "选择联系人",
         "picked_contact": "已选择联系人"
     },
@@ -341,10 +368,20 @@ export default {
         "wfc_id": "野火号",
         "done": "完成",
         "download": "下载",
+        "operate_success": "操作成功",
         "operate_fail": "操作失败：{0}",
         "unsupported_type": "不支持的类型"
     },
     "pc": {
+        "login_confirm": "登录确认",
+        "login_confirm_desc": "是否确认在电脑端登录？",
+        "login": "登录",
+        "cancel_login": "取消登录",
+        "login_success": "登录成功",
+        "login_fail": "登录失败",
+        "status_error": "二维码状态异常: {0}",
+        "invalid_token": "无效的登录二维码",
+        "network_error": "网络错误",
         "online_devices": "已登录设备",
         "no_pc_online": "当前没有其他设备登录",
         "device_count": "{0} 个设备已登录",
@@ -368,6 +405,41 @@ export default {
         "fail": "语音转文字失败",
         "success": "转文字成功",
         "audio_not_available": "音频文件不可用"
+    },
+    "organization": {
+        "title": "组织架构",
+        "search_member": "搜索部门成员",
+        "sub_departments": "下级部门",
+        "members": "成员",
+        "no_data": "没有组织架构数据",
+        "no_sub_or_member": "该部门下没有子部门和成员",
+        "no_matched_member": "没有匹配的成员",
+        "load_fail": "组织架构加载失败",
+        "department_load_fail": "部门加载失败",
+        "service_unavailable": "组织架构服务不可用",
+        "reload": "重新加载"
+    },
+    "user": {
+        "user_info": "用户信息",
+        "wildfire_id": "野火号：{0}",
+        "modify_nickname": "修改昵称",
+        "input_nickname": "请输入昵称",
+        "set_alias": "设置备注",
+        "input_alias": "请输入备注名",
+        "send_msg": "发消息",
+        "audio_video_call": "音视频通话",
+        "audio_call": "语音通话",
+        "video_call": "视频通话",
+        "add_to_blacklist": "加入黑名单",
+        "remove_from_blacklist": "移出黑名单",
+        "set_starred": "设为星标朋友",
+        "cancel_starred": "取消星标朋友",
+        "delete_friend": "删除好友",
+        "delete_friend_confirm": "确定删除该好友吗？"
+    },
+    "qrcode": {
+        "invalid": "无效的二维码: {0}",
+        "conference_not_support": "当前版本暂不支持会议"
     },
     "misc": {
         "beijing": "北京",

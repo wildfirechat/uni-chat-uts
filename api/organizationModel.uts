@@ -1,0 +1,159 @@
+/**
+ * 组织架构服务的数据模型。对齐 `../flutter-chat/chat/lib/organization/model/` 下的
+ * `organization.dart` / `employee.dart` / `organization_ex.dart` / `organization_relationship.dart`，
+ * 只保留移动端页面真正用到的字段（tel / office / jobNumber 这些 flutter 也没渲染）。
+ *
+ * 为什么要建模：原来 OrganizationTreePage 直接在模板里 `org.getString('name') ?? ''`，
+ * 三个调用方（组织架构页、用户详情的「所在组织」、选人页的组织入口）各写一遍取值和兜底，
+ * 字段名拼错了也不报错。集中在这里解析一次。
+ */
+import Config from "../config.uts";
+
+export class Organization {
+    id = 0
+    parentId = 0
+    name = ''
+    portrait = ''
+    /** 服务端可能不返回，缺省按 0 展示 */
+    memberCount = 0
+}
+
+export class Employee {
+    employeeId = ''
+    organizationId = 0
+    name = ''
+    /** 职位，flutter 用作列表行的副标题；空则不显示副标题 */
+    title = ''
+    portrait = ''
+    mobile = ''
+    email = ''
+    gender = 0
+}
+
+/** `/api/organization/query_ex` 的返回：本部门 + 下级部门 + 直属成员 */
+export class OrganizationEx {
+    organization: Organization | null = null
+    subOrganizations: Organization[] = []
+    employees: Employee[] = []
+}
+
+/** 员工与部门的从属关系。`bottom` 为 true 表示这是员工所在的末级部门 */
+export class OrganizationRelationship {
+    employeeId = ''
+    organizationId = 0
+    bottom = false
+}
+
+/** `/api/employee/query_ex` 的返回：员工 + 其所有从属关系 */
+export class EmployeeEx {
+    employee: Employee | null = null
+    relationships: OrganizationRelationship[] = []
+}
+
+/**
+ * 把 `_post` resolve 出来的 any 收成 UTSJSONObject 数组。
+ * 服务端有的接口返回数组、有的返回对象，调用方先用这个统一。
+ */
+export function toJsonObjectList(value: any | null): UTSJSONObject[] {
+    const list: UTSJSONObject[] = []
+    if (value != null && value instanceof Array) {
+        const arr = value as Array<any>
+        for (let i = 0; i < arr.length; i++) {
+            const o = arr[i]
+            if (o instanceof UTSJSONObject) {
+                list.push(o as UTSJSONObject)
+            }
+        }
+    }
+    return list
+}
+
+export function toJsonObject(value: any | null): UTSJSONObject | null {
+    if (value != null && value instanceof UTSJSONObject) {
+        return value as UTSJSONObject
+    }
+    return null
+}
+
+export function organizationFromJson(o: UTSJSONObject): Organization {
+    const org = new Organization()
+    org.id = o.getNumber('id') ?? 0
+    org.parentId = o.getNumber('parentId') ?? 0
+    org.name = o.getString('name') ?? ''
+    const portrait = o.getString('portrait')
+    org.portrait = portrait != null && portrait != '' ? portrait : Config.DEFAULT_DEPARTMENT_PORTRAIT_URL
+    org.memberCount = o.getNumber('memberCount') ?? 0
+    return org
+}
+
+export function employeeFromJson(o: UTSJSONObject): Employee {
+    const e = new Employee()
+    e.employeeId = o.getString('employeeId') ?? ''
+    e.organizationId = o.getNumber('organizationId') ?? 0
+    e.name = o.getString('name') ?? ''
+    e.title = o.getString('title') ?? ''
+    const portrait = o.getString('portrait')
+    e.portrait = portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+    e.mobile = o.getString('mobile') ?? ''
+    e.email = o.getString('email') ?? ''
+    e.gender = o.getNumber('gender') ?? 0
+    return e
+}
+
+export function relationshipFromJson(o: UTSJSONObject): OrganizationRelationship {
+    const r = new OrganizationRelationship()
+    r.employeeId = o.getString('employeeId') ?? ''
+    r.organizationId = o.getNumber('organizationId') ?? 0
+    r.bottom = o.getBoolean('bottom') ?? false
+    return r
+}
+
+export function organizationListFromJson(value: any | null): Organization[] {
+    const objs = toJsonObjectList(value)
+    const list: Organization[] = []
+    for (let i = 0; i < objs.length; i++) {
+        list.push(organizationFromJson(objs[i]))
+    }
+    return list
+}
+
+export function employeeListFromJson(value: any | null): Employee[] {
+    const objs = toJsonObjectList(value)
+    const list: Employee[] = []
+    for (let i = 0; i < objs.length; i++) {
+        list.push(employeeFromJson(objs[i]))
+    }
+    return list
+}
+
+export function organizationExFromJson(value: any | null): OrganizationEx | null {
+    const o = toJsonObject(value)
+    if (o == null) {
+        return null
+    }
+    const ex = new OrganizationEx()
+    const self = toJsonObject(o.get('organization'))
+    if (self != null) {
+        ex.organization = organizationFromJson(self)
+    }
+    ex.subOrganizations = organizationListFromJson(o.get('subOrganizations'))
+    ex.employees = employeeListFromJson(o.get('employees'))
+    return ex
+}
+
+export function employeeExFromJson(value: any | null): EmployeeEx | null {
+    const o = toJsonObject(value)
+    if (o == null) {
+        return null
+    }
+    const ex = new EmployeeEx()
+    const self = toJsonObject(o.get('employee'))
+    if (self != null) {
+        ex.employee = employeeFromJson(self)
+    }
+    const rels = toJsonObjectList(o.get('relationships'))
+    for (let i = 0; i < rels.length; i++) {
+        ex.relationships.push(relationshipFromJson(rels[i]))
+    }
+    return ex
+}

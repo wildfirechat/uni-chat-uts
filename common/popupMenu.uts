@@ -1,0 +1,25 @@
+/**
+ * 弹出菜单项，两个弹出菜单组件共用：
+ * - [components/popup-menu](../components/popup-menu/popup-menu.uvue) —— 深色图标网格（消息长按）
+ * - [components/chunLei-popups](../components/chunLei-popups/chunLei-popups.uvue) —— 纯文字列表（会话长按）
+ *
+ * 原 JS 版本菜单项是任意对象（可携带 conversationInfo 等上下文）；
+ * UTS 版本改为固定结构，上下文数据由调用方自行保存（如 store 的 contextMenuConversationInfo）。
+ *
+ * [icon] 是 icomoon（Ionicons）字形，形如 ''；纯文字菜单不用填。
+ * 可选码位见 [static/iconfonts/icomoon/style.css](../static/iconfonts/icomoon/style.css)
+ * —— **加图标前先在那份表里确认码位存在**，字体只收了 f100–f4f7，写不存在的码位会渲染成
+ * 豆腐块且不报错。
+ */
+export class PopupMenuItem {
+    title = ''
+    tag = ''
+    icon = ''
+    disabled = false
+
+    constructor(title: string, tag: string, icon: string = '') {
+        this.title = title
+        this.tag = tag
+        this.icon = icon
+    }
+}

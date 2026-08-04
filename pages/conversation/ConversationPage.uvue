@@ -42,8 +42,8 @@
                     <text class="back-to-latest-text" :style="{ fontSize: fontPx(12), color: c.accent }">回到最新消息</text>
                 </view>
             </view>
-            <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
-                :x="contextMenuX" :y="contextMenuY" direction="column" theme="dark" :triangle="false" :dynamic="true" />
+            <popup-menu v-model="showContextMenu" :items="contextMenuItems" @select="onContextMenuItemSelect"
+                :targetX="contextMenuX" :targetY="contextMenuY" />
             <MessageInputView v-if="!enableMessageMultiSelection" :conversationInfo="conversationInfo"
                 class="message-input-container" ref="messageInputView" />
             <MultiSelectActionView v-if="enableMessageMultiSelection" />
@@ -76,7 +76,7 @@ import wfc from "../../wfc/client/wfc.uts";
 import Config from "../../config.uts";
 import { getItem, setItem } from "../util/storageHelper.uts";
 import { copyText } from "@/pages/util/clipboard.uts";
-import { PopupMenuItem } from "@/components/chunLei-popups/popupMenu.uts";
+import { PopupMenuItem } from "@/common/popupMenu.uts";
 import { navigateToPage } from "@/common/nav.uts";
 import { forward } from "@/common/forward.uts";
 import { isSavableMessage, isSaveToAlbumMessage, saveMessageMedia } from "@/common/mediaSaver.uts";
@@ -584,32 +584,36 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     }
     contextMenuMessage.value = message;
 
+    // 顺序对齐 flutter `conversation_controller.dart` 的 buildMessageMenuItems：
+    // 删除 → 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报。
+    // uni 侧多出的两项（远程删除、保存）紧跟各自的同类项，不打乱 flutter 的相对次序。
+    // 图标是 icomoon（Ionicons）码位，加新项前先在 static/iconfonts/icomoon/style.css 里确认存在。
     const items: PopupMenuItem[] = [];
+    items.push(new PopupMenuItem('本地删除', 'delete', '\uf4c4'))
+    items.push(new PopupMenuItem('远程删除', 'deleteRemote', '\uf4c5'))
     if (isCopyable(message)) {
-        items.push(new PopupMenuItem('复制', 'copy'))
+        items.push(new PopupMenuItem('复制', 'copy', '\uf41b'))
     }
     if (isDownloadAble(message)) {
-        items.push(new PopupMenuItem(isSaveToAlbumMessage(message) ? '保存到相册' : '保存到本地', 'save'))
-    }
-    items.push(new PopupMenuItem('本地删除', 'delete'))
-    items.push(new PopupMenuItem('远程删除', 'deleteRemote'))
-    if (isForwardable(message)) {
-        items.push(new PopupMenuItem('转发', 'forward'))
-    }
-    if (isRecallable(message)) {
-        items.push(new PopupMenuItem('撤回', 'recall'))
-    }
-    if (isQuotable(message)) {
-        items.push(new PopupMenuItem('引用', 'quote'))
+        items.push(new PopupMenuItem(isSaveToAlbumMessage(message) ? '保存到相册' : '保存到本地', 'save', '\uf41f'))
     }
     if (isSpeechToTextable(message)) {
-        items.push(new PopupMenuItem(t('asr.speech_to_text'), 'speechToText'))
+        items.push(new PopupMenuItem(t('asr.speech_to_text'), 'speechToText', '\uf12e'))
+    }
+    if (isForwardable(message)) {
+        items.push(new PopupMenuItem('转发', 'forward', '\uf13a'))
+    }
+    if (isRecallable(message)) {
+        items.push(new PopupMenuItem('撤回', 'recall', '\uf4c6'))
+    }
+    items.push(new PopupMenuItem('多选', 'multiSelection', '\uf453'))
+    if (isQuotable(message)) {
+        items.push(new PopupMenuItem('引用', 'quote', '\uf347'))
     }
     if (isFavoriteAble(message)) {
-        items.push(new PopupMenuItem(t('common.fav'), 'favorite'))
+        items.push(new PopupMenuItem(t('common.fav'), 'favorite', '\uf4b2'))
     }
-    items.push(new PopupMenuItem('多选', 'multiSelection'))
-    items.push(new PopupMenuItem(t('setting.report'), 'report'))
+    items.push(new PopupMenuItem(t('setting.report'), 'report', '\uf42c'))
     contextMenuItems.value = items;
     showContextMenu.value = true;
 }

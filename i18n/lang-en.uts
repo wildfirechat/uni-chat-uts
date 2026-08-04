@@ -18,6 +18,11 @@ export default {
         "channel": "Channel"
     },
     "friend_request": {
+        "add_friend": "Add Friend",
+        "invite_reason_hint": "You need to send a request and wait for approval",
+        "input_reason": "Enter a message",
+        "default_reason": "Hi, I am {0}",
+        "request_sent": "Friend request sent",
         "request": "Friend Request",
         "send_request_tip": "Send friend request to {0}",
         "accepted": "Accepted",
@@ -27,6 +32,13 @@ export default {
         "intro": "Hello"
     },
     "group": {
+        "info": "Group Info",
+        "join": "Join Group",
+        "join_success": "Joined the group",
+        "qr_code": "Group QR Code",
+        "scan_to_join": "Scan the QR code to join the group",
+        "add_members": "Add Group Members",
+        "remove_members": "Remove Group Members",
         "name": "Group name {0}",
         "chat": "Start group chat",
         "fav": "Save to contact list",
@@ -82,7 +94,16 @@ export default {
         "unallow_success": "Removed from the allow list"
     },
     "channel": {
+        "details": "Channel Details",
+        "not_exist": "Channel does not exist",
+        "intro": "Description",
+        "no_intro": "No description",
+        "owner": "Owner",
+        "subscribe": "Subscribe",
         "unsubscribe": "Unsubscribe",
+        "subscribed": "Subscribed",
+        "unsubscribed": "Unsubscribed",
+        "enter_conversation": "Open Conversation",
         "unsubscribe_confirm": "You will no longer receive messages from this channel",
         "unsubscribe_success": "Unsubscribed"
     },
@@ -155,12 +176,18 @@ export default {
         "fav_fail": "Failed to favorite: {0}"
     },
     "voip": {
+        "not_supported": "Audio/video call is not supported in this version",
+        "in_progress": "A call is already in progress...",
+        "start_fail": "Failed to start the call",
         "desc": "Audio and Video Call",
         "not_answer": "The other party did not answer",
         "ongoing": "Calling",
         "duration": "Call duration"
     },
     "pick": {
+        "start_chat": "Start Group Chat",
+        "max_user_limit": "You can select at most {0} people",
+        "from_organization": "Select from Organization",
         "pick_contact": "Select Contact",
         "picked_contact": "Selected contact"
     },
@@ -341,10 +368,20 @@ export default {
         "wfc_id": "ID",
         "done": "Done",
         "download": "Download",
+        "operate_success": "Done",
         "operate_fail": "Operation failed: {0}",
         "unsupported_type": "Unsupported type"
     },
     "pc": {
+        "login_confirm": "Login Confirmation",
+        "login_confirm_desc": "Confirm login on the desktop client?",
+        "login": "Log In",
+        "cancel_login": "Cancel Login",
+        "login_success": "Logged in",
+        "login_fail": "Login failed",
+        "status_error": "Invalid QR code status: {0}",
+        "invalid_token": "Invalid login QR code",
+        "network_error": "Network error",
         "online_devices": "PC Online Devices",
         "no_pc_online": "No other devices logged in",
         "device_count": "{0} devices logged in",
@@ -368,6 +405,41 @@ export default {
         "fail": "Speech to text failed",
         "success": "Speech to text success",
         "audio_not_available": "Audio file not available"
+    },
+    "organization": {
+        "title": "Organization",
+        "search_member": "Search members",
+        "sub_departments": "Sub-departments",
+        "members": "Members",
+        "no_data": "No organization data",
+        "no_sub_or_member": "This department has no sub-departments or members",
+        "no_matched_member": "No matching members",
+        "load_fail": "Failed to load organization",
+        "department_load_fail": "Failed to load department",
+        "service_unavailable": "Organization service unavailable",
+        "reload": "Reload"
+    },
+    "user": {
+        "user_info": "User Info",
+        "wildfire_id": "Wildfire ID: {0}",
+        "modify_nickname": "Change Nickname",
+        "input_nickname": "Enter nickname",
+        "set_alias": "Set Remark",
+        "input_alias": "Enter remark",
+        "send_msg": "Send Message",
+        "audio_video_call": "Audio/Video Call",
+        "audio_call": "Voice Call",
+        "video_call": "Video Call",
+        "add_to_blacklist": "Add to Blacklist",
+        "remove_from_blacklist": "Remove from Blacklist",
+        "set_starred": "Set as Starred Friend",
+        "cancel_starred": "Unset Starred Friend",
+        "delete_friend": "Delete Friend",
+        "delete_friend_confirm": "Delete this friend?"
+    },
+    "qrcode": {
+        "invalid": "Invalid QR code: {0}",
+        "conference_not_support": "Conference is not supported in this version"
     },
     "misc": {
         "beijing": "Beijing",

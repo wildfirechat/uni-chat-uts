@@ -1,0 +1,119 @@
+<template>
+    <view class="group-qrcode-page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('group.qr_code')" :showBack="true" />
+        <view class="content">
+            <view class="card">
+                <image class="group-portrait" :src="groupPortrait" :style="{ backgroundColor: c.inputBg }" />
+                <text class="group-name single-line" :style="{ fontSize: fontPx(20), color: c.textPrimary }">{{ groupName }}</text>
+            </view>
+            <view class="qr-wrapper">
+                <qr-code :text="qrText" :size="250" />
+            </view>
+            <text class="hint" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('group.scan_to_join') }}</text>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 群二维码。对齐 `../flutter-chat/chat/lib/conversation/group_qrcode_screen.dart`。
+ *
+ * 这是 M2 欠下的一项 —— 当时项目里没有二维码生成能力，所以群信息页刻意没放这一行
+ * （宁可不放入口，也不放一个点了弹「暂未实现」的行）。M4 补上编码器后一起补上。
+ *
+ * 二维码内容是 `wildfirechat://group/{groupId}?from={当前用户}`，
+ * `from` 是邀请人，被扫的一方据此知道是谁拉的。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import WfcScheme from "@/wfcScheme.uts";
+import GroupInfo from "@/wfc/model/groupInfo.uts";
+import { t } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "GroupQrCodePage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const groupInfo = ref<GroupInfo | null>(null)
+
+const groupName = computed<string>((): string => {
+    const info = groupInfo.value
+    return info == null ? '' : info.name
+})
+
+const groupPortrait = computed<string>((): string => {
+    const info = groupInfo.value
+    if (info == null || info.portrait == '') {
+        return Config.DEFAULT_GROUP_PORTRAIT_URL
+    }
+    return info.portrait
+})
+
+const qrText = computed<string>((): string => {
+    if (groupId.value == '') {
+        return ''
+    }
+    return WfcScheme.buildGroupLink(groupId.value, wfc.getUserId())
+})
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    if (groupId.value != '') {
+        groupInfo.value = wfc.getGroupInfo(groupId.value, false)
+    }
+})
+</script>
+
+<style scoped>
+.group-qrcode-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+}
+
+.card {
+    width: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.group-portrait {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+}
+
+.group-name {
+    margin-top: 12px;
+    width: 100%;
+    text-align: center;
+    font-weight: bold;
+}
+
+.qr-wrapper {
+    margin-top: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: #FFFFFF;
+}
+
+.hint {
+    margin-top: 24px;
+}
+</style>

@@ -1,0 +1,89 @@
+<template>
+    <view class="invite-friend-page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('friend_request.add_friend')" :showBack="true" :rightText="t('common.send')"
+            :rightTextDisabled="reason.trim() == ''" @rightTextTap="sendInvite" />
+        <view class="hint-container">
+            <text class="hint" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('friend_request.invite_reason_hint') }}</text>
+        </view>
+        <view class="input-container" :style="{ backgroundColor: c.surface, borderColor: c.hairlineSoft }">
+            <input class="reason-input" type="text" v-model="reason" :placeholder="t('friend_request.input_reason')"
+                :style="{ fontSize: fontPx(16), color: c.textPrimary }" :focus="true" />
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 加好友时填写验证信息。对齐 `../flutter-chat/chat/lib/contact/invite_friend.dart`。
+ *
+ * 改版前用户详情页的「添加好友」是直接用「你好，我是xxx」当理由发出去的，
+ * 没有让用户填的机会 —— flutter 是先进这一页填理由再发。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import wfc from "@/wfc/client/wfc.uts";
+import { toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "InviteFriendPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const userId = ref<string>('')
+const reason = ref<string>('')
+
+onLoad((options: OnLoadOptions) => {
+    userId.value = options['userId'] ?? ''
+    // 预填一句默认理由，用户可以直接发也可以改（原来那版是写死这句直接发）
+    const me = wfc.getUserInfo(wfc.getUserId(), false)
+    reason.value = t1('friend_request.default_reason', me.displayName)
+})
+
+const sendInvite = () => {
+    const text = reason.value.trim()
+    if (text == '' || userId.value == '') {
+        return
+    }
+    wfc.sendFriendRequest(userId.value, text, '', () => {
+        toast(t('friend_request.request_sent'))
+        setTimeout(() => {
+            uni.navigateBack({} as NavigateBackOptions)
+        }, 800)
+    }, (err: number) => {
+        toast(t1('common.operate_fail', '' + err))
+    })
+}
+</script>
+
+<style scoped>
+.invite-friend-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.hint-container {
+    padding: 16px 16px 8px 16px;
+}
+
+.input-container {
+    margin: 0 16px;
+    padding: 0 12px;
+    height: 44px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.reason-input {
+    flex: 1;
+    height: 40px;
+}
+</style>

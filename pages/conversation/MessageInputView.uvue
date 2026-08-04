@@ -87,9 +87,13 @@ import { pickUser, PickUserOptions, pickUsers, PickUsersOptions } from "../../co
 import avEngineKit from "../../wfc/av/engine/avEngineKit.uts";
 import CallState from "../../wfc/av/engine/callState.uts";
 import checkVoipPermissions from "../../wfc/av/voipUtil.uts";
+import { startSingleCall } from "../../common/avcall.uts";
 import pttClient from "../../wfc/ptt/pttClient.uts";
 import { navigateToPage } from "../../common/nav.uts";
 import { toLocalFilePath } from "../../common/filePath.uts";
+
+import { toast } from "../../common/prompt.uts";
+import { t } from "../../i18n/i18n.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, iconPx } from "@/common/layoutScale.uts";
@@ -365,11 +369,13 @@ const onClickExt = (ext: ExtItem) => {
 }
 
 const voip = (audioOnly: boolean) => {
+    // 单聊那条链路（开关/权限/占线/跳页）与用户详情页共用，见 common/avcall.uts
+    if (props.conversationInfo.conversation.type == ConversationType.Single) {
+        startSingleCall(props.conversationInfo.conversation.target, audioOnly)
+        return
+    }
     if (!Config.ENABLE_VOIP) {
-        uni.showToast({
-            title: '当前版本暂不支持音视频通话',
-            icon: 'none',
-        } as ShowToastOptions)
+        toast(t('voip.not_supported'))
         return
     }
     checkVoipPermissions(audioOnly).then((granted: boolean): void => {
@@ -378,23 +384,10 @@ const voip = (audioOnly: boolean) => {
         }
         const curSession = avEngineKit.currentCallSession()
         if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
-            uni.showToast({
-                title: '音视频通话正在进行中...',
-                icon: 'none',
-            } as ShowToastOptions)
+            toast(t('voip.in_progress'))
             return
         }
-        if (props.conversationInfo.conversation.type == ConversationType.Single) {
-            const callSession = avEngineKit.startSingleCall(props.conversationInfo.conversation.target, audioOnly)
-            if (callSession != null) {
-                navigateToPage('/pages/voip/Single', callSession)
-            } else {
-                uni.showToast({
-                    title: '发起通话失败',
-                    icon: 'none',
-                } as ShowToastOptions)
-            }
-        } else if (props.conversationInfo.conversation.type == ConversationType.Group) {
+        if (props.conversationInfo.conversation.type == ConversationType.Group) {
             showPickGroupMemberToVoipModal(audioOnly)
         }
     })

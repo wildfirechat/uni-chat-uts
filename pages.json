@@ -106,9 +106,11 @@
             }
         },
         {
-            "path": "pages/contact/OrganizationTreePage",
+            "path": "pages/contact/OrganizationPage",
             "style": {
-                "navigationBarTitleText": "组织结构"
+                "navigationBarTitleText": "组织架构",
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {
@@ -146,7 +148,49 @@
         {
             "path": "pages/contact/UserDetailPage",
             "style": {
-                "navigationBarTitleText": "用户信息"
+                "navigationBarTitleText": "用户信息",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/contact/ChannelDetailPage",
+            "style": {
+                "navigationBarTitleText": "频道详情",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/conversation/GroupInfoPage",
+            "style": {
+                "navigationBarTitleText": "群信息",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/conversation/GroupQrCodePage",
+            "style": {
+                "navigationBarTitleText": "群二维码",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/me/PcLoginConfirmPage",
+            "style": {
+                "navigationBarTitleText": "登录确认",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/contact/InviteFriendPage",
+            "style": {
+                "navigationBarTitleText": "添加朋友",
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {
@@ -180,7 +224,9 @@
         {
             "path": "pages/pick/PickUserPage",
             "style": {
-                "navigationBarTitleText": "选择联系人"
+                "navigationBarTitleText": "选择联系人",
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {

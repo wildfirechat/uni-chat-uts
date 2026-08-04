@@ -54,6 +54,7 @@
  */
 import wfc from "@/wfc/client/wfc.uts";
 import store from "@/store.uts";
+import Config from "@/config.uts";
 import { clear } from "@/pages/util/storageHelper.uts";
 import { colors, AppColors, themeMode, setThemeMode, THEME_MODE_SYSTEM, THEME_MODE_LIGHT, THEME_MODE_DARK } from "@/common/theme.uts";
 import { fontPx, FONT_LG } from "@/common/layoutScale.uts";
@@ -65,8 +66,9 @@ defineOptions({
     name: "GeneralSettingsPage"
 })
 
-const USER_AGREEMENT_URL = 'https://static.wildfirechat.cn/agreement.html'
-const PRIVACY_POLICY_URL = 'https://static.wildfirechat.cn/privacy.html'
+// 两个地址挪到 Config（登录页的协议勾选也要用同一份），这里只做引用
+const USER_AGREEMENT_URL = Config.USER_AGREEMENT_URL
+const PRIVACY_POLICY_URL = Config.PRIVACY_AGREEMENT_URL
 
 const c = computed<AppColors>((): AppColors => colors())
 

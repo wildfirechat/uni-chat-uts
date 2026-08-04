@@ -107,6 +107,7 @@ const createGroupWith = () => {
     }
     const targetUserInfo = wfc.getUserInfo(info.conversation.target, false)
     const options = new PickUsersOptions()
+    options.title = t('common.contact')
     options.users = contactState.favContactList.concat(contactState.friendList)
     options.initialCheckedUsers = [targetUserInfo]
     options.uncheckableUsers = [targetUserInfo]

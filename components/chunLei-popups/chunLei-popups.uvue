@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="uts">
-import { PopupMenuItem } from './popupMenu.uts'
+import { PopupMenuItem } from '../../common/popupMenu.uts'
 import { fontPx } from '../../common/layoutScale.uts'
 
 /**

@@ -26,6 +26,30 @@ function pinyinOfChar(c: string): string {
     return c
 }
 
+/**
+ * 联系人分类名（`UserInfo._category`，由 store 按拼音首字母算出）→ 列表锚点 id。
+ *
+ * 分类名里有 `☆ 星标朋友` 和 `#` 这种带空格/符号的值，直接拼进节点 id 三端表现不一致，
+ * 统一映射成安全字符。通讯录页和选人页共用同一套规则，右侧字母索引条靠它跳转。
+ */
+export function anchorIdForCategory(prefix: string, category: string): string {
+    if (category == '☆ 星标朋友') {
+        return prefix + 'star'
+    }
+    if (category == '#') {
+        return prefix + 'hash'
+    }
+    return prefix + category.toLowerCase()
+}
+
+/** 分类名 → 索引条上显示的标签（星标朋友只显示一个星号，省地方） */
+export function quickIndexTagOf(category: string): string {
+    if (category == '☆ 星标朋友') {
+        return '☆'
+    }
+    return category.toUpperCase()
+}
+
 export class PinyinEntry {
     pinyin: string
     firstLetters: string

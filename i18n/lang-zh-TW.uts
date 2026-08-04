@@ -18,6 +18,11 @@ export default {
         "channel": "频道"
     },
     "friend_request": {
+        "add_friend": "新增朋友",
+        "invite_reason_hint": "你需要發送驗證申請，等對方通過",
+        "input_reason": "填寫驗證資訊",
+        "default_reason": "你好，我是{0}",
+        "request_sent": "好友請求已發送",
         "request": "好友請求",
         "send_request_tip": "向{0}發送好球請求",
         "accepted": "已添加",
@@ -27,6 +32,13 @@ export default {
         "intro": "你好"
     },
     "group": {
+        "info": "群資訊",
+        "join": "加入群聊",
+        "join_success": "已加入群聊",
+        "qr_code": "群二維碼",
+        "scan_to_join": "掃描二維碼，加入群聊",
+        "add_members": "新增群成員",
+        "remove_members": "移除群成員",
         "name": "群名稱{0}",
         "chat": "進入群聊",
         "fav": "保存到通訊錄",
@@ -82,7 +94,16 @@ export default {
         "unallow_success": "已移出白名單"
     },
     "channel": {
+        "details": "頻道詳情",
+        "not_exist": "頻道不存在",
+        "intro": "頻道介紹",
+        "no_intro": "暫無介紹",
+        "owner": "擁有者",
+        "subscribe": "訂閱頻道",
         "unsubscribe": "取消訂閱",
+        "subscribed": "已訂閱",
+        "unsubscribed": "已取消訂閱",
+        "enter_conversation": "進入會話",
         "unsubscribe_confirm": "取消訂閱後將不再接收該頻道消息",
         "unsubscribe_success": "已取消訂閱"
     },
@@ -155,12 +176,18 @@ export default {
         "fav_fail": "收藏失敗：{0}"
     },
     "voip": {
+        "not_supported": "當前版本暫不支持音視頻通話",
+        "in_progress": "音視頻通話正在進行中...",
+        "start_fail": "發起通話失敗",
         "desc": "音視頻通話",
         "not_answer": "對方未接聽",
         "ongoing": "通話中",
         "duration": "通話時長"
     },
     "pick": {
+        "start_chat": "發起群聊",
+        "max_user_limit": "最多只能選擇 {0} 人",
+        "from_organization": "從組織架構選擇",
         "pick_contact": "選擇聯系人",
         "picked_contact": "已選擇聯系人"
     },
@@ -341,10 +368,20 @@ export default {
         "wfc_id": "野火號",
         "done": "完成",
         "download": "下載",
+        "operate_success": "操作成功",
         "operate_fail": "操作失敗：{0}",
         "unsupported_type": "不支持的類型"
     },
     "pc": {
+        "login_confirm": "登入確認",
+        "login_confirm_desc": "是否確認在電腦端登入？",
+        "login": "登入",
+        "cancel_login": "取消登入",
+        "login_success": "登入成功",
+        "login_fail": "登入失敗",
+        "status_error": "二維碼狀態異常: {0}",
+        "invalid_token": "無效的登入二維碼",
+        "network_error": "網路錯誤",
         "online_devices": "已登錄設備",
         "no_pc_online": "當前沒有其他設備登錄",
         "device_count": "{0} 個設備已登錄",
@@ -368,6 +405,41 @@ export default {
         "fail": "語音轉文字失敗",
         "success": "轉文字成功",
         "audio_not_available": "音頻文件不可用"
+    },
+    "organization": {
+        "title": "組織架構",
+        "search_member": "搜尋部門成員",
+        "sub_departments": "下級部門",
+        "members": "成員",
+        "no_data": "沒有組織架構資料",
+        "no_sub_or_member": "該部門下沒有子部門和成員",
+        "no_matched_member": "沒有符合的成員",
+        "load_fail": "組織架構載入失敗",
+        "department_load_fail": "部門載入失敗",
+        "service_unavailable": "組織架構服務不可用",
+        "reload": "重新載入"
+    },
+    "user": {
+        "user_info": "用戶資訊",
+        "wildfire_id": "野火號：{0}",
+        "modify_nickname": "修改暱稱",
+        "input_nickname": "請輸入暱稱",
+        "set_alias": "設定備註",
+        "input_alias": "請輸入備註名",
+        "send_msg": "發消息",
+        "audio_video_call": "音視頻通話",
+        "audio_call": "語音通話",
+        "video_call": "視頻通話",
+        "add_to_blacklist": "加入黑名單",
+        "remove_from_blacklist": "移出黑名單",
+        "set_starred": "設為星標朋友",
+        "cancel_starred": "取消星標朋友",
+        "delete_friend": "刪除好友",
+        "delete_friend_confirm": "確定刪除該好友嗎？"
+    },
+    "qrcode": {
+        "invalid": "無效的二維碼: {0}",
+        "conference_not_support": "當前版本暫不支持會議"
     },
     "misc": {
         "beijing": "北京",

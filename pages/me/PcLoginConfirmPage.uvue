@@ -1,0 +1,160 @@
+<template>
+    <view class="pc-login-page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('pc.login_confirm')" :showBack="true" />
+        <view class="content">
+            <text class="icomoon pc-icon" :style="{ color: c.textTertiary }">&#xf380;</text>
+            <text class="desc" :style="{ fontSize: fontPx(16), color: c.textPrimary }">{{ t('pc.login_confirm_desc') }}</text>
+
+            <text v-if="loading" class="state" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('common.loading') }}</text>
+            <template v-else-if="canConfirm">
+                <view class="confirm-button" :style="{ backgroundColor: c.accent }" @tap="confirmLogin">
+                    <text class="confirm-button-text" :style="{ fontSize: fontPx(16), color: c.onAccent }">{{ t('pc.login') }}</text>
+                </view>
+                <text class="cancel" :style="{ fontSize: fontPx(14), color: c.textSecondary }" @tap="cancelLogin">{{ t('pc.cancel_login') }}</text>
+            </template>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 扫码登录 PC 的确认页。对齐 `../flutter-chat/chat/lib/pc/pc_login_screen.dart`。
+ *
+ * 虽然文件在 flutter 的 `pc/` 目录下，但它是**手机上**的页面（扫完 PC 的二维码后弹出来确认），
+ * 属于对齐范围（见 FLUTTER_ALIGNMENT_TODO §1 的注意事项）。
+ *
+ * 三步：进页面先 `/scan_pc/{token}` 把二维码标成已扫描（status 必须是 1），
+ * 用户点「登录」走 `/confirm_pc`，点「取消」走 `/cancel_pc`。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import wfc from "@/wfc/client/wfc.uts";
+import appServerApi from "@/api/appServerApi.uts";
+import { toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "PcLoginConfirmPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const token = ref<string>('')
+const loading = ref<boolean>(true)
+const canConfirm = ref<boolean>(false)
+
+onLoad((options: OnLoadOptions) => {
+    token.value = options['token'] ?? ''
+    if (token.value == '') {
+        toast(t('pc.invalid_token'))
+        back()
+        return
+    }
+    scan()
+})
+
+const back = () => {
+    setTimeout(() => {
+        uni.navigateBack({} as NavigateBackOptions)
+    }, 800)
+}
+
+/** status 1 = 已扫描待确认；其它值说明二维码过期或已被用掉 */
+const scan = () => {
+    appServerApi.scanPcLogin(token.value)
+        .then((result: UTSJSONObject | null): void => {
+            loading.value = false
+            const status = result?.getNumber('status') ?? -1
+            if (status == 1) {
+                canConfirm.value = true
+            } else {
+                toast(t1('pc.status_error', '' + status))
+                back()
+            }
+        })
+        .catch((err): void => {
+            loading.value = false
+            console.log('scanPcLogin error', err)
+            toast(t('pc.network_error'))
+            back()
+        })
+}
+
+const confirmLogin = () => {
+    loading.value = true
+    appServerApi.confirmPcLogin(token.value, wfc.getUserId())
+        .then((_result): void => {
+            loading.value = false
+            toast(t('pc.login_success'))
+            back()
+        })
+        .catch((err): void => {
+            loading.value = false
+            canConfirm.value = true
+            console.log('confirmPcLogin error', err)
+            toast(t('pc.login_fail'))
+        })
+}
+
+const cancelLogin = () => {
+    // 取消成功与否都直接退页面，与 flutter 一致
+    appServerApi.cancelPcLogin(token.value)
+        .then((_r): void => {
+            uni.navigateBack({} as NavigateBackOptions)
+        })
+        .catch((_e): void => {
+            uni.navigateBack({} as NavigateBackOptions)
+        })
+}
+</script>
+
+<style scoped>
+.icomoon {
+    font-family: "icomoon";
+}
+
+.pc-login-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+}
+
+/* 图标是图形，不跟字号档位放大 */
+.pc-icon {
+    font-size: 90px;
+}
+
+.desc {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.state {
+    margin-top: 40px;
+}
+
+.confirm-button {
+    margin-top: 40px;
+    width: 200px;
+    height: 46px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cancel {
+    margin-top: 16px;
+}
+</style>
