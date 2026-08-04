@@ -1,42 +1,85 @@
 <template>
-    <view class="me-container" :style="{ backgroundColor: c.primaryBackground }">
+    <scroll-view class="me-container" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
         <view class="user-info" :style="{ backgroundColor: c.surface }" hover-class="user-info-pressed"
             hover-stay-time="80" @tap="showUserInfo">
             <image class="portrait" :src="portrait" :style="{ width: iconPx(60), height: iconPx(60) }"
                 @tap.stop="updatePortrait"></image>
-            <text class="name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ displayName }}</text>
+            <view class="user-text">
+                <text class="name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ displayName }}</text>
+                <text class="wfc-id"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ t('common.wfc_id') }}: {{ userName }}</text>
+            </view>
         </view>
 
         <section-divider />
 
         <form-card>
-            <option-item :title="t('me.about')" @tap="showAbout" />
-            <option-item :title="t('me.api_test')" :show-bottom-divider="false" @tap="showApiTest" />
+            <option-item :title="t('setting.message_notification')" left-image="/static/image/setting/setting_message_notification.png"
+                :show-bottom-divider="false" @tap="open('/pages/me/MessageNotificationSettingsPage')" />
         </form-card>
 
         <section-divider />
 
-        <view class="logout" :style="{ backgroundColor: c.surface }" hover-class="logout-pressed" hover-stay-time="80"
-            @tap="logout">
-            <text :style="{ color: c.danger, fontSize: fontPx(FONT_LG) }">{{ t('me.logout') }}</text>
-        </view>
-    </view>
+        <form-card>
+            <option-item :title="t('me.favorites')" left-image="/static/image/setting/setting_favorite.png"
+                @tap="open('/pages/me/FavoriteListPage')" />
+            <option-item :title="t('me.files')" left-image="/static/image/setting/setting_file.png"
+                :show-bottom-divider="false" @tap="open('/pages/me/FileRecordsPage')" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-item :title="t('setting.account_safety')" left-image="/static/image/setting/setting_safety.png"
+                @tap="open('/pages/me/AccountSafetyPage')" />
+            <option-item :title="t('setting.privacy')" left-icon="&#xf306;" left-icon-color="#576B95"
+                @tap="open('/pages/me/PrivacySettingsPage')" />
+            <option-item :title="t('setting.setting')" left-image="/static/image/setting/setting_general.png"
+                :show-bottom-divider="false" @tap="open('/pages/me/GeneralSettingsPage')" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-item :title="t('me.api_test')" :show-bottom-divider="false" @tap="open('/pages/misc/ApiTestPage')" />
+        </form-card>
+
+        <view class="tail"></view>
+
+        <bottom-action-sheet v-model="portraitSheetVisible" :items="portraitSheetItems" @select="onPortraitSheetSelect" />
+    </scroll-view>
 </template>
 
 <script setup lang="uts">
-import wfc from "../../wfc/client/wfc.uts";
-import { clear } from "../util/storageHelper.uts";
-import store, { contactState } from "../../store.uts";
-import Config from "../../config.uts";
-import MessageContentMediaType from "../../wfc/messages/messageContentMediaType.uts";
-import ModifyMyInfoType from "../../wfc/model/modifyMyInfoType.uts";
-import ModifyMyInfoEntry from "../../wfc/model/modifyMyInfoEntry.uts";
-import { toLocalFilePath } from "../../common/filePath.uts";
-import { colors, AppColors } from "../../common/theme.uts";
-import { fontPx, iconPx, FONT_LG, FONT_XL } from "../../common/layoutScale.uts";
-import { t } from "../../i18n/i18n.uts";
+/**
+ * 「我的」。对齐 flutter `settings/me_tab.dart`。
+ *
+ * 与 flutter 的两处差异：
+ * - 「备份与恢复」入口没做 —— 备份整块在 FLUTTER_ALIGNMENT_TODO 里排到 Backlog，
+ *   放一个点不动的入口比不放更糟。
+ * - 多了「API测试」分组，那是本项目自带的调试入口，flutter 侧没有。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import store, { contactState } from "@/store.uts";
+import Config from "@/config.uts";
+import MessageContentMediaType from "@/wfc/messages/messageContentMediaType.uts";
+import ModifyMyInfoType from "@/wfc/model/modifyMyInfoType.uts";
+import ModifyMyInfoEntry from "@/wfc/model/modifyMyInfoEntry.uts";
+import { toLocalFilePath } from "@/common/filePath.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_XS, FONT_XL } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
 
 const c = computed<AppColors>((): AppColors => colors())
+
+const portraitSheetVisible = ref<boolean>(false)
+const portraitSheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
+    return [
+        new ActionSheetItem(t('me.take_photo'), 'camera'),
+        new ActionSheetItem(t('me.select_from_album'), 'album')
+    ]
+})
 
 const portrait = computed<string>((): string => {
     const user = contactState.selfUserInfo
@@ -49,79 +92,41 @@ const displayName = computed<string>((): string => {
     return user != null ? user.displayName : ''
 })
 
+const userName = computed<string>((): string => {
+    const user = contactState.selfUserInfo
+    return user != null ? user.name : ''
+})
+
+const open = (url: string) => {
+    uni.navigateTo({
+        url: url,
+        fail: (e) => {
+            console.log('nav fail', url, e)
+        }
+    } as NavigateToOptions)
+}
+
 const showUserInfo = () => {
     const user = contactState.selfUserInfo
     if (user == null) {
         return
     }
     store.setCurrentFriend(user)
-    uni.navigateTo({
-        url: '/pages/contact/UserDetailPage',
-        fail: (err) => {
-            console.log('nav to UserDetailPage err', err);
-        }
-    } as NavigateToOptions)
-}
-
-const logout = () => {
-    wfc.disconnect(true, false);
-    clear();
-    uni.reLaunch({
-        url: '/pages/login/LoginPage'
-    } as ReLaunchOptions);
-}
-
-const showAbout = () => {
-    uni.navigateTo({
-        url: '/pages/misc/WebViewPage?url=https://wildfirechat.cn/',
-        fail: (e) => {
-            console.log(e)
-        }
-    } as NavigateToOptions);
-}
-
-const showApiTest = () => {
-    uni.navigateTo({
-        url: '/pages/misc/ApiTestPage',
-        fail: (e) => {
-            console.log(e)
-        }
-    } as NavigateToOptions);
+    open('/pages/contact/UserDetailPage')
 }
 
 const updatePortrait = () => {
+    portraitSheetVisible.value = true
+}
+
+const onPortraitSheetSelect = (tag: string) => {
     uni.chooseImage({
         count: 1,
-        sourceType: ['album', 'camera'],
+        sourceType: tag == 'camera' ? ['camera'] : ['album'],
         sizeType: ['original', 'compressed'],
         success: (e) => {
-            console.log('choose image', e.tempFilePaths.length);
             for (let i = 0; i < e.tempFilePaths.length; i++) {
-                const filePath = toLocalFilePath(e.tempFilePaths[i]);
-                wfc.uploadMediaFile(filePath, MessageContentMediaType.Portrait, (remoteUrl: string) => {
-                    console.log('upload success', remoteUrl);
-                    wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_Portrait, remoteUrl)], () => {
-                        console.log('modifyMyInfo success', remoteUrl);
-                        const user = contactState.selfUserInfo
-                        if (user != null) {
-                            user.portrait = remoteUrl;
-                        }
-                        uni.showToast({
-                            title: t('me.portrait_update_success'),
-                            icon: 'none'
-                        } as ShowToastOptions);
-                    }, (error: number) => {
-                        console.error('modifyMyInfo error', error);
-                        uni.showToast({
-                            title: t('me.portrait_update_fail') + ': ' + error,
-                            icon: 'none'
-                        } as ShowToastOptions);
-                    });
-                }, (error: number) => {
-                    console.error('upload error', error);
-                }, (current: number, total: number) => {
-                    console.log('upload progress', current, total);
-                });
+                uploadPortrait(toLocalFilePath(e.tempFilePaths[i]))
             }
         },
         fail: (err) => {
@@ -129,12 +134,38 @@ const updatePortrait = () => {
         }
     } as ChooseImageOptions);
 }
+
+const uploadPortrait = (filePath: string) => {
+    wfc.uploadMediaFile(filePath, MessageContentMediaType.Portrait, (remoteUrl: string) => {
+        wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_Portrait, remoteUrl)], () => {
+            const user = contactState.selfUserInfo
+            if (user != null) {
+                user.portrait = remoteUrl;
+            }
+            uni.showToast({
+                title: t('me.portrait_update_success'),
+                icon: 'none'
+            } as ShowToastOptions);
+        }, (error: number) => {
+            console.error('modifyMyInfo error', error);
+            uni.showToast({
+                title: t('me.portrait_update_fail') + ': ' + error,
+                icon: 'none'
+            } as ShowToastOptions);
+        });
+    }, (error: number) => {
+        console.error('upload portrait error', error);
+        uni.showToast({
+            title: t('me.portrait_update_fail'),
+            icon: 'none'
+        } as ShowToastOptions);
+    }, (_current: number, _total: number) => {
+    });
+}
 </script>
 
 <style scoped>
 .me-container {
-    display: flex;
-    flex-direction: column;
     width: 100%;
     flex: 1;
 }
@@ -154,28 +185,36 @@ const updatePortrait = () => {
 
 .portrait {
     border-radius: 5px;
+    flex-shrink: 0;
+}
+
+.user-text {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
 }
 
 /* flex: 1 不能省：text 带了 overflow: hidden 又没有确定宽度时，鸿蒙上会被压成 0 宽，
  * 整个昵称塌成省略号（与 option-item 的 .title 同一个坑） */
 .name {
     flex: 1;
-    margin-left: 12px;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
 }
 
-.logout {
-    width: 100%;
-    height: 50px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
+.wfc-id {
+    flex: 1;
+    margin-top: 5px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
-.logout-pressed {
-    background-color: #F5F5F5;
+/* 列表尾部的收尾留白，语义上不是段间凹槽，所以不用 section-divider */
+.tail {
+    width: 100%;
+    height: 18px;
 }
 </style>

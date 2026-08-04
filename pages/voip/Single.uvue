@@ -7,10 +7,10 @@
             </view>
             <view class="remote-media-container">
                 <image class="avatar avatar-large" :src="participantUserInfo.portrait" />
-                <text class="desc">{{ participantUserInfo.displayName }}</text>
-                <text class="desc" v-if="callState === 1">等待对方接听</text>
-                <text class="desc" v-else-if="callState === 2">邀请你语音聊天</text>
-                <text class="desc" v-else-if="callState === 3">接听中...</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }">{{ participantUserInfo.displayName }}</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }" v-if="callState === 1">等待对方接听</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 2">邀请你语音聊天</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 3">接听中...</text>
             </view>
         </view>
 
@@ -21,10 +21,10 @@
                     @tap="switchVideoType"></native-view>
                 <view v-if="callState !== 4" class="remote-placeholder">
                     <image class="avatar avatar-large" :src="participantUserInfo.portrait" />
-                    <text class="desc">{{ participantUserInfo.displayName }}</text>
-                    <text class="desc" v-if="callState === 1">等待对方接听</text>
-                    <text class="desc" v-else-if="callState === 2">邀请你视频聊天</text>
-                    <text class="desc" v-else-if="callState === 3">接听中...</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }">{{ participantUserInfo.displayName }}</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-if="callState === 1">等待对方接听</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 2">邀请你视频聊天</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 3">接听中...</text>
                 </view>
             </view>
             <view class="local-media-container" :class="callState === 4 ? 'local-corner-connected' : 'local-corner'">
@@ -39,11 +39,11 @@
         <view v-if="callState === 2" class="action-container">
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
-                <text class="action-desc">挂断</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
             </view>
             <view class="action">
                 <image @tap="answer" class="action-img" src="/static/image/av/av_video_answer.png" />
-                <text class="action-desc">接听</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(12) }">接听</text>
             </view>
         </view>
 
@@ -51,7 +51,7 @@
         <view v-if="callState === 1 || callState === 3" class="action-container">
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
-                <text class="action-desc">挂断</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
             </view>
         </view>
 
@@ -60,20 +60,20 @@
             <view class="action">
                 <image v-if="!audioMuted" @tap="mute" class="action-img" src="/static/image/av/av_mute.png" />
                 <image v-else @tap="mute" class="action-img" src="/static/image/av/av_mute_hover.png" />
-                <text class="action-desc">静音</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(12) }">静音</text>
             </view>
             <view v-if="!audioOnly" class="action">
                 <image @tap="switchCamera" class="action-img" src="/static/image/av/av_camera.png" />
-                <text class="action-desc">切换摄像头</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(12) }">切换摄像头</text>
             </view>
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
-                <text class="action-desc">挂断</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
             </view>
         </view>
 
         <view class="voip-title-container">
-            <text class="duration-text" v-if="callState === 4">{{ duration }}</text>
+            <text class="duration-text" :style="{ fontSize: fontPx(15) }" v-if="callState === 4">{{ duration }}</text>
             <image @tap="minimize" class="minimize-img" src="/static/image/av/av_minimize.png" />
         </view>
     </view>
@@ -90,6 +90,7 @@ import { getUserInfo } from "@/wfc/client/userBrief.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import { takePageOptions } from "@/common/nav.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 
 defineOptions({
     name: "Single"
@@ -391,7 +392,6 @@ onBeforeUnmount(() => {
 
 .desc {
     color: #ffffff;
-    font-size: 15px;
     padding: 5px 0;
 }
 
@@ -441,7 +441,6 @@ onBeforeUnmount(() => {
 
 .action-desc {
     color: #ffffff;
-    font-size: 12px;
     padding-top: 5px;
 }
 
@@ -460,7 +459,6 @@ onBeforeUnmount(() => {
 
 .duration-text {
     color: #ffffff;
-    font-size: 15px;
 }
 
 .minimize-img {

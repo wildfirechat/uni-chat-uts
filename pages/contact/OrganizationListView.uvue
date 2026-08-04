@@ -2,7 +2,7 @@
     <list-item v-for="(organization, index) in rootOrganizations" :key="index" @tap="showOrganization(organization)">
         <view class="organization-item" :style="{ backgroundColor: c.sectionGap }">
             <image class="avatar" :src="portraitOf(organization)" :style="{ backgroundColor: c.inputBg }" />
-            <text class="org-name single-line" :style="{ color: c.textPrimary }">{{ organization.getString('name') ?? '' }}</text>
+            <text class="org-name single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ organization.getString('name') ?? '' }}</text>
         </view>
     </list-item>
 </template>
@@ -13,6 +13,7 @@ import organizationServerApi from "../../api/organizationServerApi.uts";
 import Config from "../../config.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontClass } from "@/common/layoutScale.uts";
 defineOptions({
     name: "OrganizationListView",
     styleIsolation: 'app'
@@ -20,6 +21,9 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs14 = computed<string>((): string => fontClass(14))
 const rootOrganizations = ref<UTSJSONObject[]>([] as UTSJSONObject[])
 
 onMounted(() => {
@@ -74,6 +78,5 @@ const showOrganization = (organization: UTSJSONObject) => {
 
 .org-name {
     margin-left: 10px;
-    font-size: 14px;
 }
 </style>

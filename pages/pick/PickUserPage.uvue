@@ -14,14 +14,14 @@
         <view class="checked-contact-list-container"
             :style="{ backgroundColor: c.surface, borderTopColor: c.hairlineSoft }">
             <view class="panel-header">
-                <text class="panel-desc" :style="{ color: c.textSecondary }" v-if="checkedUsers.length == 0">已选择联系人</text>
-                <text class="panel-desc" :style="{ color: c.textSecondary }" v-else>已选择联系人 {{ checkedUsers.length }}</text>
+                <text class="panel-desc" :style="{ fontSize: fontPx(13), color: c.textSecondary }" v-if="checkedUsers.length == 0">已选择联系人</text>
+                <text class="panel-desc" :style="{ fontSize: fontPx(13), color: c.textSecondary }" v-else>已选择联系人 {{ checkedUsers.length }}</text>
                 <button size="mini" :disabled="checkedUsers.length == 0" @tap="confirm">{{ confirmTitle }}</button>
             </view>
             <scroll-view class="picked-content" direction="horizontal">
                 <view class="picked-user" v-for="(user, index) in checkedUsers" :key="index" @tap="unpick(user)">
                     <image class="avatar" :src="user.portrait" :style="{ backgroundColor: c.inputBg }" />
-                    <text class="name single-line" :style="{ color: c.textPrimary }">{{ user.displayName }}</text>
+                    <text class="name single-line" :style="{ fontSize: fontPx(12), color: c.textPrimary }">{{ user.displayName }}</text>
                 </view>
             </scroll-view>
         </view>
@@ -35,6 +35,7 @@ import UserInfo from "@/wfc/model/userInfo.uts";
 import { currentPickUsersOptions, notifyPickedUsers } from "@/common/picker.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "PickUserPage"
 })
@@ -171,10 +172,6 @@ const confirm = () => {
     padding: 0 20px;
 }
 
-.panel-desc {
-    font-size: 13px;
-}
-
 .picked-content {
     flex: 1;
     display: flex;
@@ -199,7 +196,6 @@ const confirm = () => {
 
 .name {
     width: 100%;
-    font-size: 12px;
     text-align: center;
 }
 </style>

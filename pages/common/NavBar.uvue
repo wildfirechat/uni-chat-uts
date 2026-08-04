@@ -5,7 +5,7 @@
             <view class="nav-bar-left" @tap="onBack">
                 <text v-if="showBack" class="back-icon" :style="{ color: c.iconPrimary }">‹</text>
             </view>
-            <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: fontPx(17) }">{{ title }}</text>
+            <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: px(17, ROW_CAP) }">{{ title }}</text>
             <view class="nav-bar-right">
                 <text v-if="rightIcon1 != ''" class="wxfont nav-bar-icon" :style="{ color: c.iconPrimary }"
                     @tap="onRight1Tap">{{ rightIcon1 }}</text>
@@ -23,7 +23,7 @@
  * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
  */
 import { colors, AppColors } from "../../common/theme.uts"
-import { fontPx } from "../../common/layoutScale.uts"
+import { px, ROW_CAP } from "../../common/layoutScale.uts"
 
 defineOptions({
     name: "NavBar",
@@ -73,7 +73,9 @@ const onRight2Tap = () => {
 <style scoped>
 /* 颜色和字号走 :style（common/theme.uts、common/layoutScale.uts），尺寸留在这里。
  * 图标字号（back-icon / nav-bar-icon）刻意不跟字号档位放大：它们是图形，
- * 放大只会顶破 44px 的固定栏高。 */
+ * 放大只会顶破 44px 的固定栏高。
+ * 标题也不完整跟随：栏高固定 44px，所以按 ROW_CAP 封顶（最大档 22.95px），
+ * 并且强制单行截断 —— 会话名很长时，换行会把标题顶出标题栏。 */
 .nav-bar {
     height: 44px;
     display: flex;
@@ -97,6 +99,9 @@ const onRight2Tap = () => {
 .nav-bar-title {
     flex: 1;
     text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .nav-bar-right {

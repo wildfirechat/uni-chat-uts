@@ -1,0 +1,126 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <list-view class="list" direction="vertical">
+            <list-item v-for="info in conversations" :key="keyOf(info)" class="row-item">
+                <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+                    @tap="pick(info)">
+                    <image class="portrait" :src="portraitOf(info)" mode="aspectFill"
+                        :style="{ backgroundColor: c.inputBg }" />
+                    <text class="title" :class="fs16" :style="{ color: c.textPrimary }">{{ titleOf(info) }}</text>
+                </view>
+            </list-item>
+        </list-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 选择一个会话（最近会话列表）。给「查这个会话里的文件」这类场景用。
+ *
+ * 转发有自己的选择页（ForwardMessageByPickConversationView，带多选和「创建新会话」），
+ * 这里刻意不复用它 —— 那套和转发流程绑得很紧。
+ *
+ * 本页在 list-view 里，走鸿蒙 vapor 的复用渲染路径：**尺寸和字号一律留在 class 里**，
+ * 只有颜色走 :style。
+ */
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import { ConversationTarget } from "@/wfc/model/conversation.uts";
+import store, { conversationState } from "@/store.uts";
+import Config from "@/config.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontClass } from "@/common/layoutScale.uts";
+import { currentPickConversationOptions, notifyPickedConversation } from "@/common/picker.uts";
+
+defineOptions({
+    name: "PickConversationPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs16 = computed<string>((): string => fontClass(16))
+
+const conversations = computed<ConversationInfo[]>((): ConversationInfo[] => {
+    return conversationState.conversationInfoList
+})
+
+onLoad(() => {
+    const options = currentPickConversationOptions()
+    if (options != null && options.title != '') {
+        uni.setNavigationBarTitle({
+            title: options.title
+        } as SetNavigationBarTitleOptions)
+    }
+})
+
+const keyOf = (info: ConversationInfo): string => {
+    return '' + info.conversation.type + '-' + info.conversation.target + '-' + info.conversation.line
+}
+
+const targetOf = (info: ConversationInfo): ConversationTarget | null => {
+    return store.ensureConversationTarget(info.conversation)
+}
+
+const portraitOf = (info: ConversationInfo): string => {
+    const target = targetOf(info)
+    const portrait = target != null ? target.portrait : ''
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const titleOf = (info: ConversationInfo): string => {
+    const target = targetOf(info)
+    if (target == null) {
+        return ''
+    }
+    return info.conversation.type == ConversationType.Single ? target._displayName : target.name
+}
+
+const pick = (info: ConversationInfo) => {
+    notifyPickedConversation(info.conversation)
+    uni.navigateBack({} as NavigateBackOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.list {
+    flex: 1;
+}
+
+.row-item {
+    width: 100%;
+}
+
+.row {
+    width: 100%;
+    height: 60px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 15px;
+    padding-right: 15px;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+/* 单行截断不能用 lines：vapor 下鸿蒙不支持 */
+.title {
+    flex: 1;
+    margin-left: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+</style>

@@ -1,0 +1,53 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-item :title="t('setting.change_password')" left-icon="&#xf457;" left-icon-color="#576B95"
+                :show-bottom-divider="false" @tap="open('/pages/me/ChangePasswordPage')" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 账号与安全。对齐 flutter `settings/account_safety_screen.dart`。
+ * 隐私相关的项在 PrivacySettingsPage，这里只有账号安全。
+ */
+import { colors, AppColors } from "@/common/theme.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "AccountSafetyPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const open = (url: string) => {
+    uni.navigateTo({
+        url: url,
+        fail: (e) => {
+            console.log('nav fail', url, e)
+        }
+    } as NavigateToOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

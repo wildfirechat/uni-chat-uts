@@ -2,16 +2,16 @@
     <view class="rich-root">
         <view class="notification-container" :style="{ backgroundColor: c.surface }"
             @tap="onClickRichNotification" @longpress="onLongPress">
-            <text class="title">{{ content.title }}</text>
-            <text class="desc">{{ content.desc }}</text>
+            <text class="title" :style="{ fontSize: fontPx(16) }">{{ content.title }}</text>
+            <text class="desc" :style="{ fontSize: fontPx(14) }">{{ content.desc }}</text>
             <view v-if="content.datas.length > 0">
                 <view v-for="(data, index) in content.datas" :key="index" class="data">
-                    <text class="key single-line">{{ data.getString('key') ?? '' }}</text>
-                    <text class="value">{{ data.getString('value') ?? '' }}</text>
+                    <text class="key single-line" :style="{ fontSize: fontPx(14) }">{{ data.getString('key') ?? '' }}</text>
+                    <text class="value" :style="{ fontSize: fontPx(14) }">{{ data.getString('value') ?? '' }}</text>
                 </view>
             </view>
             <view class="ex-info-container" :style="{ borderTopColor: c.hairline }">
-                <text class="exName">{{ content.exName }}</text>
+                <text class="exName" :style="{ fontSize: fontPx(14) }">{{ content.exName }}</text>
             </view>
         </view>
     </view>
@@ -23,6 +23,7 @@ import RichNotificationMessageContent from "../../../wfc/messages/notification/r
 import { navigateToPage } from "../../../common/nav.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "RichNotificationMessageContentView",
     styleIsolation: 'app'
@@ -66,11 +67,6 @@ const onClickRichNotification = () => {
 
 .title {
     margin: 5px 0;
-    font-size: 16px;
-}
-
-.desc {
-    font-size: 14px;
 }
 
 .data {
@@ -80,7 +76,6 @@ const onClickRichNotification = () => {
 
 .key {
     width: 100px;
-    font-size: 14px;
 }
 
 .value {
@@ -88,7 +83,6 @@ const onClickRichNotification = () => {
     lines: 3;
     text-overflow: ellipsis;
     overflow: hidden;
-    font-size: 14px;
 }
 
 .ex-info-container {
@@ -98,7 +92,4 @@ const onClickRichNotification = () => {
     margin: 5px 0;
 }
 
-.exName {
-    font-size: 14px;
-}
 </style>

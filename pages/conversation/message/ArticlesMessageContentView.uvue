@@ -3,11 +3,11 @@
         <view class="top-article" :style="{ backgroundColor: c.surface }"
             @tap="openArticle(content.topArticle.url)" @longpress="onLongPress">
             <image class="top-cover" mode="aspectFill" :src="content.topArticle.cover" />
-            <text class="top-title">{{ content.topArticle.title }}</text>
+            <text class="top-title" :style="{ fontSize: fontPx(15) }">{{ content.topArticle.title }}</text>
         </view>
         <view v-for="(sa, si) in content.subArticles" :key="si" class="sub-article"
             :style="{ backgroundColor: c.surface }" @tap="openArticle(sa.url)">
-            <text class="sub-title">{{ sa.title }}</text>
+            <text class="sub-title" :style="{ fontSize: fontPx(14) }">{{ sa.title }}</text>
             <image class="sub-cover" mode="aspectFill" :src="sa.cover" />
         </view>
     </view>
@@ -18,6 +18,7 @@ import Message from "../../../wfc/messages/message.uts";
 import ArticlesMessageContent from "../../../wfc/messages/articlesMessageContent.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ArticlesMessageContentView"
 })
@@ -74,7 +75,6 @@ const openArticle = (url: string) => {
     lines: 2;
     text-overflow: ellipsis;
     overflow: hidden;
-    font-size: 15px;
 }
 
 .sub-article {
@@ -88,7 +88,6 @@ const openArticle = (url: string) => {
 
 .sub-title {
     flex: 1;
-    font-size: 14px;
     lines: 2;
     text-overflow: ellipsis;
     overflow: hidden;

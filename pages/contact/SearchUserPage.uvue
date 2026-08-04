@@ -3,7 +3,7 @@
         <input class="input" type="text" v-model="keyword" placeholder="搜索" @input="searchUser"
             :style="{ color: c.textPrimary, borderBottomColor: c.hairline }" />
         <scroll-view v-if="users.length > 0" class="result" direction="vertical">
-            <text class="category" :style="{ color: c.textSecondary }">搜索结果</text>
+            <text class="category" :style="{ fontSize: fontPx(13), color: c.textSecondary }">搜索结果</text>
             <UserListView :users="users" :show-category-label="false" padding-left="10px" />
         </scroll-view>
         <text v-if="keyword != '' && users.length == 0" class="tip" :style="{ color: c.textSecondary }">没有搜索到用户</text>
@@ -17,6 +17,7 @@ import UserInfo from "../../wfc/model/userInfo.uts";
 import SearchType from "../../wfc/model/searchType.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "SearchUserPage"
 })
@@ -61,7 +62,6 @@ const searchUser = () => {
 
 .category {
     padding: 5px 10px;
-    font-size: 13px;
 }
 
 .result {

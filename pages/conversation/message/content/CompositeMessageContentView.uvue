@@ -1,9 +1,9 @@
 <template>
     <view class="composite-message-container" @tap="showCompositePage" :class="{ out: message.direction == 0 }"
         :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
-        <text class="title" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
-        <text class="content" :style="{ color: c.textTertiary }">{{ content }}</text>
-        <text class="desc" :style="{ color: c.textTertiary, borderTopColor: c.hairlineSoft }">{{ recordsText }}</text>
+        <text class="title" :style="{ fontSize: fontPx(15), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
+        <text class="content" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ content }}</text>
+        <text class="desc" :style="{ fontSize: fontPx(14), color: c.textTertiary, borderTopColor: c.hairlineSoft }">{{ recordsText }}</text>
     </view>
 </template>
 
@@ -16,6 +16,7 @@ import { navigateToPage } from "@/common/nav.uts";
 import { t } from "@/i18n/i18n.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "CompositeMessageContentView"
 })
@@ -63,19 +64,13 @@ const showCompositePage = () => {
     border-radius: 5px;
 }
 
-.title {
-    font-size: 15px;
-}
-
 .content {
     padding: 5px 0;
-    font-size: 14px;
 }
 
 .desc {
     border-top-width: 1px;
     border-top-style: solid;
     padding: 5px 0 0 0;
-    font-size: 14px;
 }
 </style>

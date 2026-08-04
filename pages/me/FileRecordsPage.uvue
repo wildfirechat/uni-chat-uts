@@ -1,0 +1,114 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-item :title="t('file_record.all_files')" @tap="openAll" />
+            <option-item :title="t('file_record.my_files')" @tap="openMine" />
+            <option-item :title="t('file_record.conversation_files')" @tap="openConversationFiles" />
+            <option-item :title="t('file_record.user_files')" :show-bottom-divider="false" @tap="openUserFiles" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 文件记录入口。对齐 flutter `settings/file_records_screen.dart` 的四个入口。
+ *
+ * 后两项要先选目标再进列表：选完用 redirectTo 替换掉选择页，返回时直接回到本页，
+ * 不会退回一个已经选完的选择页（与 flutter 的 pushReplacement 同义）。
+ */
+import UserInfo from "@/wfc/model/userInfo.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { t } from "@/i18n/i18n.uts";
+import { pickUser, PickUserOptions, pickConversation, PickConversationOptions } from "@/common/picker.uts";
+import { setFileListOptions, FileListOptions, FILE_LIST_ALL, FILE_LIST_MINE, FILE_LIST_CONVERSATION, FILE_LIST_USER } from "./fileListOptions.uts";
+
+defineOptions({
+    name: "FileRecordsPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const openList = (options: FileListOptions, replace: boolean) => {
+    setFileListOptions(options)
+    if (replace) {
+        uni.redirectTo({
+            url: '/pages/me/FileListPage',
+            fail: (e) => {
+                console.log('redirect to FileListPage fail', e)
+            }
+        } as RedirectToOptions)
+    } else {
+        uni.navigateTo({
+            url: '/pages/me/FileListPage',
+            fail: (e) => {
+                console.log('nav to FileListPage fail', e)
+            }
+        } as NavigateToOptions)
+    }
+}
+
+const openAll = () => {
+    const options = new FileListOptions()
+    options.type = FILE_LIST_ALL
+    options.title = t('file_record.all_files')
+    openList(options, false)
+}
+
+const openMine = () => {
+    const options = new FileListOptions()
+    options.type = FILE_LIST_MINE
+    options.title = t('file_record.my_files')
+    openList(options, false)
+}
+
+const openConversationFiles = () => {
+    const pickOptions = new PickConversationOptions()
+    pickOptions.title = t('file_record.conversation_files')
+    pickOptions.successCB = (conversation: Conversation) => {
+        const options = new FileListOptions()
+        options.type = FILE_LIST_CONVERSATION
+        options.title = t('file_record.conversation_files')
+        options.conversation = conversation
+        openList(options, true)
+    }
+    pickConversation(pickOptions)
+}
+
+const openUserFiles = () => {
+    const pickOptions = new PickUserOptions()
+    pickOptions.confirmTitle = t('common.confirm')
+    pickOptions.successCB = (user: UserInfo) => {
+        const options = new FileListOptions()
+        options.type = FILE_LIST_USER
+        options.title = t('file_record.user_files')
+        // 「某人的文件」= 在与他的单聊里、由他发出的文件
+        options.conversation = new Conversation(ConversationType.Single, user.uid, 0)
+        options.fromUser = user.uid
+        openList(options, true)
+    }
+    pickUser(pickOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

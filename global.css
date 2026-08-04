@@ -26,3 +26,74 @@
 .icomoon {
     font-family: "icomoon";
 }
+
+/* ===== 字号档位 class（list-view 复用渲染路径专用） =====
+ *
+ * 普通页面的字号走 `:style="{ fontSize: fontPx(16) }"`（common/layoutScale.uts）。
+ * 但 list-item 内部不行 —— 鸿蒙 vapor 下 list-view 走复用渲染，字号挪进 :style 会让整行
+ * 塌成 0 高。那里改用静态 class 切档：`:class="fontClass(16)"` → `.fs-16-<档位>`。
+ *
+ * 命名是 `.fs-<基准px>-<档位 0..4>`，像素值 = 基准 × common/layoutScale.uts 的 SCALES
+ * [0.90, 1.0, 1.15, 1.30, 1.45]，改 SCALES 必须回来改这里。
+ * 需要新基准值就补五行，别在调用侧凑近似值。
+ *
+ * 同样受样式隔离影响：组件要 defineOptions({ styleIsolation: 'app' }) 才吃得到。 */
+.fs-10-0 { font-size: 9px; }
+.fs-10-1 { font-size: 10px; }
+.fs-10-2 { font-size: 11.5px; }
+.fs-10-3 { font-size: 13px; }
+.fs-10-4 { font-size: 14.5px; }
+
+.fs-11-0 { font-size: 9.9px; }
+.fs-11-1 { font-size: 11px; }
+.fs-11-2 { font-size: 12.65px; }
+.fs-11-3 { font-size: 14.3px; }
+.fs-11-4 { font-size: 15.95px; }
+
+.fs-12-0 { font-size: 10.8px; }
+.fs-12-1 { font-size: 12px; }
+.fs-12-2 { font-size: 13.8px; }
+.fs-12-3 { font-size: 15.6px; }
+.fs-12-4 { font-size: 17.4px; }
+
+.fs-13-0 { font-size: 11.7px; }
+.fs-13-1 { font-size: 13px; }
+.fs-13-2 { font-size: 14.95px; }
+.fs-13-3 { font-size: 16.9px; }
+.fs-13-4 { font-size: 18.85px; }
+
+.fs-14-0 { font-size: 12.6px; }
+.fs-14-1 { font-size: 14px; }
+.fs-14-2 { font-size: 16.1px; }
+.fs-14-3 { font-size: 18.2px; }
+.fs-14-4 { font-size: 20.3px; }
+
+.fs-15-0 { font-size: 13.5px; }
+.fs-15-1 { font-size: 15px; }
+.fs-15-2 { font-size: 17.25px; }
+.fs-15-3 { font-size: 19.5px; }
+.fs-15-4 { font-size: 21.75px; }
+
+.fs-16-0 { font-size: 14.4px; }
+.fs-16-1 { font-size: 16px; }
+.fs-16-2 { font-size: 18.4px; }
+.fs-16-3 { font-size: 20.8px; }
+.fs-16-4 { font-size: 23.2px; }
+
+.fs-17-0 { font-size: 15.3px; }
+.fs-17-1 { font-size: 17px; }
+.fs-17-2 { font-size: 19.55px; }
+.fs-17-3 { font-size: 22.1px; }
+.fs-17-4 { font-size: 24.65px; }
+
+.fs-18-0 { font-size: 16.2px; }
+.fs-18-1 { font-size: 18px; }
+.fs-18-2 { font-size: 20.7px; }
+.fs-18-3 { font-size: 23.4px; }
+.fs-18-4 { font-size: 26.1px; }
+
+.fs-20-0 { font-size: 18px; }
+.fs-20-1 { font-size: 20px; }
+.fs-20-2 { font-size: 23px; }
+.fs-20-3 { font-size: 26px; }
+.fs-20-4 { font-size: 29px; }

@@ -1,0 +1,37 @@
+/**
+ * FileListPage 的入参。
+ *
+ * 不走 URL query：conversation 是个对象，塞 query 得序列化再解析，而且中途还夹着
+ * 一次「选目标」的页面跳转。与项目里其他跨页传参一致（见 common/nav.uts 的做法），
+ * 用模块级暂存。
+ */
+import Conversation from '@/wfc/model/conversation.uts'
+
+/** 全部文件：所有会话、所有人。 */
+export const FILE_LIST_ALL: number = 0
+/** 我的文件：我发出的。 */
+export const FILE_LIST_MINE: number = 1
+/** 指定会话里的文件。 */
+export const FILE_LIST_CONVERSATION: number = 2
+/** 指定联系人发出的文件。 */
+export const FILE_LIST_USER: number = 3
+
+export class FileListOptions {
+    type: number = FILE_LIST_ALL
+    title = ''
+    conversation: Conversation | null = null
+    fromUser = ''
+}
+
+let pendingOptions: FileListOptions | null = null
+
+export function setFileListOptions(options: FileListOptions): void {
+    pendingOptions = options
+}
+
+/** 取出并清空，页面 onLoad 里调一次。 */
+export function takeFileListOptions(): FileListOptions | null {
+    const options = pendingOptions
+    pendingOptions = null
+    return options
+}

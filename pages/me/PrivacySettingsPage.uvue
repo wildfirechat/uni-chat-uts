@@ -1,0 +1,117 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-item :title="t('setting.find_me_by')" @tap="open('/pages/me/PrivacyFindMePage')" />
+            <option-item :title="t('setting.blacklist')" @tap="open('/pages/me/BlacklistPage')" />
+            <option-switch-item v-if="receiptEnabled" :title="t('setting.msg_receipt')" :value="receiptOn"
+                @change="onReceiptChange" />
+            <option-switch-item v-if="onlineStateEnabled" :title="t('setting.online_status')" :value="showOnlineState"
+                @change="onOnlineStateChange" />
+            <option-switch-item :title="t('setting.friend_verify')" :value="friendVerify" :show-bottom-divider="false"
+                @change="onFriendVerifyChange" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 隐私设置。对齐 flutter `settings/privacy_settings_screen.dart`。
+ *
+ * 消息回执 / 在线状态两项**受服务端能力控制**：没开这两个能力时整行不展示，
+ * 而不是展示一个点了没反应的开关。
+ *
+ * 朋友圈隐私入口按 FLUTTER_ALIGNMENT_TODO 归 M6，这里先不放。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import { getItem, setItem } from "@/pages/util/storageHelper.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "PrivacySettingsPage"
+})
+
+/** 在线状态开关只存本地：协议栈没有「对外隐藏在线状态」的用户设置，与 flutter 一致。 */
+const ONLINE_STATE_KEY = 'privacy_show_online_state'
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const receiptEnabled = ref<boolean>(false)
+const receiptOn = ref<boolean>(false)
+const onlineStateEnabled = ref<boolean>(false)
+const showOnlineState = ref<boolean>(true)
+const friendVerify = ref<boolean>(true)
+
+const load = () => {
+    receiptEnabled.value = wfc.isReceiptEnabled()
+    if (receiptEnabled.value) {
+        receiptOn.value = wfc.isUserReceiptEnabled()
+    }
+    onlineStateEnabled.value = wfc.isEnableUserOnlineState()
+    // 没存过时默认展示在线状态
+    showOnlineState.value = getItem(ONLINE_STATE_KEY) != '0'
+    friendVerify.value = wfc.isAddFriendNeedVerify()
+}
+
+onLoad(() => {
+    load()
+})
+
+const open = (url: string) => {
+    uni.navigateTo({
+        url: url,
+        fail: (e) => {
+            console.log('nav fail', url, e)
+        }
+    } as NavigateToOptions)
+}
+
+const toastFail = (errorCode: number) => {
+    uni.showToast({
+        title: t1('common.operate_fail', '' + errorCode),
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
+const onReceiptChange = (value: boolean) => {
+    receiptOn.value = value
+    wfc.setUserEnableReceipt(value, null, (errorCode: number) => {
+        receiptOn.value = !value
+        toastFail(errorCode)
+    })
+}
+
+const onOnlineStateChange = (value: boolean) => {
+    showOnlineState.value = value
+    setItem(ONLINE_STATE_KEY, value ? '1' : '0')
+}
+
+const onFriendVerifyChange = (value: boolean) => {
+    friendVerify.value = value
+    wfc.setAddFriendNeedVerify(value, null, (errorCode: number) => {
+        friendVerify.value = !value
+        toastFail(errorCode)
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

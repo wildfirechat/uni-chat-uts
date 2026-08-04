@@ -2,14 +2,14 @@
     <view class="search-conversation-message-container" :style="{ backgroundColor: c.surface }">
         <input class="input" type="text" v-model="query" placeholder="搜索" @input="search"
             :style="{ backgroundColor: c.surface, color: c.textPrimary, borderBottomColor: c.hairline }" />
-        <text class="category" :style="{ color: c.textTertiary }">聊天记录</text>
+        <text class="category" :style="{ fontSize: fontPx(13), color: c.textTertiary }">聊天记录</text>
         <scroll-view class="message-list" direction="vertical" :style="{ backgroundColor: c.surface }">
             <view v-for="(msg, index) in messages" :key="index">
                 <view class="search-result-item" :style="{ backgroundColor: c.surface }" @tap="onClickMessage(msg)">
                     <image class="item-portrait" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
                     <view class="title-desc">
-                        <text class="item-name" :style="{ color: c.textPrimary }">{{ fromNameOf(msg) }}</text>
-                        <text class="desc" :style="{ color: c.textSecondary }">{{ msg.messageContent.digest(msg) }}</text>
+                        <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ fromNameOf(msg) }}</text>
+                        <text class="desc" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ msg.messageContent.digest(msg) }}</text>
                     </view>
                 </view>
             </view>
@@ -25,6 +25,7 @@ import Config from "@/config.uts";
 import { go2ConversationPage } from "@/common/nav.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "SearchConversationMessagePage"
 })
@@ -96,7 +97,6 @@ onBeforeUnmount(() => {
 
 .category {
     margin-left: 10px;
-    font-size: 13px;
 }
 
 .message-list {
@@ -117,7 +117,6 @@ onBeforeUnmount(() => {
 }
 
 .item-name {
-    font-size: 14px;
     padding-left: 10px;
 }
 
@@ -128,7 +127,6 @@ onBeforeUnmount(() => {
 }
 
 .desc {
-    font-size: 12px;
     padding-left: 10px;
     white-space: nowrap;
     text-overflow: ellipsis;

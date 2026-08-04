@@ -1,0 +1,220 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.conversationBg }">
+        <scroll-view class="preview" direction="vertical">
+            <view class="time-row">
+                <view class="time-chip" :style="{ backgroundColor: c.pressedOverlay }">
+                    <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">10:00</text>
+                </view>
+            </view>
+
+            <view class="msg-row">
+                <view class="avatar" :style="{ backgroundColor: c.inputBg, width: iconPx(40), height: iconPx(40) }">
+                    <text :style="{ color: c.onAccent, fontSize: fontPx(FONT_LG) }">W</text>
+                </view>
+                <view class="bubble bubble-in" :style="{ backgroundColor: c.bubbleReceived }">
+                    <text :style="{ color: c.bubbleReceivedText, fontSize: fontPx(FONT_LG) }">{{ t('setting.font_size_preview_in') }}</text>
+                </view>
+                <view class="row-tail"></view>
+            </view>
+
+            <view class="msg-row msg-row-out">
+                <view class="row-tail"></view>
+                <view class="bubble bubble-out" :style="{ backgroundColor: c.bubbleSent }">
+                    <text :style="{ color: c.bubbleSentText, fontSize: fontPx(FONT_LG) }">{{ t('setting.font_size_preview_out') }}</text>
+                </view>
+                <view class="avatar" :style="{ backgroundColor: c.accent, width: iconPx(40), height: iconPx(40) }">
+                    <text :style="{ color: c.onAccent, fontSize: fontPx(FONT_LG) }">M</text>
+                </view>
+            </view>
+
+            <view class="msg-row">
+                <view class="avatar" :style="{ backgroundColor: c.inputBg, width: iconPx(40), height: iconPx(40) }">
+                    <text :style="{ color: c.onAccent, fontSize: fontPx(FONT_LG) }">W</text>
+                </view>
+                <view class="bubble bubble-in" :style="{ backgroundColor: c.bubbleReceived }">
+                    <text :style="{ color: c.bubbleReceivedText, fontSize: fontPx(FONT_LG) }">{{ t('setting.font_size_preview_hint') }}</text>
+                </view>
+                <view class="row-tail"></view>
+            </view>
+        </scroll-view>
+
+        <view class="slider-panel" :style="{ backgroundColor: c.surface }">
+            <view class="slider-row">
+                <text class="mark-small" :style="{ color: c.textSecondary }">A</text>
+                <slider class="slider" :value="index" :min="0" :max="FONT_SIZE_LEVEL_COUNT - 1" :step="1"
+                    :show-value="false" :activeColor="c.accent" :backgroundColor="c.inputBg" :blockColor="c.surface"
+                    @changing="onSliderChange" @change="onSliderChange" />
+                <text class="mark-large" :style="{ color: c.textPrimary }">A</text>
+            </view>
+            <view class="labels">
+                <text v-for="label in levelLabels" :key="label" class="label"
+                    :style="{ color: c.textSecondary }">{{ label }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 字体大小。对齐 flutter `settings/font_size_settings_screen.dart`：
+ * 上半部分是随档位实时变化的会话预览，下半部分是 5 档滑块。
+ *
+ * 滑块区自己的文字（A / A / 五个档位名）**刻意不跟随档位缩放** —— 它是调节字号的控件本身，
+ * 跟着一起放大会让 5 个标签在最大档挤成一行省略号，用户也失去了参照系。
+ * 所以这几处字号写死在 class 里，是有意为之，不是漏了 fontPx。
+ */
+import { colors, AppColors } from "@/common/theme.uts";
+import {
+    fontPx, iconPx, fontSizeIndex, setFontSizeIndex, FONT_SIZE_LEVEL_COUNT,
+    FONT_XS, FONT_LG
+} from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "FontSizeSettingsPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const index = computed<number>((): number => fontSizeIndex())
+
+const levelLabels = computed<string[]>((): string[] => {
+    return [
+        t('setting.font_size_small'),
+        t('setting.font_size_normal'),
+        t('setting.font_size_medium'),
+        t('setting.font_size_large'),
+        t('setting.font_size_extra_large')
+    ]
+})
+
+// changing 与 change 都接：拖动过程中就要看到预览变化，松手再补一次保证落盘
+const onSliderChange = (e: UniSliderChangeEvent) => {
+    setFontSizeIndex(Math.round(e.detail.value))
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.preview {
+    flex: 1;
+    padding: 24px 16px;
+}
+
+.time-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.time-chip {
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.msg-row {
+    width: 100%;
+    margin-top: 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.msg-row-out {
+    justify-content: flex-end;
+}
+
+.avatar {
+    flex-shrink: 0;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 气泡不写死宽度：文字撑多宽算多宽，最大到 row-tail 让出的位置为止 */
+.bubble {
+    flex-shrink: 1;
+    padding: 10px 12px;
+    margin-left: 12px;
+    margin-right: 12px;
+}
+
+.bubble-in {
+    border-top-left-radius: 2px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.bubble-out {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 2px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+/* 留白，避免气泡顶到对侧边缘 */
+.row-tail {
+    width: 40px;
+    flex-shrink: 0;
+}
+
+.slider-panel {
+    width: 100%;
+    padding: 24px 24px 32px 24px;
+    display: flex;
+    flex-direction: column;
+}
+
+.slider-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.slider {
+    flex: 1;
+    margin-left: 8px;
+    margin-right: 8px;
+}
+
+/* 见文件头注释：滑块区的字号刻意不跟随缩放 */
+.mark-small {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.mark-large {
+    flex-shrink: 0;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.labels {
+    width: 100%;
+    margin-top: 8px;
+    padding-left: 16px;
+    padding-right: 16px;
+    display: flex;
+    flex-direction: row;
+}
+
+.label {
+    flex: 1;
+    font-size: 12px;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+</style>

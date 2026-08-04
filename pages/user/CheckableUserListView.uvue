@@ -1,18 +1,18 @@
 <template>
     <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" class="checkable-user-row-item">
         <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft, backgroundColor: c.sectionGap }">
-            <text class="label-text" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
+            <text class="label-text" :class="fs13" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
         </view>
         <view v-else class="content" :style="{ paddingLeft: paddingLeft, backgroundColor: c.surface }"
             :class="{ disabled: isUserUncheckable(item.user as UserInfo) }"
             @tap="clickUserItem(item.user as UserInfo)">
             <round-checkbox class="checkbox" :disabled="isUserUncheckable(item.user as UserInfo)" :checked="isUserChecked(item.user as UserInfo)" />
             <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
-            <text class="user-name single-line" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
+            <text class="user-name single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
         </view>
     </list-item>
     <list-item v-if="hasMore" class="loading-row" @appear="appendNextBatch" @tap="appendNextBatch">
-        <text class="loading-text" :style="{ color: c.textSecondary }">加载中...</text>
+        <text class="loading-text" :class="fs12" :style="{ color: c.textSecondary }">加载中...</text>
     </list-item>
 </template>
 
@@ -21,6 +21,7 @@ import store, { pickState } from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontClass } from "@/common/layoutScale.uts";
 class FlatUserListItem {
     category = ''
     isLabel = false
@@ -34,6 +35,11 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs12 = computed<string>((): string => fontClass(12))
+const fs13 = computed<string>((): string => fontClass(13))
+const fs14 = computed<string>((): string => fontClass(14))
 const props = withDefaults(defineProps<{
     users: UserInfo[]
     initialCheckedUsers?: UserInfo[]
@@ -163,7 +169,6 @@ onMounted(() => {
 
 .label-text {
     padding: 5px 5px 5px 0;
-    font-size: 13px;
 }
 
 .content {
@@ -177,7 +182,6 @@ onMounted(() => {
 /* 不要叫 .name：PickUserPage 里也有个 .name 是 text-align: center 的，scoped 没能隔离住 */
 .user-name {
     margin-left: 10px;
-    font-size: 14px;
     flex: 1;
     text-align: left;
 }
@@ -192,7 +196,4 @@ onMounted(() => {
     justify-content: center;
 }
 
-.loading-text {
-    font-size: 12px;
-}
 </style>

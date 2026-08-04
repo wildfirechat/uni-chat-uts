@@ -18,14 +18,14 @@
                             :auto-height="true" :adjust-position="adjustPosition" />
                     </view>
                     <view v-if="quotedMessage != null" class="quote-message-container" :style="{ backgroundColor: c.bubbleQuoted }">
-                        <text class="quoted-message single-line" :style="{ color: c.bubbleQuotedText }">{{ quotedMessageDigest }}</text>
-                        <text class="cancel icomoon" :style="{ color: c.textSecondary }" @tap="cancelQuote">&#xf12a;</text>
+                        <text class="quoted-message single-line" :style="{ fontSize: fontPx(13), color: c.bubbleQuotedText }">{{ quotedMessageDigest }}</text>
+                        <text class="cancel icomoon" :style="{ fontSize: iconPx(16), color: c.textSecondary }" @tap="cancelQuote">&#xf12a;</text>
                     </view>
                 </view>
                 <text @tap="toggleEmoji" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }">&#xe60b;</text>
                 <view v-if="!hideSendButton && text != ''" class="wf-input-text-send-button"
                     :style="{ backgroundColor: c.accent, borderColor: c.accent }" @tap="send">
-                    <text class="send-button-text" :style="{ color: c.onAccent }">发送</text>
+                    <text class="send-button-text" :style="{ fontSize: fontPx(15), color: c.onAccent }">发送</text>
                 </view>
                 <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon wxfont"
                     :style="{ color: c.iconSecondary }">&#xe657;</text>
@@ -36,7 +36,7 @@
                     <view class="wf-ext-item-icon" :style="{ backgroundColor: c.surface }">
                         <text class="wxfont ext-icon">{{ v.icon }}</text>
                     </view>
-                    <text class="wf-ext-item-text" :style="{ color: c.textSecondary }">{{ v.title }}</text>
+                    <text class="wf-ext-item-text" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ v.title }}</text>
                 </view>
             </view>
             <view v-if="showEmoji" class="wf-stickers-container"
@@ -92,6 +92,7 @@ import { navigateToPage } from "../../common/nav.uts";
 import { toLocalFilePath } from "../../common/filePath.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx } from "@/common/layoutScale.uts";
 class ExtItem {
     title = ''
     tag = ''
@@ -642,7 +643,6 @@ defineExpose({
 }
 
 .wf-ext-item-text {
-    font-size: 12px;
     margin-top: 8px;
 }
 
@@ -685,12 +685,10 @@ defineExpose({
 .quoted-message {
     flex: 1;
     max-width: 250px;
-    font-size: 13px;
 }
 
 .cancel {
     padding: 0 5px;
-    font-size: 16px;
 }
 
 .wf-input-textarea {
@@ -713,10 +711,6 @@ defineExpose({
     border-radius: 6px;
     border-width: 1px;
     border-style: solid;
-}
-
-.send-button-text {
-    font-size: 15px;
 }
 
 .wf-input-button-icon {

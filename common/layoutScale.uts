@@ -36,6 +36,23 @@
  * ```
  *
  * 同一个尺寸只允许被缩放一次 —— 组件内部已经缩放过的，调用方传未缩放的基准值。
+ *
+ * ## list-view 里面走另一条路：[fontClass]
+ *
+ * `list-view` / `list-item` 在鸿蒙 vapor 下是**复用（recycle）渲染路径**，字号走 `:style`
+ * 会让整行塌成 0 高（见 FLUTTER_ALIGNMENT_TODO「list-view 的坑」）。所以 `list-item`
+ * 内部的文字改用静态 class 切档：
+ *
+ * ```vue
+ * <text class="user-name" :class="fs16">{{ name }}</text>
+ * ```
+ * ```uts
+ * const fs16 = computed<string>((): string => fontClass(16))
+ * ```
+ *
+ * class 本体（`.fs-16-0` … `.fs-16-4`）定义在 [global.css]，**页面默认吃得到，组件必须
+ * `defineOptions({ styleIsolation: 'app' })`**，否则是个空类、静默不生效。
+ * 用 `fontClass` 的元素，自己的 class 里不要再写 `font-size`，免得两条同权重规则打架。
  */
 import { ref } from 'vue'
 import { getItem, setItem } from '@/pages/util/storageHelper.uts'
@@ -124,4 +141,15 @@ export function iconPx(base: number): string {
 /** 行高、列表项高度：按 [ROW_CAP] 封顶。 */
 export function rowPx(base: number): string {
     return px(base, ROW_CAP)
+}
+
+/**
+ * `list-item` 内部文字专用：把当前档位表达成静态 class 名，如 `fontClass(16)` → `'fs-16-3'`。
+ *
+ * 只有 global.css 里声明过的基准值可用：**10 / 11 / 12 / 13 / 14 / 15 / 16 / 17 / 18 / 20**。
+ * 传别的值会拼出一个不存在的类名，静默不生效 —— 要新基准值先去 global.css 补五行。
+ * 那五行的像素值必须等于 `base * SCALES[i]`，改 [SCALES] 记得同步。
+ */
+export function fontClass(base: number): string {
+    return 'fs-' + base + '-' + _index.value
 }

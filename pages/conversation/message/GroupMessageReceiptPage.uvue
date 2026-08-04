@@ -2,11 +2,11 @@
     <view class="receipt-page" :style="{ backgroundColor: c.surface }">
         <view class="tab-bar" :style="{ borderBottomColor: c.hairlineSoft }">
             <view class="tab" @tap="switchTab(0)">
-                <text class="tab-text" :style="{ color: currentTab == 0 ? c.accent : c.textSecondary }">未读({{ unreadUsers.length }})</text>
+                <text class="tab-text" :style="{ fontSize: fontPx(15), color: currentTab == 0 ? c.accent : c.textSecondary }">未读({{ unreadUsers.length }})</text>
                 <view class="tab-indicator" :style="{ backgroundColor: currentTab == 0 ? c.accent : 'transparent' }"></view>
             </view>
             <view class="tab" @tap="switchTab(1)">
-                <text class="tab-text" :style="{ color: currentTab == 1 ? c.accent : c.textSecondary }">已读({{ readUsers.length }})</text>
+                <text class="tab-text" :style="{ fontSize: fontPx(15), color: currentTab == 1 ? c.accent : c.textSecondary }">已读({{ readUsers.length }})</text>
                 <view class="tab-indicator" :style="{ backgroundColor: currentTab == 1 ? c.accent : 'transparent' }"></view>
             </view>
         </view>
@@ -14,7 +14,7 @@
             <UserListView :users="currentUsers" :show-category-label="false" padding-left="20px" />
         </list-view>
         <view v-if="currentUsers.length == 0" class="empty-container">
-            <text class="empty-text" :style="{ color: c.textTertiary }">{{ emptyTip }}</text>
+            <text class="empty-text" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ emptyTip }}</text>
         </view>
     </view>
 </template>
@@ -29,6 +29,7 @@ import { gte } from "@/wfc/util/longUtil.uts";
 import { takePageOptions } from "@/common/nav.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "GroupMessageReceiptPage"
 })
@@ -109,10 +110,6 @@ const switchTab = (tab: number) => {
     justify-content: center;
 }
 
-.tab-text {
-    font-size: 15px;
-}
-
 .tab-indicator {
     margin-top: 6px;
     width: 30px;
@@ -133,7 +130,4 @@ const switchTab = (tab: number) => {
     justify-content: center;
 }
 
-.empty-text {
-    font-size: 14px;
-}
 </style>

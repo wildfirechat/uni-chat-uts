@@ -2,28 +2,28 @@
     <view class="user-detail-container" v-if="friendRequest != null">
         <view class="detail-header" :style="{ borderBottomColor: c.hairline }">
             <view class="name-container">
-                <text class="user-name" :style="{ color: c.textPrimary }">{{ name }}</text>
-                <text class="greeting" :style="{ color: c.textSecondary }">你好</text>
+                <text class="user-name" :style="{ fontSize: fontPx(20), color: c.textPrimary }">{{ name }}</text>
+                <text class="greeting" :style="{ fontSize: fontPx(14), color: c.textSecondary }">你好</text>
             </view>
             <image class="avatar" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
         </view>
         <view class="content">
             <view class="info-item">
-                <text class="info-label" :style="{ color: c.textSecondary }">备注名</text>
-                <text class="info-value" :style="{ color: c.textPrimary }">{{ alias }}</text>
+                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">备注名</text>
+                <text class="info-value" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ alias }}</text>
             </view>
             <view class="info-item">
-                <text class="info-label" :style="{ color: c.textSecondary }">地区</text>
-                <text class="info-value" :style="{ color: c.textPrimary }">未知</text>
+                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">地区</text>
+                <text class="info-value" :style="{ fontSize: fontPx(14), color: c.textPrimary }">未知</text>
             </view>
             <view class="info-item">
-                <text class="info-label" :style="{ color: c.textSecondary }">标签</text>
-                <text class="info-value" :style="{ color: c.textPrimary }">测试用户</text>
+                <text class="info-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">标签</text>
+                <text class="info-value" :style="{ fontSize: fontPx(14), color: c.textPrimary }">测试用户</text>
             </view>
         </view>
         <view class="detail-footer">
             <view class="chat-button" :style="{ backgroundColor: c.accent }" @tap="chat">
-                <text class="chat-button-text" :style="{ color: c.onAccent }">发消息</text>
+                <text class="chat-button-text" :style="{ fontSize: fontPx(15), color: c.onAccent }">发消息</text>
             </view>
         </view>
     </view>
@@ -38,6 +38,7 @@ import Config from "../../config.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "FriendRequestDetailPage"
 })
@@ -120,12 +121,7 @@ const chat = () => {
 }
 
 .user-name {
-    font-size: 20px;
     margin-bottom: 5px;
-}
-
-.greeting {
-    font-size: 14px;
 }
 
 .content {
@@ -142,12 +138,10 @@ const chat = () => {
 
 .info-label {
     margin-right: 20px;
-    font-size: 14px;
 }
 
 .info-value {
     flex: 1;
-    font-size: 14px;
 }
 
 .detail-footer {
@@ -162,7 +156,4 @@ const chat = () => {
     border-radius: 5px;
 }
 
-.chat-button-text {
-    font-size: 15px;
-}
 </style>

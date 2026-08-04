@@ -5,12 +5,12 @@
                 <view class="icon" :style="{ borderColor: c.hairline }">
                     <text class="icon-text" :style="{ color: c.textSecondary }">+</text>
                 </view>
-                <text class="action-text" :style="{ color: c.textPrimary }">添加成员</text>
+                <text class="action-text" :class="fs13" :style="{ color: c.textPrimary }">添加成员</text>
             </list-item>
             <UserListView :users="users" :show-category-label="false" padding-left="20px" />
         </list-view>
         <view @tap="clearMessages" class="danger-item" :style="{ borderTopColor: c.hairlineSoft }">
-            <text class="danger-text" :style="{ color: c.danger }">清空聊天记录</text>
+            <text class="danger-text" :style="{ fontSize: fontPx(15), color: c.danger }">清空聊天记录</text>
         </view>
     </view>
 </template>
@@ -26,12 +26,16 @@ import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import { clearConversationMessages } from "@/common/conversationActions.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, fontClass } from "@/common/layoutScale.uts";
 defineOptions({
     name: "SingleConversationInfoPage"
 })
 
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs13 = computed<string>((): string => fontClass(13))
 const conversationInfo = ref<ConversationInfo | null>(null)
 const users = ref<UserInfo[]>([] as UserInfo[])
 
@@ -118,7 +122,6 @@ const clearMessages = () => {
 
 .action-text {
     margin-left: 10px;
-    font-size: 13px;
 }
 
 .danger-item {
@@ -131,7 +134,4 @@ const clearMessages = () => {
     border-top-style: solid;
 }
 
-.danger-text {
-    font-size: 15px;
-}
 </style>

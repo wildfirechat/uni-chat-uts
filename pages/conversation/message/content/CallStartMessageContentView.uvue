@@ -2,7 +2,7 @@
     <view class="call-start-message-container" :class="{ out: message.direction == 0 }"
         :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <text class="icomoon call-icon" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">&#xf2d2;</text>
-        <text class="text" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
+        <text class="text" :style="{ fontSize: fontPx(16), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
     </view>
 </template>
 
@@ -11,6 +11,7 @@ import Message from "@/wfc/messages/message.uts";
 import CallStartMessageContent from "@/wfc/av/messages/callStartMessageContent.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "CallStartMessageContentView",
     styleIsolation: 'app'
@@ -61,6 +62,5 @@ const textContent = computed<string>((): string => {
 
 .text {
     padding-left: 5px;
-    font-size: 16px;
 }
 </style>

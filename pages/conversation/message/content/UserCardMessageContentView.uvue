@@ -2,9 +2,9 @@
     <view @tap="userInfo" class="user-card-content-container" :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <view class="portrait-name-container" :style="{ borderBottomColor: c.hairlineSoft }">
             <image class="portrait" :src="content.portrait" />
-            <text class="display-name" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.displayName }}</text>
+            <text class="display-name" :style="{ fontSize: fontPx(15), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.displayName }}</text>
         </view>
-        <text class="desc single-line" :style="{ color: c.textTertiary }">个人名片</text>
+        <text class="desc single-line" :style="{ fontSize: fontPx(13), color: c.textTertiary }">个人名片</text>
     </view>
 </template>
 
@@ -15,6 +15,7 @@ import wfc from "@/wfc/client/wfc.uts";
 import store from "@/store.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "UserCardMessageContentView",
     styleIsolation: 'app'
@@ -69,11 +70,9 @@ const userInfo = () => {
 .display-name {
     padding-left: 10px;
     padding-right: 10px;
-    font-size: 15px;
 }
 
 .desc {
     padding-top: 8px;
-    font-size: 13px;
 }
 </style>

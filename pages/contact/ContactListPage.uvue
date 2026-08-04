@@ -5,42 +5,42 @@
             <list-item @tap="showNewFriends" class="category-item-container">
                 <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
                 <view class="category-item" :style="{ backgroundColor: c.sectionGap }">
-                    <text class="title" :style="{ color: c.textPrimary }">新的朋友</text>
-                    <text class="desc" :style="{ color: c.danger }" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
+                    <text class="title" :class="fs14" :style="{ color: c.textPrimary }">新的朋友</text>
+                    <text class="desc" :class="fs14" :style="{ color: c.danger }" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
                 </view>
             </list-item>
             <list-item @tap="showGroups" class="category-item-container">
                 <image class="category-icon" src="/static/image/icon/ic_group_chat.png" />
                 <view class="category-item" :style="{ backgroundColor: c.sectionGap }">
-                    <text class="title" :style="{ color: c.textPrimary }">群聊</text>
-                    <text class="desc" :style="{ color: c.textPrimary }">{{ favGroupCount }}</text>
+                    <text class="title" :class="fs14" :style="{ color: c.textPrimary }">群聊</text>
+                    <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ favGroupCount }}</text>
                 </view>
             </list-item>
             <list-item @tap="showChannels" class="category-item-container">
                 <image class="category-icon" src="/static/image/icon/ic_channel_1.png" />
                 <view class="category-item" :style="{ backgroundColor: c.sectionGap }">
-                    <text class="title" :style="{ color: c.textPrimary }">频道</text>
-                    <text class="desc" :style="{ color: c.textPrimary }">{{ channelCount }}</text>
+                    <text class="title" :class="fs14" :style="{ color: c.textPrimary }">频道</text>
+                    <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ channelCount }}</text>
                 </view>
             </list-item>
             <OrganizationListView />
             <template v-if="expandFriendList">
                 <list-item v-for="(item, itemIndex) in contactListItems" :id="item.anchorId" :key="itemIndex" class="contact-user-row">
                     <view v-if="item.isLabel" class="user-label" :style="{ paddingLeft: '10px', backgroundColor: c.sectionGap }">
-                        <text class="user-label-text" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
+                        <text class="user-label-text" :class="fs13" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
                     </view>
                     <view v-else class="user-item-content"
                         :style="{ paddingLeft: '10px', backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
                         @tap="showUserDetail(item.user as UserInfo)">
                         <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
                         <view class="name-container">
-                            <text class="single-line user-name" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
-                            <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
+                            <text class="single-line user-name" :class="fs15" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
+                            <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :class="fs10" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
                         </view>
                     </view>
                 </list-item>
                 <list-item v-if="hasMoreContacts" class="contact-loading-row">
-                    <text class="contact-loading-text" :style="{ color: c.textSecondary }">加载更多联系人...</text>
+                    <text class="contact-loading-text" :class="fs12" :style="{ color: c.textSecondary }">加载更多联系人...</text>
                 </list-item>
             </template>
         </list-view>
@@ -60,12 +60,20 @@ import OrganizationListView from "./OrganizationListView.uvue";
 import NavBar from "../common/NavBar.uvue";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontClass } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ContactListPage"
 })
 
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs10 = computed<string>((): string => fontClass(10))
+const fs12 = computed<string>((): string => fontClass(12))
+const fs13 = computed<string>((): string => fontClass(13))
+const fs14 = computed<string>((): string => fontClass(14))
+const fs15 = computed<string>((): string => fontClass(15))
 const searchIcon = ref<string>('\ue636')
 const plusIcon = ref<string>('\ue657')
 
@@ -423,13 +431,8 @@ const showUserDetail = (user: UserInfo) => {
     align-items: center;
 }
 
-.title {
-    font-size: 14px;
-}
-
 .desc {
     margin-right: 15px;
-    font-size: 14px;
 }
 
 /* 底色画在内层 user-label / user-item-content 上：list-item 走复用渲染，不给它动态绑定 */
@@ -439,7 +442,6 @@ const showUserDetail = (user: UserInfo) => {
 
 .user-label-text {
     padding: 5px 5px 5px 0;
-    font-size: 13px;
 }
 
 .user-item-content {
@@ -465,12 +467,10 @@ const showUserDetail = (user: UserInfo) => {
 }
 
 .user-name {
-    font-size: 15px;
     text-align: left;
 }
 
 .user-online-status {
-    font-size: 10px;
     text-align: left;
 }
 
@@ -478,10 +478,6 @@ const showUserDetail = (user: UserInfo) => {
     height: 44px;
     align-items: center;
     justify-content: center;
-}
-
-.contact-loading-text {
-    font-size: 12px;
 }
 
 </style>

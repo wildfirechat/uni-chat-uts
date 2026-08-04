@@ -4,7 +4,7 @@
             :style="{ top: popupsTop + 'px', left: popupsLeft + 'px', flexDirection: direction }">
             <view v-for="(item, index) in popData" :key="index" @tap.stop="tapItem(item)" class="item-child"
                 :class="[direction == 'row' ? 'solid-right' : 'solid-bottom']">
-                <text class="item-text" :class="[theme == 'dark' ? 'text-dark' : 'text-light', item.disabled ? 'disabled-color' : '']">{{ item.title }}</text>
+                <text class="item-text" :style="{ fontSize: fontPx(14) }" :class="[theme == 'dark' ? 'text-dark' : 'text-light', item.disabled ? 'disabled-color' : '']">{{ item.title }}</text>
             </view>
         </view>
     </view>
@@ -12,6 +12,7 @@
 
 <script setup lang="uts">
 import { PopupMenuItem } from './popupMenu.uts'
+import { fontPx } from '../../common/layoutScale.uts'
 
 /**
  * 长按弹出菜单，uni-app x 简化版（功能与原 chunLei-popups 一致：
@@ -110,10 +111,6 @@ const tapItem = (item: PopupMenuItem) => {
 
 .item-child {
     padding: 12px 20px;
-}
-
-.item-text {
-    font-size: 14px;
 }
 
 .text-dark {

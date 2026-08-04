@@ -75,6 +75,41 @@ export class AppServerApi {
         } as UTSJSONObject)
     }
 
+    /**
+     * 请求注销账号的短信验证码，发到当前账号绑定的手机号，无需传号码。
+     *
+     * flutter 侧支持带滑块验证 token（`Config.ENABLE_SLIDE_VERIFY`），滑块验证属于 M4 登录页，
+     * 这里先留参数位，默认不带。
+     */
+    sendDestroyAccountCode(slideVerifyToken: string = ''): Promise<UTSJSONObject | null> {
+        const data = {} as UTSJSONObject
+        if (slideVerifyToken != '') {
+            data['slideVerifyToken'] = slideVerifyToken
+        }
+        return this._post('/send_destroy_code', data)
+    }
+
+    /** 注销账号。成功后调用方负责清本地登录态并回登录页。 */
+    destroyAccount(code: string): Promise<UTSJSONObject | null> {
+        return this._post('/destroy', { code: code } as UTSJSONObject)
+    }
+
+    /**
+     * 收藏列表，按 favId 倒序翻页。
+     * [startId] 传 0 表示从最新一条开始；后续传上一页最后一条的 favId。
+     */
+    getFavoriteItems(startId: number, count: number): Promise<UTSJSONObject | null> {
+        return this._post('/fav/list', { id: startId, count: count } as UTSJSONObject)
+    }
+
+    addFavoriteItem(item: UTSJSONObject): Promise<UTSJSONObject | null> {
+        return this._post('/fav/add', item)
+    }
+
+    removeFavoriteItem(favId: number): Promise<UTSJSONObject | null> {
+        return this._post('/fav/del/' + favId, {} as UTSJSONObject)
+    }
+
     getGroupAnnouncement(groupId: string): Promise<UTSJSONObject | null> {
         return this._post('/get_group_announcement', { groupId: groupId } as UTSJSONObject)
     }

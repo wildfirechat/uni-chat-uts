@@ -2,7 +2,7 @@
     <view class="text-message-container" :class="{ out: message.direction == 0 }"
         :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <text class="text"
-            :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
+            :style="{ fontSize: fontPx(16), lineHeight: fontPx(25), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
     </view>
 </template>
 
@@ -11,6 +11,7 @@ import Message from "@/wfc/messages/message.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "StreamingTextMessageContentView"
 })
@@ -47,8 +48,6 @@ const textContent = computed<string>((): string => {
 }
 
 .text {
-    font-size: 16px;
-    line-height: 25px;
     /* 保留换行符；宽度占满气泡内容区，配合 max-width 实现自动换行 */
     white-space: pre-line;
     width: 100%;

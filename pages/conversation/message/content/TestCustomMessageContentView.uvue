@@ -2,7 +2,7 @@
     <view class="text-message-container" :class="{ out: message.direction == 0 }"
         :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <text class="text"
-            :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ message.messageContent.digest(message) }}</text>
+            :style="{ fontSize: fontPx(16), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ message.messageContent.digest(message) }}</text>
     </view>
 </template>
 
@@ -10,6 +10,7 @@
 import Message from "@/wfc/messages/message.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "TestCustomMessageContentView"
 })
@@ -32,7 +33,4 @@ defineProps<{
 .text-message-container.out {
 }
 
-.text {
-    font-size: 16px;
-}
 </style>

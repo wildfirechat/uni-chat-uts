@@ -1,0 +1,99 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-switch-item :title="t('setting.find_me_by_account')" :value="accountOn"
+                @change="onAccountChange" />
+            <option-switch-item :title="t('setting.find_me_by_phone')" :value="phoneOn" :show-bottom-divider="false"
+                @change="onPhoneChange" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 谁可以找到我。对齐 flutter `settings/privacy_find_me_screen.dart`。
+ *
+ * 走 user setting scope 27（Privacy_Searchable）的**位掩码**，
+ * bit1 = 禁止按账号搜索、bit2 = 禁止按手机号搜索。注意语义是反的：
+ * **位被置上表示禁止**，所以开关打开（允许被搜到）对应清位。与 iOS 端一致。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import UserSettingScope from "@/wfc/client/userSettingScope.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "PrivacyFindMePage"
+})
+
+const MASK_ACCOUNT = 1 << 1
+const MASK_PHONE = 1 << 2
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const accountOn = ref<boolean>(true)
+const phoneOn = ref<boolean>(true)
+
+const currentMask = (): number => {
+    const value = wfc.getUserSetting(UserSettingScope.Privacy_Searchable, '')
+    if (value == '') {
+        return 0
+    }
+    const mask = parseInt(value)
+    return isNaN(mask) ? 0 : mask
+}
+
+const load = () => {
+    const mask = currentMask()
+    accountOn.value = (mask & MASK_ACCOUNT) == 0
+    phoneOn.value = (mask & MASK_PHONE) == 0
+}
+
+onLoad(() => {
+    load()
+})
+
+/** 置位/清位后整体写回。allow = true 表示允许被搜到 = 清位。 */
+const toggle = (mask: number, allow: boolean) => {
+    const next = allow ? (currentMask() & ~mask) : (currentMask() | mask)
+    wfc.setUserSetting(UserSettingScope.Privacy_Searchable, '', '' + next, null, (errorCode: number) => {
+        // 失败回滚
+        load()
+        uni.showToast({
+            title: t1('common.operate_fail', '' + errorCode),
+            icon: 'none'
+        } as ShowToastOptions)
+    })
+}
+
+const onAccountChange = (value: boolean) => {
+    accountOn.value = value
+    toggle(MASK_ACCOUNT, value)
+}
+
+const onPhoneChange = (value: boolean) => {
+    phoneOn.value = value
+    toggle(MASK_PHONE, value)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

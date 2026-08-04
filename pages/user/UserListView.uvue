@@ -1,20 +1,20 @@
 <template>
     <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" class="user-row-item">
         <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft, backgroundColor: c.sectionGap }">
-            <text class="label-text" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
+            <text class="label-text" :class="fs13" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
         </view>
         <view v-else class="content"
             :style="{ paddingLeft: paddingLeft, backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
             @tap="clickUserItem(item.user as UserInfo)">
             <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
             <view class="name-container">
-                <text class="single-line user-name" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
-                <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
+                <text class="single-line user-name" :class="fs15" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
+                <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :class="fs10" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
             </view>
         </view>
     </list-item>
     <list-item v-if="hasMore" class="loading-row" @appear="appendNextBatch" @tap="appendNextBatch">
-        <text class="loading-text" :style="{ color: c.textSecondary }">加载中...</text>
+        <text class="loading-text" :class="fs12" :style="{ color: c.textSecondary }">加载中...</text>
     </list-item>
 </template>
 
@@ -23,6 +23,7 @@ import store from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontClass } from "@/common/layoutScale.uts";
 class FlatUserListItem {
     category = ''
     isLabel = false
@@ -36,6 +37,12 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs10 = computed<string>((): string => fontClass(10))
+const fs12 = computed<string>((): string => fontClass(12))
+const fs13 = computed<string>((): string => fontClass(13))
+const fs15 = computed<string>((): string => fontClass(15))
 const props = withDefaults(defineProps<{
     users: UserInfo[]
     showCategoryLabel?: boolean
@@ -153,7 +160,6 @@ const clickUserItem = (user: UserInfo) => {
 
 .label-text {
     padding: 5px 5px 5px 0;
-    font-size: 13px;
 }
 
 .content {
@@ -174,12 +180,10 @@ const clickUserItem = (user: UserInfo) => {
 
 /* 不要叫 .name：其他页面也有 .name，scoped 没能隔离住 */
 .user-name {
-    font-size: 15px;
     text-align: left;
 }
 
 .user-online-status {
-    font-size: 10px;
     text-align: left;
 }
 
@@ -189,7 +193,4 @@ const clickUserItem = (user: UserInfo) => {
     justify-content: center;
 }
 
-.loading-text {
-    font-size: 12px;
-}
 </style>

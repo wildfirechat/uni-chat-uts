@@ -12,8 +12,8 @@
                     </view>
                     <view class="name-time-content-container">
                         <view class="name-time-container">
-                            <text class="name" :style="{ color: c.textTertiary }">{{ fromNameOf(message) }}</text>
-                            <text class="time" :style="{ color: c.textTertiary }">{{ message._timeStr }}</text>
+                            <text class="name" :style="{ fontSize: fontPx(12), color: c.textTertiary }">{{ fromNameOf(message) }}</text>
+                            <text class="time" :style="{ fontSize: fontPx(12), color: c.textTertiary }">{{ message._timeStr }}</text>
                         </view>
                         <view class="content">
                             <TextMessageContentView :message="message" v-if="message.messageContent.type == 1" />
@@ -51,6 +51,7 @@ import Config from "@/config.uts";
 import { takePageOptions } from "@/common/nav.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "CompositeMessagePage"
 })
@@ -183,14 +184,6 @@ onLoad((_options: OnLoadOptions) => {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
-}
-
-.name {
-    font-size: 12px;
-}
-
-.time {
-    font-size: 12px;
 }
 
 .portrait-container {

@@ -5,25 +5,25 @@
             <view class="icon" :style="{ backgroundColor: c.surface }">
                 <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf2f6;</text>
             </view>
-            <text class="action-text" :style="{ color: c.textSecondary }">逐条转发</text>
+            <text class="action-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">逐条转发</text>
         </view>
         <view class="action" @tap="forwardComposite">
             <view class="icon" :style="{ backgroundColor: c.surface }">
                 <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf347;</text>
             </view>
-            <text class="action-text" :style="{ color: c.textSecondary }">合并转发</text>
+            <text class="action-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">合并转发</text>
         </view>
         <view class="action" @tap="deleteMultiMessage">
             <view class="icon" :style="{ backgroundColor: c.surface }">
                 <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf37f;</text>
             </view>
-            <text class="action-text" :style="{ color: c.textSecondary }">删除</text>
+            <text class="action-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">删除</text>
         </view>
         <view class="action" @tap="hideMultiSelectionActionView">
             <view class="icon" :style="{ backgroundColor: c.surface }">
                 <text class="icomoon action-icon" :style="{ color: c.iconSecondary }">&#xf12a;</text>
             </view>
-            <text class="action-text" :style="{ color: c.textSecondary }">取消</text>
+            <text class="action-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">取消</text>
         </view>
     </view>
 </template>
@@ -35,6 +35,7 @@ import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "MessageMultiSelectionActionView",
     styleIsolation: 'app'
@@ -100,6 +101,5 @@ const forwardComposite = () => {
 
 .action-text {
     padding-top: 10px;
-    font-size: 13px;
 }
 </style>

@@ -4,10 +4,10 @@
             <view class="breadcrumb-list">
                 <view v-for="(org, index) in currentOrganizationPathList" :key="index" class="breadcrumb-item">
                     <text class="breadcrumb-link"
-                        :style="{ color: index == currentOrganizationPathList.length - 1 ? c.textSecondary : c.accent }"
+                        :style="{ fontSize: fontPx(13), color: index == currentOrganizationPathList.length - 1 ? c.textSecondary : c.accent }"
                         @tap="loadAndShowOrganization(org)">{{ org.getString('name') ?? '' }}</text>
                     <text v-if="index != currentOrganizationPathList.length - 1" class="breadcrumb-sep"
-                        :style="{ color: c.textSecondary }">&gt;</text>
+                        :style="{ fontSize: fontPx(13), color: c.textSecondary }">&gt;</text>
                 </view>
             </view>
         </scroll-view>
@@ -15,13 +15,13 @@
             <view v-for="(org, index) in subOrganizations" :key="'o-' + index">
                 <view class="organization-item" :style="{ backgroundColor: c.surface }" @tap="loadAndShowOrganization(org)">
                     <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="orgPortrait(org)" />
-                    <text class="name" :style="{ color: c.textPrimary }">{{ org.getString('name') ?? '' }}</text>
+                    <text class="name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ org.getString('name') ?? '' }}</text>
                 </view>
             </view>
             <view v-for="(employee, index) in employees" :key="'e-' + index">
                 <view class="organization-item" :style="{ backgroundColor: c.surface }" @tap="showUserInfo(employee)">
                     <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="employeePortrait(employee)" />
-                    <text class="name" :style="{ color: c.textPrimary }">{{ employee.getString('name') ?? '' }}</text>
+                    <text class="name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ employee.getString('name') ?? '' }}</text>
                 </view>
             </view>
         </scroll-view>
@@ -36,6 +36,7 @@ import wfc from "../../wfc/client/wfc.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "OrganizationTreePage"
 })
@@ -159,13 +160,8 @@ onMounted(() => {
     align-items: center;
 }
 
-.breadcrumb-link {
-    font-size: 13px;
-}
-
 .breadcrumb-sep {
     margin: 0 10px;
-    font-size: 13px;
 }
 
 .member-list-container {
@@ -187,7 +183,4 @@ onMounted(() => {
     margin-right: 10px;
 }
 
-.name {
-    font-size: 14px;
-}
 </style>

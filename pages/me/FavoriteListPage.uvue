@@ -1,0 +1,407 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <view class="tabs" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
+            <view v-for="tab in tabs" :key="tab.tag" class="tab" @tap="switchCategory(tab.tag)">
+                <text class="tab-text"
+                    :style="{ fontSize: fontPx(14), color: category == tab.tag ? c.accent : c.textSecondary }">{{ tab.label }}</text>
+                <view class="tab-indicator"
+                    :style="{ backgroundColor: category == tab.tag ? c.accent : 'transparent' }"></view>
+            </view>
+        </view>
+
+        <view v-if="items.length == 0 && !loading" class="empty">
+            <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('fav.empty') }}</text>
+        </view>
+
+        <list-view v-else class="list" direction="vertical" @scrolltolower="loadMore">
+            <list-item v-for="item in items" :key="item.favId" class="row-item">
+                <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+                    @tap="showActions(item)">
+                    <image v-if="thumbOf(item) != ''" class="thumb" :src="thumbOf(item)" mode="aspectFill"
+                        :style="{ backgroundColor: c.inputBg }" />
+                    <view v-else class="thumb thumb-placeholder" :style="{ backgroundColor: c.inputBg }">
+                        <text class="thumb-tag" :class="fs11" :style="{ color: c.textSecondary }">{{ tagOf(item) }}</text>
+                    </view>
+                    <view class="texts">
+                        <text class="title" :class="[fs14, titleMaxHeight]" :style="{ color: c.textPrimary }">{{ titleOf(item) }}</text>
+                        <text class="meta" :class="fs12" :style="{ color: c.textSecondary }">{{ metaOf(item) }}</text>
+                    </view>
+                </view>
+            </list-item>
+            <list-item v-if="hasMore" class="footer-item">
+                <view class="footer">
+                    <text class="footer-text" :class="fs13" :style="{ color: c.textTertiary }">{{ t('common.loading') }}</text>
+                </view>
+            </list-item>
+        </list-view>
+
+        <bottom-action-sheet v-model="sheetVisible" :items="sheetItems" @select="onSheetSelect" />
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 收藏列表。对齐 flutter 移动端复用的 `pc/pc_favorite_list_widget.dart`，
+ * 分类同 vue-pc-chat 的 FavPage：全部 / 文件 / 相册 / 聊天记录。
+ *
+ * 收藏是 app server 的独立业务（`/fav/*`），不走 IM 协议栈，模型见 wfc/model/favoriteItem.uts。
+ *
+ * 与 flutter 的差异：
+ * - flutter 的「打开」会按类型跳到图片预览 / 合并转发详情页，这里只做**转发**和**删除**
+ *   —— 预览要接会话页那套渲染器，属于 M3 的活。
+ * - 分类是**客户端过滤**（服务端 `/fav/list` 不支持按类型查），所以某一页全被滤掉时
+ *   会自动接着拉下一页，和 flutter 的处理一致。
+ *
+ * 本页在 list-view 里，走鸿蒙 vapor 的复用渲染路径：尺寸和字号留在 class 里，只有颜色走 :style。
+ */
+import appServerApi from "@/api/appServerApi.uts";
+import FavoriteItem from "@/wfc/model/favoriteItem.uts";
+import MessageContentType from "@/wfc/messages/messageContentType.uts";
+import UnknownMessageContent from "@/wfc/messages/unknownMessageContent.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import { forward } from "@/common/forward.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_LG, fontClass, fontSizeIndex } from "@/common/layoutScale.uts";
+import { dateFormat } from "@/pages/util/helper.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
+
+defineOptions({
+    name: "FavoriteListPage"
+})
+
+const PAGE_SIZE = 20
+
+const CATEGORY_ALL = 'all'
+const CATEGORY_FILE = 'file'
+const CATEGORY_MEDIA = 'media'
+const CATEGORY_COMPOSITE = 'composite'
+
+class CategoryTab {
+    tag = ''
+    label = ''
+    constructor(tag: string, label: string) {
+        this.tag = tag
+        this.label = label
+    }
+}
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs11 = computed<string>((): string => fontClass(11))
+const fs12 = computed<string>((): string => fontClass(12))
+const fs13 = computed<string>((): string => fontClass(13))
+const fs14 = computed<string>((): string => fontClass(14))
+const titleMaxHeight = computed<string>((): string => 'title-mh-' + fontSizeIndex())
+
+const items = ref<FavoriteItem[]>([] as FavoriteItem[])
+const loading = ref<boolean>(false)
+const hasMore = ref<boolean>(true)
+const category = ref<string>(CATEGORY_ALL)
+const sheetVisible = ref<boolean>(false)
+
+// 翻页游标：上一页最后一条的 favId，0 表示从最新开始
+let nextId = 0
+let selected: FavoriteItem | null = null
+
+const tabs = computed<CategoryTab[]>((): CategoryTab[] => {
+    return [
+        new CategoryTab(CATEGORY_ALL, t('common.all')),
+        new CategoryTab(CATEGORY_FILE, t('fav.file')),
+        new CategoryTab(CATEGORY_MEDIA, t('fav.media')),
+        new CategoryTab(CATEGORY_COMPOSITE, t('fav.composite'))
+    ]
+})
+
+const sheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
+    const forwardItem = new ActionSheetItem(t('common.forward'), 'forward')
+    const deleteItem = new ActionSheetItem(t('common.delete'), 'delete')
+    deleteItem.danger = true
+    return [forwardItem, deleteItem]
+})
+
+onLoad(() => {
+    load()
+})
+
+const matchCategory = (item: FavoriteItem): boolean => {
+    const cat = category.value
+    if (cat == CATEGORY_FILE) {
+        return item.favType == MessageContentType.File
+    }
+    if (cat == CATEGORY_MEDIA) {
+        return item.favType == MessageContentType.Image || item.favType == MessageContentType.Video
+    }
+    if (cat == CATEGORY_COMPOSITE) {
+        return item.favType == MessageContentType.Composite_Message
+    }
+    return true
+}
+
+const load = () => {
+    if (loading.value || !hasMore.value) {
+        return
+    }
+    loading.value = true
+    appServerApi.getFavoriteItems(nextId, PAGE_SIZE)
+        .then((result: UTSJSONObject | null) => {
+            loading.value = false
+            const page: FavoriteItem[] = []
+            let more = false
+            if (result != null) {
+                more = result.getBoolean('hasMore') ?? false
+                const arr = result.getArray<UTSJSONObject>('items')
+                if (arr != null) {
+                    for (let i = 0; i < arr.length; i++) {
+                        const item = FavoriteItem.fromJsonObject(arr[i])
+                        item._timeStr = dateFormat(item.timestamp)
+                        page.push(item)
+                    }
+                }
+            }
+            if (page.length > 0) {
+                nextId = page[page.length - 1].favId
+            }
+            hasMore.value = more
+
+            const matched = page.filter((item: FavoriteItem): boolean => matchCategory(item))
+            items.value = items.value.concat(matched)
+            // 这一页全被分类过滤掉了，但后面还有：直接接着拉，否则用户会看到一个空列表
+            if (matched.length == 0 && more && page.length > 0) {
+                load()
+            }
+        })
+        .catch((reason) => {
+            loading.value = false
+            hasMore.value = false
+            console.log('load favorites fail', reason)
+        })
+}
+
+const loadMore = () => {
+    load()
+}
+
+const switchCategory = (tag: string) => {
+    if (category.value == tag) {
+        return
+    }
+    category.value = tag
+    items.value = [] as FavoriteItem[]
+    nextId = 0
+    hasMore.value = true
+    loading.value = false
+    load()
+}
+
+const tagOf = (item: FavoriteItem): string => {
+    if (item.favType == MessageContentType.Image) {
+        return t('fav.tag_image')
+    }
+    if (item.favType == MessageContentType.Video) {
+        return t('fav.tag_video')
+    }
+    if (item.favType == MessageContentType.Voice) {
+        return t('fav.tag_voice')
+    }
+    if (item.favType == MessageContentType.File) {
+        return t('fav.tag_file')
+    }
+    if (item.favType == MessageContentType.Link) {
+        return t('fav.tag_link')
+    }
+    if (item.favType == MessageContentType.Composite_Message) {
+        return t('fav.tag_composite')
+    }
+    return ''
+}
+
+const titleOf = (item: FavoriteItem): string => {
+    if (item.title != '') {
+        return item.favType == MessageContentType.Text ? item.title : (tagOf(item) + ' ' + item.title)
+    }
+    return tagOf(item)
+}
+
+const metaOf = (item: FavoriteItem): string => {
+    const origin = item.origin != '' ? (t('fav.from') + ' ' + item.origin) : ''
+    return origin != '' ? (origin + '  ' + item._timeStr) : item._timeStr
+}
+
+const thumbOf = (item: FavoriteItem): string => {
+    // 图片/视频优先用服务端缩略图，链接用站点图；base64 缩略图在 data 里，
+    // 列表里不解它 —— 每条都解一次 base64 会拖慢滚动
+    return item.thumbUrl
+}
+
+const showActions = (item: FavoriteItem) => {
+    selected = item
+    sheetVisible.value = true
+}
+
+const onSheetSelect = (tag: string) => {
+    const item = selected
+    if (item == null) {
+        return
+    }
+    if (tag == 'forward') {
+        const message = item.toMessage()
+        if (message.messageContent instanceof UnknownMessageContent) {
+            uni.showToast({
+                title: t('common.unsupported_type'),
+                icon: 'none'
+            } as ShowToastOptions)
+            return
+        }
+        forward(ForwardType.NORMAL, [message])
+    } else if (tag == 'delete') {
+        confirmDelete(item)
+    }
+}
+
+const confirmDelete = (item: FavoriteItem) => {
+    uni.showModal({
+        title: t('common.delete'),
+        content: t('fav.delete_confirm'),
+        success: (res) => {
+            if (res.confirm) {
+                doDelete(item)
+            }
+        }
+    } as ShowModalOptions)
+}
+
+const doDelete = (item: FavoriteItem) => {
+    appServerApi.removeFavoriteItem(item.favId)
+        .then((_) => {
+            items.value = items.value.filter((i: FavoriteItem): boolean => i.favId != item.favId)
+            uni.showToast({
+                title: t('fav.deleted'),
+                icon: 'none'
+            } as ShowToastOptions)
+        })
+        .catch((reason) => {
+            uni.showToast({
+                title: t1('common.operate_fail', '' + reason),
+                icon: 'none'
+            } as ShowToastOptions)
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.tabs {
+    width: 100%;
+    height: 44px;
+    display: flex;
+    flex-direction: row;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.tab-indicator {
+    width: 24px;
+    height: 2px;
+    margin-top: 6px;
+    border-radius: 1px;
+}
+
+.list {
+    flex: 1;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.row-item {
+    width: 100%;
+}
+
+.row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.thumb {
+    width: 50px;
+    height: 50px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.thumb-placeholder {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.texts {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 两行截断。lines 在鸿蒙 vapor 下失效，只能靠 max-height 兜。
+ * max-height 得跟字号一起放大，否则大档位下第二行会被切掉半截；这里在 list-item 内部，
+ * 只能像字号那样切静态类（值 = 字号 × 40/14，即原来 14px 对应 40px 的那个比例）。 */
+.title {
+    flex: 1;
+    overflow: hidden;
+}
+
+.title-mh-0 { max-height: 36px; }
+.title-mh-1 { max-height: 40px; }
+.title-mh-2 { max-height: 46px; }
+.title-mh-3 { max-height: 52px; }
+.title-mh-4 { max-height: 58px; }
+
+.meta {
+    flex: 1;
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.footer-item {
+    width: 100%;
+}
+
+.footer {
+    width: 100%;
+    height: 44px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+</style>

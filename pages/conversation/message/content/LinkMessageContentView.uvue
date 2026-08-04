@@ -1,9 +1,9 @@
 <template>
     <view class="link-message-container" @tap="openLink" :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <view class="link-info">
-            <text class="link-title" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
+            <text class="link-title" :style="{ fontSize: fontPx(15), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
             <text v-if="content.contentDigest != ''" class="link-digest"
-                :style="{ color: c.textTertiary }">{{ content.contentDigest }}</text>
+                :style="{ fontSize: fontPx(13), color: c.textTertiary }">{{ content.contentDigest }}</text>
         </view>
         <image v-if="content.thumbnail != ''" class="link-thumbnail" :src="content.thumbnail" mode="aspectFill" />
     </view>
@@ -14,6 +14,7 @@ import Message from "@/wfc/messages/message.uts";
 import LinkMessageContent from "@/wfc/messages/linkMessageContent.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "LinkMessageContentView",
     styleIsolation: 'app'
@@ -69,7 +70,6 @@ const openLink = () => {
 }
 
 .link-title {
-    font-size: 15px;
     lines: 2;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -77,7 +77,6 @@ const openLink = () => {
 
 .link-digest {
     margin-top: 6px;
-    font-size: 13px;
     lines: 2;
     text-overflow: ellipsis;
     overflow: hidden;

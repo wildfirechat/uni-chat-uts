@@ -5,14 +5,14 @@
             <image class="avatar" :src="portraitOf(friendRequest)" :style="{ backgroundColor: c.inputBg }" />
             <view class="info">
                 <view class="name">
-                    <text class="single-line request-name" :style="{ color: c.textPrimary }">{{ displayNameOf(friendRequest) }}</text>
-                    <text class="reason single-line" :style="{ color: c.textTertiary }">{{ reasonOf(friendRequest) }}</text>
+                    <text class="single-line request-name" :style="{ fontSize: fontPx(13), color: c.textPrimary }">{{ displayNameOf(friendRequest) }}</text>
+                    <text class="reason single-line" :style="{ fontSize: fontPx(12), color: c.textTertiary }">{{ reasonOf(friendRequest) }}</text>
                 </view>
-                <text v-if="friendRequest.status == 1" class="status" :style="{ color: c.textTertiary }">已添加</text>
+                <text v-if="friendRequest.status == 1" class="status" :style="{ fontSize: fontPx(13), color: c.textTertiary }">已添加</text>
                 <button v-else-if="friendRequest.status == 0" class="accept" size="mini"
                     :style="{ color: c.onAccent, backgroundColor: c.accent, borderColor: c.accent }"
                     @tap="accept(friendRequest)">添加</button>
-                <text v-else-if="friendRequest.status == 3" class="status" :style="{ color: c.textTertiary }">已拒绝</text>
+                <text v-else-if="friendRequest.status == 3" class="status" :style="{ fontSize: fontPx(13), color: c.textTertiary }">已拒绝</text>
             </view>
         </view>
     </view>
@@ -26,6 +26,7 @@ import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "FriendRequestListView",
     styleIsolation: 'app'
@@ -132,21 +133,10 @@ onBeforeUnmount(() => {
     flex: 1;
 }
 
-.request-name {
-    font-size: 13px;
-}
-
 .accept {
     text-align: center;
     border-width: 1px;
     border-style: solid;
 }
 
-.status {
-    font-size: 13px;
-}
-
-.reason {
-    font-size: 12px;
-}
 </style>

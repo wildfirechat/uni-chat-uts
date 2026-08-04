@@ -9,14 +9,14 @@
             </view>
             <view class="content-container">
                 <view class="title-time-container">
-                    <text class="title single-line" :style="{ color: c.textPrimary }">{{ conversationTitle }}</text>
-                    <text class="time" :style="{ color: c.textSecondary }">{{ conversationInfo._timeStr }}</text>
+                    <text class="title single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ conversationTitle }}</text>
+                    <text class="time" :class="fs10" :style="{ color: c.textSecondary }">{{ conversationInfo._timeStr }}</text>
                 </view>
                 <view class="content">
-                    <text class="draft single-line" v-if="shouldShowDraft" :style="{ color: c.textPrimary }"><text
-                            class="draft-label" :style="{ color: c.danger }">[草稿]</text>{{ draft }}</text>
-                    <text v-if="unreadMention > 0" class="mention" :style="{ color: c.danger }">[有人@我]</text>
-                    <text v-if="!shouldShowDraft" class="last-message-desc single-line"
+                    <text class="draft single-line" :class="fs13" v-if="shouldShowDraft" :style="{ color: c.textPrimary }"><text
+                            class="draft-label" :class="fs13" :style="{ color: c.danger }">[草稿]</text>{{ draft }}</text>
+                    <text v-if="unreadMention > 0" class="mention" :class="fs13" :style="{ color: c.danger }">[有人@我]</text>
+                    <text v-if="!shouldShowDraft" class="last-message-desc single-line" :class="fs13"
                         :style="{ color: c.textTertiary }">{{ lastMessageContent }}</text>
                     <text v-if="conversationInfo.isSilent" class="icomoon silent-icon"
                         :style="{ color: c.textTertiary }">&#xf39a;</text>
@@ -35,16 +35,26 @@ import Draft from "../util/draft.uts";
 import NotificationMessageContent from "../../wfc/messages/notification/notificationMessageContent.uts";
 import Config from "../../config.uts";
 import { colors, AppColors } from "../../common/theme.uts";
+import { fontClass } from "../../common/layoutScale.uts";
 
 defineOptions({
     name: "ConversationItemView",
+    // 'app' 不只是为了 global.css 的 single-line，下面的 fs-* 档位类也在那里
     styleIsolation: 'app'
 })
 
 // 本组件在 list-view 里，走的是鸿蒙 vapor 的**复用（recycle）渲染路径**。
-// 规矩（踩过一次坑）：只有颜色走 :style，**尺寸和字号一律留在下面的 class 里**。
+// 规矩（踩过一次坑）：只有颜色走 :style，**尺寸一律留在下面的 class 里**。
 // 上次把 height/font-size 挪进 :style，鸿蒙上整行塌成 0 高——有滚动条、看不到 item、点不动。
+// 字号要跟设置里的档位走，所以改成切静态 class（global.css 的 .fs-<基准>-<档位>），
+// 和置顶态用 :class 切类是同一个套路，不碰 :style。
 const c = computed<AppColors>((): AppColors => colors())
+
+// 行高 70px 不跟着放大：最大档下 20.3 + 18.85 = 39.15px，仍在 50px 的文字区里放得下，
+// 而给复用渲染的 item 改高度风险远大于收益。
+const fs14 = computed<string>((): string => fontClass(14))
+const fs13 = computed<string>((): string => fontClass(13))
+const fs10 = computed<string>((): string => fontClass(10))
 
 const props = defineProps<{
     conversationInfo: ConversationInfo
@@ -204,14 +214,16 @@ const unreadMention = computed<number>((): number => {
     justify-content: space-between;
 }
 
+/* 下面这几个类不写 font-size：字号由模板上的 .fs-<基准>-<档位> 提供（global.css）。
+ * 两边都写会变成两条同权重规则，谁生效取决于声明顺序，别加回来。
+ * .badge 和 .silent-icon 例外——角标数字和静音图标是图形，按约定不跟字号档位放大。 */
 .title {
-    font-size: 14px;
     padding-right: 10px;
     flex: 1;
 }
 
 .time {
-    font-size: 10px;
+    flex-shrink: 0;
 }
 
 .content {
@@ -221,21 +233,18 @@ const unreadMention = computed<number>((): number => {
 }
 
 .draft {
-    font-size: 13px;
     flex: 1;
 }
 
 .draft-label {
-    font-size: 13px;
     padding-right: 5px;
 }
 
 .mention {
-    font-size: 13px;
+    flex-shrink: 0;
 }
 
 .last-message-desc {
-    font-size: 13px;
     flex: 1;
 }
 

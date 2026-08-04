@@ -2230,17 +2230,36 @@ class Store {
         return result;
     }
 
-    searchFiles(keyword: string, beforeMessageUid: string, successCB: ((files: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+    /**
+     * 搜索文件记录。[conversation] 为 null 表示不限会话，[fromUser] 为 '' 表示不限发送者。
+     */
+    searchFiles(keyword: string, beforeMessageUid: string, successCB: ((files: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null, conversation: Conversation | null = null, fromUser: string = ''): void {
         if (keyword == '') {
             return;
         }
-        wfc.searchFiles(keyword, null, '', beforeMessageUid, 20,
+        wfc.searchFiles(keyword, conversation, fromUser, beforeMessageUid, 20,
             (files: FileRecord[]) => {
                 this._patchFileRecords(files);
                 successCB?.(files);
             },
             (errorCode: number) => {
                 console.log('search file error', errorCode);
+                failCB?.(errorCode);
+            })
+    }
+
+    /** 搜索我发送的文件记录。 */
+    searchMyFiles(keyword: string, beforeMessageUid: string, successCB: ((files: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        if (keyword == '') {
+            return;
+        }
+        wfc.searchMyFiles(keyword, beforeMessageUid, 20,
+            (files: FileRecord[]) => {
+                this._patchFileRecords(files);
+                successCB?.(files);
+            },
+            (errorCode: number) => {
+                console.log('search my file error', errorCode);
                 failCB?.(errorCode);
             })
     }
@@ -2486,7 +2505,8 @@ class Store {
         }, failCB)
     }
 
-    getConversationFileRecords(conversation: Conversation, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+    /** [conversation] 为 null 表示不限会话（全部文件），[fromUser] 为 '' 表示不限发送者。 */
+    getConversationFileRecords(conversation: Conversation | null, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
         wfc.getConversationFileRecords(conversation, fromUser, beforeMessageUid, count, (fileRecords: FileRecord[]) => {
             this._patchFileRecords(fileRecords)
             successCB?.(fileRecords);

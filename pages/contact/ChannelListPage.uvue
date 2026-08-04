@@ -5,7 +5,7 @@
             <view v-for="(channel, index) in channelList" :key="index" @tap="showChannel(channel)">
                 <view class="channel-item" :style="{ borderBottomColor: c.hairlineSoft }">
                     <image class="avatar" :src="channel.portrait" :style="{ backgroundColor: c.inputBg }" />
-                    <text class="channel-name single-line" :style="{ color: c.textPrimary }">{{ channel.name }}</text>
+                    <text class="channel-name single-line" :style="{ fontSize: fontPx(13), color: c.textPrimary }">{{ channel.name }}</text>
                 </view>
             </view>
         </scroll-view>
@@ -21,6 +21,7 @@ import { go2ConversationPage } from "../../common/nav.uts";
 import NavBar from "../common/NavBar.uvue";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ChannelListPage"
 })
@@ -67,7 +68,6 @@ const showChannel = (channelInfo: ChannelInfo) => {
 
 .channel-name {
     margin-left: 10px;
-    font-size: 13px;
 }
 
 .avatar {

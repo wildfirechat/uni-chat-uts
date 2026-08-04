@@ -6,6 +6,7 @@
  *   PickUserPage 内：currentPickUsersOptions() 获取参数，notifyPickedUsers(users) 通知结果
  */
 import UserInfo from "../wfc/model/userInfo.uts";
+import Conversation from "../wfc/model/conversation.uts";
 import { contactState } from "@/store.uts";
 
 export class PickUsersOptions {
@@ -76,5 +77,39 @@ export function notifyPickedUser(user: UserInfo): void {
     pickUserOptions = null
     if (options != null) {
         options.successCB?.(user)
+    }
+}
+
+/**
+ * 选一个会话。转发有自己那套（带「创建新会话」分支和多选），这里是最简版：
+ * 从最近会话列表里挑一个，用于「查这个会话里的文件」这类场景。
+ */
+export class PickConversationOptions {
+    title = ''
+    successCB: ((conversation: Conversation) => void) | null = null
+}
+
+let pickConversationOptions: PickConversationOptions | null = null
+
+export function pickConversation(options: PickConversationOptions): void {
+    pickConversationOptions = options
+    uni.navigateTo({
+        url: '/pages/pick/PickConversationPage',
+        fail: (err) => {
+            console.log('nav to PickConversationPage err', err)
+            pickConversationOptions = null
+        }
+    } as NavigateToOptions)
+}
+
+export function currentPickConversationOptions(): PickConversationOptions | null {
+    return pickConversationOptions
+}
+
+export function notifyPickedConversation(conversation: Conversation): void {
+    const options = pickConversationOptions
+    pickConversationOptions = null
+    if (options != null) {
+        options.successCB?.(conversation)
     }
 }

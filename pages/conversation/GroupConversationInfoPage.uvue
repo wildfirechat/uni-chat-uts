@@ -2,17 +2,17 @@
     <view class="conversation-info" v-if="conversationInfo != null" :style="{ backgroundColor: c.surface }">
         <view class="page-header">
             <view class="field">
-                <text class="field-label" :style="{ color: c.textSecondary }">群名称</text>
-                <input class="field-input" :style="{ color: c.textPrimary }" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
+                <text class="field-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">群名称</text>
+                <input class="field-input" :style="{ fontSize: fontPx(13), color: c.textPrimary }" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
                     v-model="newGroupName" @confirm="updateGroupName" :placeholder="groupDisplayName" />
             </view>
             <view class="field">
-                <text class="field-label" :style="{ color: c.textSecondary }">群公告</text>
-                <input class="field-input" :style="{ color: c.textPrimary }" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
+                <text class="field-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">群公告</text>
+                <input class="field-input" :style="{ fontSize: fontPx(13), color: c.textPrimary }" type="text" :disabled="!enableEditGroupNameOrAnnouncement"
                     @confirm="updateGroupAnnouncement" v-model="newGroupAnnouncement" :placeholder="groupAnnouncement" />
             </view>
             <view class="fav-switch">
-                <text class="field-label" :style="{ color: c.textSecondary }">保存到通讯录</text>
+                <text class="field-label" :style="{ fontSize: fontPx(14), color: c.textSecondary }">保存到通讯录</text>
                 <switch class="fav-switch-control" :checked="isFavGroup" @change="onFavSwitchChange" />
             </view>
         </view>
@@ -25,24 +25,24 @@
                 <view class="icon" :style="{ borderColor: c.hairline }">
                     <text class="icon-text" :style="{ color: c.textSecondary }">+</text>
                 </view>
-                <text class="action-text" :style="{ color: c.textPrimary }">添加成员</text>
+                <text class="action-text" :class="fs13" :style="{ color: c.textPrimary }">添加成员</text>
             </list-item>
             <list-item v-if="enableRemoveGroupMember && filterQuery == ''" @tap="showRemoveGroupMemberModal" class="action-item">
                 <view class="icon" :style="{ borderColor: c.hairline }">
                     <text class="icon-text" :style="{ color: c.textSecondary }">-</text>
                 </view>
-                <text class="action-text" :style="{ color: c.textPrimary }">移除成员</text>
+                <text class="action-text" :class="fs13" :style="{ color: c.textPrimary }">移除成员</text>
             </list-item>
             <UserListView :users="users" :show-category-label="false" padding-left="20px" />
         </list-view>
         <view @tap="clearMessages" class="quit-group-item" :style="{ borderTopColor: c.hairlineSoft }">
-            <text class="quit-group-text" :style="{ color: c.danger }">清空聊天记录</text>
+            <text class="quit-group-text" :style="{ fontSize: fontPx(15), color: c.danger }">清空聊天记录</text>
         </view>
         <view @tap="quitGroup(false)" class="quit-group-item" :style="{ borderTopColor: c.hairlineSoft }">
-            <text class="quit-group-text" :style="{ color: c.danger }">退出群组</text>
+            <text class="quit-group-text" :style="{ fontSize: fontPx(15), color: c.danger }">退出群组</text>
         </view>
         <view v-if="isOwner" @tap="quitGroup(true)" class="quit-group-item" :style="{ borderTopColor: c.hairlineSoft }">
-            <text class="quit-group-text" :style="{ color: c.danger }">解散群组</text>
+            <text class="quit-group-text" :style="{ fontSize: fontPx(15), color: c.danger }">解散群组</text>
         </view>
     </view>
 </template>
@@ -63,12 +63,16 @@ import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import { clearConversationMessages } from "@/common/conversationActions.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, fontClass } from "@/common/layoutScale.uts";
 defineOptions({
     name: "GroupConversationInfoPage"
 })
 
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs13 = computed<string>((): string => fontClass(13))
 const conversationInfo = ref<ConversationInfo | null>(null)
 const groupMemberUserInfos = ref<UserInfo[]>([] as UserInfo[])
 const filterQuery = ref<string>('')
@@ -370,14 +374,9 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     align-items: flex-start;
 }
 
-.field-label {
-    font-size: 14px;
-}
-
 .field-input {
     margin-top: 5px;
     width: 100%;
-    font-size: 13px;
     background-color: transparent;
 }
 
@@ -440,7 +439,6 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
 
 .action-text {
     margin-left: 10px;
-    font-size: 13px;
 }
 
 .quit-group-item {
@@ -453,7 +451,4 @@ const onFavSwitchChange = (e: UniSwitchChangeEvent) => {
     border-top-style: solid;
 }
 
-.quit-group-text {
-    font-size: 15px;
-}
 </style>

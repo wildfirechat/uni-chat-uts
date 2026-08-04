@@ -1,0 +1,160 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-switch-item :title="t('setting.receive_new_message')" :value="receiveMessage"
+                @change="onReceiveMessageChange" />
+            <option-switch-item :title="t('setting.receive_call')" :value="receiveCall" @change="onReceiveCallChange" />
+            <option-switch-item :title="t('setting.show_notification_detail')" :value="showDetail"
+                :show-bottom-divider="false" @change="onShowDetailChange" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-switch-item :title="t('setting.no_disturb')" :value="noDisturbing" :desc="noDisturbDesc"
+                :show-bottom-divider="false" @change="onNoDisturbChange" />
+        </form-card>
+
+        <section-divider />
+
+        <form-card>
+            <option-switch-item :title="t('setting.sync_draft')" :value="syncDraft" :show-bottom-divider="false"
+                @change="onSyncDraftChange" />
+        </form-card>
+
+        <view class="tail"></view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 消息通知设置。对齐 flutter `settings/message_notification_settings.dart`。
+ *
+ * 四个开关都是**乐观更新**：先动 UI 再发请求，失败了回读服务端并提示 —— 开关不能等一个
+ * 往返才回弹。取反语义与免打扰时段的换算都在 common/notificationSettings.uts 里，
+ * 这里不重复实现。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import UserSettingScope from "@/wfc/client/userSettingScope.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import {
+    getBoolSetting, setBoolSetting, formatNoDisturbTime,
+    DEFAULT_NO_DISTURB_START, DEFAULT_NO_DISTURB_END
+} from "@/common/notificationSettings.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "MessageNotificationSettingsPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const receiveMessage = ref<boolean>(true)
+const receiveCall = ref<boolean>(true)
+const showDetail = ref<boolean>(true)
+const syncDraft = ref<boolean>(true)
+const noDisturbing = ref<boolean>(false)
+const noDisturbStart = ref<number>(0)
+const noDisturbEnd = ref<number>(0)
+
+const noDisturbDesc = computed<string>((): string => {
+    if (!noDisturbing.value || noDisturbStart.value == noDisturbEnd.value) {
+        return ''
+    }
+    return formatNoDisturbTime(noDisturbStart.value, noDisturbEnd.value)
+})
+
+const load = () => {
+    receiveMessage.value = getBoolSetting(UserSettingScope.GlobalSilent, true)
+    receiveCall.value = getBoolSetting(UserSettingScope.VoipSilent, true)
+    showDetail.value = getBoolSetting(UserSettingScope.HiddenNotificationDetail, true)
+    syncDraft.value = getBoolSetting(UserSettingScope.DisableSyncDraft, true)
+
+    const times = wfc.getNoDisturbingTimes()
+    if (times == null) {
+        noDisturbing.value = false
+        noDisturbStart.value = 0
+        noDisturbEnd.value = 0
+    } else {
+        noDisturbStart.value = times[0]
+        noDisturbEnd.value = times[1]
+        // 起止相同表示没有实际时段，等价于关闭
+        noDisturbing.value = times[0] != times[1]
+    }
+}
+
+onLoad(() => {
+    load()
+})
+
+const onSuccess = () => {
+    uni.showToast({
+        title: t('setting.set_success'),
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
+const onFail = (errorCode: number) => {
+    console.log('update notification setting fail', errorCode)
+    uni.showToast({
+        title: t('setting.set_fail'),
+        icon: 'none'
+    } as ShowToastOptions)
+    // 失败时回读，把 UI 拨回服务端的真实状态
+    load()
+}
+
+const update = (scope: number, value: boolean) => {
+    setBoolSetting(scope, value, true, onSuccess, onFail)
+}
+
+const onReceiveMessageChange = (value: boolean) => {
+    receiveMessage.value = value
+    update(UserSettingScope.GlobalSilent, value)
+}
+
+const onReceiveCallChange = (value: boolean) => {
+    receiveCall.value = value
+    update(UserSettingScope.VoipSilent, value)
+}
+
+const onShowDetailChange = (value: boolean) => {
+    showDetail.value = value
+    update(UserSettingScope.HiddenNotificationDetail, value)
+}
+
+const onSyncDraftChange = (value: boolean) => {
+    syncDraft.value = value
+    update(UserSettingScope.DisableSyncDraft, value)
+}
+
+const onNoDisturbChange = (value: boolean) => {
+    noDisturbing.value = value
+    noDisturbStart.value = value ? DEFAULT_NO_DISTURB_START : 0
+    noDisturbEnd.value = value ? DEFAULT_NO_DISTURB_END : 0
+    if (value) {
+        wfc.setNoDisturbingTimes(noDisturbStart.value, noDisturbEnd.value, onSuccess, onFail)
+    } else {
+        wfc.clearNoDisturbingTimes(onSuccess, onFail)
+    }
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

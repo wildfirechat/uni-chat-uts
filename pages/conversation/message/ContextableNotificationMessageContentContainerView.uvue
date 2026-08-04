@@ -3,7 +3,7 @@
         <view class="message-time-container"
             :style="{ backgroundColor: isMessageChecked ? c.cellSelected : 'transparent' }">
             <text v-if="message._showTime" class="time"
-                :style="{ color: c.textTertiary, backgroundColor: c.conversationBg }">{{ message._timeStr }}</text>
+                :style="{ fontSize: fontPx(10), color: c.textTertiary, backgroundColor: c.conversationBg }">{{ message._timeStr }}</text>
             <view class="message-content-container">
                 <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
                 <RichNotificationMessageContentView :message="message" v-if="message.messageContent.type == 12"
@@ -24,6 +24,7 @@ import eventBus from "@/common/eventBus.uts";
 import { OpenMessageContextMenuEvent } from "./messageEvents.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ContextableNotificationMessageContentContainerView"
 })
@@ -62,7 +63,6 @@ const openMessageContextMenu = (event: UniTouchEvent) => {
 .time {
     width: 100%;
     text-align: center;
-    font-size: 10px;
 }
 
 .message-content-container {

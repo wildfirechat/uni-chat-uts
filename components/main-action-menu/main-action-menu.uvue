@@ -12,15 +12,15 @@
             <view class="menu-list">
                 <view class="menu-item" @tap="go2CreateGroup">
                     <text class="customicons menu-item-icon">&#xe69e;</text>
-                    <text class="text solid-bottom">发起群聊</text>
+                    <text class="text solid-bottom" :style="{ fontSize: fontPx(16) }">发起群聊</text>
                 </view>
                 <view class="menu-item" @tap="go2SearchFriend">
                     <text class="customicons menu-item-icon">&#xe657;</text>
-                    <text class="text solid-bottom">添加朋友</text>
+                    <text class="text solid-bottom" :style="{ fontSize: fontPx(16) }">添加朋友</text>
                 </view>
                 <view class="menu-item" @tap="go2ScanQrCode">
                     <text class="customicons menu-item-icon">&#xe60a;</text>
-                    <text class="text">扫一扫</text>
+                    <text class="text" :style="{ fontSize: fontPx(16) }">扫一扫</text>
                 </view>
             </view>
         </view>
@@ -36,6 +36,7 @@ import UserInfo from "../../wfc/model/userInfo.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
+import { fontPx } from "../../common/layoutScale.uts";
 
 defineOptions({
     name: "MainActionMenu",
@@ -211,7 +212,6 @@ defineExpose({
 
 .text {
     color: #ffffff;
-    font-size: 16px;
     padding: 15px 0;
     flex: 1;
 }

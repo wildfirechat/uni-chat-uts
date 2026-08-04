@@ -2,10 +2,10 @@
     <view class="quoted-message-container">
         <view class="quoted-message" :style="{ backgroundColor: c.bubbleQuoted }">
             <view class="media-content" v-if="isMediaQuoted">
-                <text class="quoted-name single-line" :style="{ color: c.bubbleQuotedText }">{{ quotedFromName }}</text>
+                <text class="quoted-name single-line" :style="{ fontSize: fontPx(13), color: c.bubbleQuotedText }">{{ quotedFromName }}</text>
                 <image class="quoted-image" mode="aspectFit" :src="mediaSrc" @tap="onMessageClick" />
             </view>
-            <text v-else class="quoted-text" :style="{ color: c.bubbleQuotedText }"
+            <text v-else class="quoted-text" :style="{ fontSize: fontPx(13), color: c.bubbleQuotedText }"
                 @tap="onMessageClick">{{ quotedMessageStr }}</text>
         </view>
         <text v-if="showCloseButton" @tap="cancelQuoteMessage" class="icomoon close-icon"
@@ -23,6 +23,7 @@ import StickerMessageContent from "@/wfc/messages/stickerMessageContent.uts";
 import eventBus from "@/common/eventBus.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 
 defineOptions({
     name: "QuoteMessageView",
@@ -123,7 +124,6 @@ const onMessageClick = () => {
     lines: 2;
     text-overflow: ellipsis;
     overflow: hidden;
-    font-size: 13px;
 }
 
 .media-content {
@@ -136,7 +136,6 @@ const onMessageClick = () => {
 .quoted-name {
     width: 100px;
     max-width: 100px;
-    font-size: 13px;
 }
 
 .quoted-image {

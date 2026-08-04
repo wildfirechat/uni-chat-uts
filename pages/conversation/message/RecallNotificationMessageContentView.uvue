@@ -1,7 +1,7 @@
 <template>
     <view class="notification-container">
-        <text class="notification" :style="{ color: c.textTertiary }">{{ message.messageContent.digest(message) }}</text>
-        <text v-if="reeditable" class="reedit" :style="{ color: c.accent }" @tap="reedit">重新编辑</text>
+        <text class="notification" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ message.messageContent.digest(message) }}</text>
+        <text v-if="reeditable" class="reedit" :style="{ fontSize: fontPx(14), color: c.accent }" @tap="reedit">重新编辑</text>
     </view>
 </template>
 
@@ -14,6 +14,7 @@ import Config from "@/config.uts";
 import eventBus from "@/common/eventBus.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "RecallNotificationMessageContentView"
 })
@@ -56,11 +57,9 @@ const reedit = () => {
 
 .notification {
     margin: 20px 0;
-    font-size: 14px;
 }
 
 .reedit {
     margin-left: 10px;
-    font-size: 14px;
 }
 </style>

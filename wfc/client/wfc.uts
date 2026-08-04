@@ -850,8 +850,15 @@ export class WfcManager {
         });
     }
 
+    /**
+     * 是否全局静默（不接收新消息通知）。
+     *
+     * 不走 `native.isGlobalSlient()`：鸿蒙插件里那个方法是写死的 `return false`
+     * （见 `uni_modules/wfc-client/utssdk/app-harmony/index.uts`），设置页会永远显示「开」。
+     * 原生实现本身也只是读 user setting scope 2，这里直接读，三端一致。
+     */
     isGlobalSlient(): boolean {
-        return native.isGlobalSlient();
+        return this.getUserSetting(UserSettingScope.GlobalSilent, '') == '1';
     }
 
     setGlobalSlient(silent: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
@@ -1617,6 +1624,57 @@ export class WfcManager {
     }
 
     /**
+     * 免打扰时段：返回 [起, 止]，单位是**从 UTC 零点算起的分钟数**，未设置时返回 null。
+     *
+     * 三端原生插件都没导出 `getNoDisturbingTimes`（鸿蒙侧连 flutter 的 imclient 都还是 TODO），
+     * 但这个设置本身就是 user setting scope 17、key ''、值 `"起|止"`，服务端也是这么解析的
+     * （broker `MemoryMessagesStore.isUserNoDisturbing`）。所以直接读写 user setting，
+     * 三端一致，也不必为它再发一次插件版本。
+     */
+    getNoDisturbingTimes(): number[] | null {
+        const value = this.getUserSetting(UserSettingScope.NoDisturbing, '');
+        if (value == '') {
+            return null;
+        }
+        const parts = value.split('|');
+        if (parts.length != 2) {
+            return null;
+        }
+        const start = parseInt(parts[0]);
+        const end = parseInt(parts[1]);
+        if (isNaN(start) || isNaN(end)) {
+            return null;
+        }
+        return [start, end];
+    }
+
+    /**
+     * 设置免打扰时段，参数同 [getNoDisturbingTimes]。
+     * [endMins] 允许小于 [startMins]，表示跨夜。
+     */
+    setNoDisturbingTimes(startMins: number, endMins: number, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        this.setUserSetting(UserSettingScope.NoDisturbing, '', '' + startMins + '|' + endMins, successCB, failCB);
+    }
+
+    /** 取消免打扰。置空值即可，服务端把空值当作未设置。 */
+    clearNoDisturbingTimes(successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        this.setUserSetting(UserSettingScope.NoDisturbing, '', '', successCB, failCB);
+    }
+
+    /**
+     * 是否屏蔽音视频通话的推送。
+     *
+     * 没有对应的原生方法，走 user setting scope 21（与 iOS/Android 官方客户端一致）。
+     */
+    isVoipSilent(): boolean {
+        return this.getUserSetting(UserSettingScope.VoipSilent, '') == '1';
+    }
+
+    setVoipSilent(silent: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        this.setUserSetting(UserSettingScope.VoipSilent, '', silent ? '1' : '0', successCB, failCB);
+    }
+
+    /**
      * 获取会话已读情况
      * @return Map<userId, readTime>
      */
@@ -1670,10 +1728,13 @@ export class WfcManager {
     }
 
     /**
-     * 获取会话中的文件记录
+     * 获取会话中的文件记录。
+     *
+     * [conversation] 传 null 表示不限会话（拉全部文件），[fromUser] 传 '' 表示不限发送者
+     * —— 与 [searchFiles] 的语义一致。
      */
-    getConversationFileRecords(conversation: Conversation, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
-        native.getConversationFiles(conversation.toJsonStr(), fromUser, stringValue(beforeMessageUid), count, (frsStr: string) => {
+    getConversationFileRecords(conversation: Conversation | null, fromUser: string, beforeMessageUid: string, count: number, successCB: ((records: FileRecord[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getConversationFiles(conversation != null ? conversation.toJsonStr() : '', fromUser, stringValue(beforeMessageUid), count, (frsStr: string) => {
             successCB?.(this._parseFileRecords(frsStr));
         }, (errorCode: number) => {
             failCB?.(errorCode);
@@ -2185,6 +2246,9 @@ export class WfcManager {
     }
 
     private onGroupInfoUpdate(groupInfosStr: string): void {
+       // TODO
+       // FIXME
+       // 鸿蒙端回调的是 groupId 列表，其他端待确认
         if (!this.isLogined) {
             return;
         }

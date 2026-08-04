@@ -1,0 +1,358 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <view class="search-bar" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
+            <view class="search-box" :style="{ backgroundColor: c.inputBg }">
+                <input class="search-input" type="text" :placeholder="t('file_record.search_placeholder')"
+                    :placeholder-style="placeholderStyle" :style="{ fontSize: fontPx(14), color: c.textPrimary }" @input="onKeywordInput"
+                    @confirm="reload" />
+            </view>
+        </view>
+
+        <view v-if="files.length == 0 && !loading" class="empty">
+            <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('file_record.empty') }}</text>
+        </view>
+
+        <list-view v-else class="list" direction="vertical" @scrolltolower="loadMore">
+            <list-item v-for="file in files" :key="file.messageUid" class="row-item">
+                <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+                    @tap="showActions(file)">
+                    <image class="file-icon" :src="'/static/image/filetypes/' + file._fileIconName" />
+                    <view class="texts">
+                        <text class="name" :class="[fs14, nameMaxHeight]" :style="{ color: c.textPrimary }">{{ file.name }}</text>
+                        <text class="meta" :class="fs12" :style="{ color: c.textSecondary }">{{ metaOf(file) }}</text>
+                    </view>
+                    <text v-if="canDelete(file)" class="delete" :style="{ color: c.danger }"
+                        @tap.stop="confirmDelete(file)">&#xf37f;</text>
+                </view>
+            </list-item>
+            <list-item v-if="hasMore" class="footer-item">
+                <view class="footer">
+                    <text class="footer-text" :class="fs13" :style="{ color: c.textTertiary }">{{ t('common.loading') }}</text>
+                </view>
+            </list-item>
+        </list-view>
+
+        <bottom-action-sheet v-model="sheetVisible" :items="sheetItems" @select="onSheetSelect" />
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 文件列表。对齐 flutter `settings/file_records_screen.dart` 的 FileListWidget。
+ *
+ * 与 flutter 的差异：flutter 把搜索做成 AppBar 上的放大镜 + SearchDelegate 全屏页，
+ * 这里改成常驻搜索框 —— 与本项目其他列表页（SearchUserPage 等）一致，少一层页面。
+ *
+ * 本页在 list-view 里，走鸿蒙 vapor 的复用渲染路径：**尺寸和字号一律留在 class 里**，
+ * 只有颜色走 :style（见 FLUTTER_ALIGNMENT_TODO「list-view 的坑」）。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import store from "@/store.uts";
+import FileRecord from "@/wfc/model/fileRecord.uts";
+import Message from "@/wfc/messages/message.uts";
+import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import { forward } from "@/common/forward.uts";
+import { saveMessageFile } from "@/common/mediaSaver.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_LG, fontClass, fontSizeIndex } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
+import { takeFileListOptions, FileListOptions, FILE_LIST_MINE } from "./fileListOptions.uts";
+
+defineOptions({
+    name: "FileListPage"
+})
+
+const PAGE_SIZE = 20
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs12 = computed<string>((): string => fontClass(12))
+const fs13 = computed<string>((): string => fontClass(13))
+const fs14 = computed<string>((): string => fontClass(14))
+const nameMaxHeight = computed<string>((): string => 'name-mh-' + fontSizeIndex())
+
+const files = ref<FileRecord[]>([] as FileRecord[])
+const loading = ref<boolean>(false)
+const hasMore = ref<boolean>(true)
+const keyword = ref<string>('')
+const sheetVisible = ref<boolean>(false)
+
+let options: FileListOptions = new FileListOptions()
+// 翻页游标：上一页最后一条的 messageUid，'0' 表示从最新开始
+let beforeMessageUid = '0'
+let selected: FileRecord | null = null
+
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
+const sheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
+    return [
+        new ActionSheetItem(t('common.forward'), 'forward'),
+        new ActionSheetItem(t('common.download'), 'download')
+    ]
+})
+
+onLoad(() => {
+    const loaded = takeFileListOptions()
+    if (loaded != null) {
+        options = loaded
+    }
+    if (options.title != '') {
+        uni.setNavigationBarTitle({
+            title: options.title
+        } as SetNavigationBarTitleOptions)
+    }
+    load()
+})
+
+const onSuccess = (records: FileRecord[]) => {
+    loading.value = false
+    files.value = files.value.concat(records)
+    if (records.length > 0) {
+        beforeMessageUid = records[records.length - 1].messageUid
+    }
+    // 返回不满一页就没有下一页了
+    hasMore.value = records.length >= PAGE_SIZE
+}
+
+const onFail = (errorCode: number) => {
+    loading.value = false
+    hasMore.value = false
+    console.log('load file records fail', errorCode)
+}
+
+const load = () => {
+    if (loading.value || !hasMore.value) {
+        return
+    }
+    loading.value = true
+
+    const query = keyword.value.trim()
+    if (options.type == FILE_LIST_MINE) {
+        if (query == '') {
+            store.getMyFileRecords(beforeMessageUid, PAGE_SIZE, onSuccess, onFail)
+        } else {
+            store.searchMyFiles(query, beforeMessageUid, onSuccess, onFail)
+        }
+    } else {
+        if (query == '') {
+            store.getConversationFileRecords(options.conversation, options.fromUser, beforeMessageUid, PAGE_SIZE, onSuccess, onFail)
+        } else {
+            store.searchFiles(query, beforeMessageUid, onSuccess, onFail, options.conversation, options.fromUser)
+        }
+    }
+}
+
+const reload = () => {
+    files.value = [] as FileRecord[]
+    beforeMessageUid = '0'
+    hasMore.value = true
+    loading.value = false
+    load()
+}
+
+const loadMore = () => {
+    load()
+}
+
+let searchTimer = 0
+
+const onKeywordInput = (e: UniInputEvent) => {
+    keyword.value = e.detail.value
+    // 输入防抖：每敲一个字就发一次远程搜索太费
+    if (searchTimer != 0) {
+        clearTimeout(searchTimer)
+    }
+    searchTimer = setTimeout((): void => {
+        searchTimer = 0
+        reload()
+    }, 300)
+}
+
+const metaOf = (file: FileRecord): string => {
+    const parts: string[] = []
+    if (file._userDisplayName != '') {
+        parts.push(file._userDisplayName)
+    }
+    parts.push(file._sizeStr)
+    parts.push(file._timeStr)
+    return parts.join('  ')
+}
+
+const canDelete = (file: FileRecord): boolean => {
+    return file.userId == wfc.getUserId()
+}
+
+const showActions = (file: FileRecord) => {
+    selected = file
+    sheetVisible.value = true
+}
+
+/** 文件记录本身不是消息，转发/下载都要先还原成一条文件消息。 */
+const toMessage = (file: FileRecord): Message => {
+    const content = new FileMessageContent('', file.url, file.name, file.size)
+    const message = new Message(file.conversation, content)
+    message.messageUid = file.messageUid
+    message.from = file.userId
+    message.timestamp = file.timestamp
+    return message
+}
+
+const onSheetSelect = (tag: string) => {
+    const file = selected
+    if (file == null) {
+        return
+    }
+    if (tag == 'forward') {
+        forward(ForwardType.NORMAL, [toMessage(file)])
+    } else if (tag == 'download') {
+        saveMessageFile(toMessage(file))
+    }
+}
+
+const confirmDelete = (file: FileRecord) => {
+    uni.showModal({
+        title: t('common.delete'),
+        content: t('file_record.delete_confirm'),
+        success: (res) => {
+            if (res.confirm) {
+                doDelete(file)
+            }
+        }
+    } as ShowModalOptions)
+}
+
+const doDelete = (file: FileRecord) => {
+    wfc.deleteFileRecord(file.messageUid, () => {
+        files.value = files.value.filter((f: FileRecord): boolean => f.messageUid != file.messageUid)
+        uni.showToast({
+            title: t('file_record.deleted'),
+            icon: 'none'
+        } as ShowToastOptions)
+    }, (errorCode: number) => {
+        uni.showToast({
+            title: t1('common.operate_fail', '' + errorCode),
+            icon: 'none'
+        } as ShowToastOptions)
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.search-bar {
+    width: 100%;
+    padding: 8px 12px;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.search-box {
+    width: 100%;
+    height: 34px;
+    border-radius: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.search-input {
+    flex: 1;
+    height: 34px;
+}
+
+.list {
+    flex: 1;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.row-item {
+    width: 100%;
+}
+
+.row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 15px;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.file-icon {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.texts {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 两行截断。lines 在鸿蒙 vapor 下失效，只能靠 max-height 兜。
+ * max-height 得跟字号一起放大，否则大档位下第二行会被切掉半截；这里在 list-item 内部，
+ * 只能像字号那样切静态类（值 = 字号 × 40/14，即原来 14px 对应 40px 的那个比例）。 */
+.name {
+    flex: 1;
+    overflow: hidden;
+}
+
+.name-mh-0 { max-height: 36px; }
+.name-mh-1 { max-height: 40px; }
+.name-mh-2 { max-height: 46px; }
+.name-mh-3 { max-height: 52px; }
+.name-mh-4 { max-height: 58px; }
+
+.meta {
+    flex: 1;
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 字体这里自己声明，不借全局 .icomoon —— 页面虽然吃得到 global.css，写在本地更不容易被后来的
+ * 样式隔离改动搞掉（组件里就完全吃不到，见 option-item 的说明） */
+.delete {
+    flex-shrink: 0;
+    margin-left: 12px;
+    padding: 6px;
+    font-size: 18px;
+    font-family: "icomoon";
+}
+
+.footer-item {
+    width: 100%;
+}
+
+.footer {
+    width: 100%;
+    height: 44px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+</style>

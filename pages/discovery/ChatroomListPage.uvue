@@ -1,13 +1,13 @@
 <template>
     <view class="chatroom-container" :style="{ backgroundColor: c.primaryBackground }">
         <view class="item" :style="{ backgroundColor: c.surface }" @tap="go2Chatroom(1)">
-            <text class="item-text" :style="{ color: c.textPrimary }">野火聊天室1</text>
+            <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室1</text>
         </view>
         <view class="item" :style="{ backgroundColor: c.surface }" @tap="go2Chatroom(2)">
-            <text class="item-text" :style="{ color: c.textPrimary }">野火聊天室1</text>
+            <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室1</text>
         </view>
         <view class="item" :style="{ backgroundColor: c.surface }" @tap="go2Chatroom(3)">
-            <text class="item-text" :style="{ color: c.textPrimary }">野火聊天室2</text>
+            <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室2</text>
         </view>
     </view>
 </template>
@@ -19,6 +19,7 @@ import ConversationType from "../../wfc/model/conversationType.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 
 const c = computed<AppColors>((): AppColors => colors())
 const go2Chatroom = (index: number) => {
@@ -48,6 +49,5 @@ const go2Chatroom = (index: number) => {
 
 .item-text {
     flex: 1;
-    font-size: 15px;
 }
 </style>

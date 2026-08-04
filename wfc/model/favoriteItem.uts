@@ -1,0 +1,152 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import Conversation from './conversation.uts'
+import ConversationType from './conversationType.uts'
+import Message from '../messages/message.uts'
+import MessageContent from '../messages/messageContent.uts'
+import MessageContentType from '../messages/messageContentType.uts'
+import MessageStatus from '../messages/messageStatus.uts'
+import TextMessageContent from '../messages/textMessageContent.uts'
+import ImageMessageContent from '../messages/imageMessageContent.uts'
+import VideoMessageContent from '../messages/videoMessageContent.uts'
+import FileMessageContent from '../messages/fileMessageContent.uts'
+import SoundMessageContent from '../messages/soundMessageContent.uts'
+import LinkMessageContent from '../messages/linkMessageContent.uts'
+import UnknownMessageContent from '../messages/unknownMessageContent.uts'
+
+/**
+ * 一条收藏。对齐 flutter `model/favorite_item.dart`。
+ *
+ * 收藏不走 IM 协议栈，是 app server 的独立业务（`/fav/list`、`/fav/add`、`/fav/del/{id}`），
+ * 所以这里只有 JSON 序列化 + 与 [Message] 的互转，没有原生依赖。
+ *
+ * ⚠️ 与 flutter 的一个实现差异：flutter 里缩略图是 `Uint8List`，收藏时要 base64 编码、
+ * 还原时要解码；uts 版的 [ImageMessageContent.thumbnail] 本身就是 **不带 data: 头的 base64 字符串**，
+ * 所以这里直接透传，不做编解码。
+ */
+export default class FavoriteItem {
+    favId = 0
+    // 64 位 id，string 表示（与 Message.messageUid 一致）
+    messageUid = '0'
+    favType: number = MessageContentType.Unknown
+    timestamp = 0
+    conversation: Conversation = new Conversation(ConversationType.Single, '', 0)
+    /** 来源：群名 / 好友名 / 频道名。 */
+    origin = ''
+    sender = ''
+    title = ''
+    url = ''
+    thumbUrl = ''
+    /** 类型相关的附加字段，JSON 串：图片/视频是 `thumb`、`duration`，文件是 `size`。 */
+    data = ''
+
+    // ---- UI 层补丁字段 ----
+    _timeStr = ''
+    _senderDisplayName = ''
+
+    static fromJsonObject(o: UTSJSONObject): FavoriteItem {
+        const item = new FavoriteItem()
+        item.favId = o.getNumber('id') ?? 0
+        // 服务端这里给的是数字，直接 getString 在部分端上会拿到 null，先取原始值再转字符串
+        const uid = o['messageUid']
+        item.messageUid = uid == null ? '0' : '' + uid
+        item.favType = o.getNumber('type') ?? MessageContentType.Unknown
+        item.timestamp = o.getNumber('timestamp') ?? 0
+        item.conversation = new Conversation(
+            o.getNumber('convType') ?? ConversationType.Single,
+            o.getString('convTarget') ?? '',
+            o.getNumber('convLine') ?? 0)
+        item.origin = o.getString('origin') ?? ''
+        item.sender = o.getString('sender') ?? ''
+        item.title = o.getString('title') ?? ''
+        item.url = o.getString('url') ?? ''
+        item.thumbUrl = o.getString('thumbUrl') ?? ''
+        item.data = o.getString('data') ?? ''
+        return item
+    }
+
+    toJsonObject(): UTSJSONObject {
+        return {
+            id: this.favId,
+            messageUid: this.messageUid,
+            type: this.favType,
+            timestamp: this.timestamp,
+            convType: this.conversation.type,
+            convTarget: this.conversation.target,
+            convLine: this.conversation.line,
+            origin: this.origin,
+            sender: this.sender,
+            title: this.title,
+            url: this.url,
+            thumbUrl: this.thumbUrl,
+            data: this.data
+        } as UTSJSONObject
+    }
+
+    /** 读 [data] 里的某个字段，解析失败返回 null。 */
+    private dataObject(): UTSJSONObject | null {
+        if (this.data == '') {
+            return null
+        }
+        return JSON.parseObject(this.data)
+    }
+
+    /**
+     * 还原成一条 [Message]，供转发/预览复用会话页那套渲染。
+     *
+     * 不认识的类型返回 [UnknownMessageContent]，调用方（转发）据此拦截并提示。
+     */
+    toMessage(): Message {
+        const message = new Message(this.conversation, this.buildContent())
+        message.messageUid = this.messageUid
+        message.from = this.sender
+        message.timestamp = this.timestamp
+        // 收藏里没有收发方向，统一按「收到的、已读」算：气泡渲染和媒体保存都要读这两个字段
+        message.direction = 1
+        message.status = MessageStatus.Readed
+        return message
+    }
+
+    private buildContent(): MessageContent {
+        const obj = this.dataObject()
+        if (this.favType == MessageContentType.Text) {
+            return new TextMessageContent(this.title)
+        } else if (this.favType == MessageContentType.Image) {
+            const content = new ImageMessageContent('', this.url)
+            if (obj != null) {
+                content.thumbnail = obj.getString('thumb') ?? ''
+            }
+            return content
+        } else if (this.favType == MessageContentType.Video) {
+            const content = new VideoMessageContent('', this.url)
+            if (obj != null) {
+                content.thumbnail = obj.getString('thumb') ?? ''
+                content.duration = obj.getNumber('duration') ?? 0
+            }
+            return content
+        } else if (this.favType == MessageContentType.File) {
+            const content = new FileMessageContent('', this.url, this.title, 0)
+            if (obj != null) {
+                content.size = obj.getNumber('size') ?? 0
+            }
+            return content
+        } else if (this.favType == MessageContentType.Voice) {
+            const content = new SoundMessageContent('', this.url, 0)
+            if (obj != null) {
+                content.duration = obj.getNumber('duration') ?? 0
+            }
+            return content
+        } else if (this.favType == MessageContentType.Link) {
+            const content = new LinkMessageContent()
+            content.title = this.title
+            content.url = this.url
+            content.thumbnail = this.thumbUrl
+            return content
+        }
+        // 合并转发（Composite_Message）的 data 是整条 payload 的 base64，还原它要能构造 MessagePayload
+        // 并走 decode，目前收藏页只做列表展示与删除，用不到，先按未知类型处理
+        return new UnknownMessageContent()
+    }
+}

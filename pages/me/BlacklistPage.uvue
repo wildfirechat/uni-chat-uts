@@ -1,0 +1,164 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <view v-if="users.length == 0" class="empty">
+            <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('setting.blacklist_empty') }}</text>
+        </view>
+
+        <list-view v-else class="list" direction="vertical">
+            <list-item v-for="user in users" :key="user.uid" class="row-item">
+                <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
+                    <image class="portrait" :src="portraitOf(user)" :style="{ backgroundColor: c.inputBg }" />
+                    <view class="texts">
+                        <text class="name" :class="fs16" :style="{ color: c.textPrimary }">{{ user._displayName }}</text>
+                        <text class="uid" :class="fs12" :style="{ color: c.textSecondary }">{{ user.name }}</text>
+                    </view>
+                    <text class="remove" :class="fs14" :style="{ color: c.danger }"
+                        @tap="confirmRemove(user)">{{ t('setting.blacklist_remove') }}</text>
+                </view>
+            </list-item>
+        </list-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 黑名单。对齐 flutter `settings/blacklist_screen.dart`。
+ *
+ * 本页在 list-view 里，走鸿蒙 vapor 的**复用（recycle）渲染路径**，规矩是：
+ * list-item 只挂静态 class，动态颜色放到里面那层 view 上，**尺寸和字号一律留在 class 里**。
+ * 所以这里的行高/头像/字号都不跟字号档位缩放 —— 挪进 :style 整行会塌成 0 高
+ * （见 FLUTTER_ALIGNMENT_TODO「list-view 的坑」）。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import store from "@/store.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import Config from "@/config.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_LG, fontClass } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "BlacklistPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
+const fs12 = computed<string>((): string => fontClass(12))
+const fs14 = computed<string>((): string => fontClass(14))
+const fs16 = computed<string>((): string => fontClass(16))
+
+const users = ref<UserInfo[]>([] as UserInfo[])
+
+const load = () => {
+    const userIds = wfc.getBlackList()
+    users.value = userIds.length == 0 ? ([] as UserInfo[]) : store.getUserInfos(userIds, '')
+}
+
+onLoad(() => {
+    load()
+})
+
+const portraitOf = (user: UserInfo): string => {
+    return user.portrait != '' ? user.portrait : Config.DEFAULT_PORTRAIT_URL
+}
+
+const confirmRemove = (user: UserInfo) => {
+    uni.showModal({
+        title: t('setting.blacklist_remove'),
+        content: t('setting.blacklist_remove_confirm'),
+        success: (res) => {
+            if (res.confirm) {
+                remove(user)
+            }
+        }
+    } as ShowModalOptions)
+}
+
+const remove = (user: UserInfo) => {
+    wfc.setBlackList(user.uid, false, () => {
+        load()
+        uni.showToast({
+            title: t('setting.blacklist_removed'),
+            icon: 'none'
+        } as ShowToastOptions)
+    }, (errorCode: number) => {
+        uni.showToast({
+            title: t1('common.operate_fail', '' + errorCode),
+            icon: 'none'
+        } as ShowToastOptions)
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.list {
+    flex: 1;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.row-item {
+    width: 100%;
+}
+
+.row {
+    width: 100%;
+    height: 64px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 15px;
+    padding-right: 15px;
+    border-bottom-width: 0.5px;
+    border-bottom-style: solid;
+}
+
+.portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.texts {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 单行截断不能用 lines：vapor 下鸿蒙不支持。
+ * 字号写死在 class 里：本页在 list-view 的复用渲染路径上，font-size 走 :style 会让整行塌成 0 高 */
+.name {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.uid {
+    flex: 1;
+    margin-top: 3px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.remove {
+    flex-shrink: 0;
+    margin-left: 12px;
+    padding: 6px 4px;
+}
+</style>

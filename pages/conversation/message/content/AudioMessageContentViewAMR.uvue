@@ -1,12 +1,12 @@
 <template>
     <view class="audio-message-container"
         :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }" @tap="playVoice">
-        <text v-if="message.direction == 0" class="duration">{{ duration }}"</text>
+        <text v-if="message.direction == 0" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
         <view class="volume-container" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">
             <text v-if="!isPlaying" class="icomoon volume-icon">&#xf3ba;</text>
             <text v-if="isPlaying" class="icomoon volume-icon">&#xf210;</text>
         </view>
-        <text v-if="message.direction == 1" class="duration">{{ duration }}"</text>
+        <text v-if="message.direction == 1" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
     </view>
 </template>
 
@@ -16,6 +16,7 @@ import SoundMessageContent from "@/wfc/messages/soundMessageContent.uts";
 import store from "@/store.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "AudioMessageContentView",
     styleIsolation: 'app'
@@ -89,6 +90,5 @@ const playVoice = () => {
 
 .duration {
     padding: 8px;
-    font-size: 14px;
 }
 </style>

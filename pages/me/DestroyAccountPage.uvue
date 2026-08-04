@@ -1,0 +1,197 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <text class="tip" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE), lineHeight: fontPx(22) }">{{ t('setting.destroy_account_tip') }}</text>
+
+        <view class="code-row">
+            <view class="code-box" :style="{ backgroundColor: c.surface, borderColor: c.hairline }">
+                <input class="code-input" type="number" :placeholder="t('setting.verification_code')"
+                    :placeholder-style="placeholderStyle" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }"
+                    @input="onCodeInput" />
+            </view>
+            <view class="send-button" :style="{ backgroundColor: canSendCode ? c.accent : c.buttonSecondaryBg }"
+                @tap="sendCode">
+                <text :style="{ color: canSendCode ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_BASE) }">{{ sendCodeLabel }}</text>
+            </view>
+        </view>
+
+        <view class="submit" :style="{ backgroundColor: canSubmit ? c.danger : c.buttonSecondaryBg }" @tap="destroy">
+            <text :style="{ color: canSubmit ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('setting.destroy_account') }}</text>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 注销账号（App Store 审核指南 5.1.1(v) 要求）。
+ * 对齐 flutter `settings/destroy_account_screen.dart`：发码 → 输码 → 确认注销 →
+ * 清本地登录态 → 回登录页。
+ *
+ * 与 flutter 的差异：flutter 在 `Config.ENABLE_SLIDE_VERIFY` 时先过滑块验证再发码。
+ * 滑块验证组件属于 M4（登录页那批），这里先直接发码；appServerApi.sendDestroyAccountCode
+ * 已经留好了 token 参数位，M4 做完接上即可。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import appServerApi from "@/api/appServerApi.uts";
+import { clear } from "@/pages/util/storageHelper.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "DestroyAccountPage"
+})
+
+/** 重新发码的冷却秒数，与 flutter 一致。 */
+const RESEND_SECONDS = 60
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const code = ref<string>('')
+const destroying = ref<boolean>(false)
+const countdown = ref<number>(0)
+
+// 0 表示没有在跑的计时器，与项目里 voip 页面的写法一致
+let timer = 0
+
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
+const canSendCode = computed<boolean>((): boolean => countdown.value == 0 && !destroying.value)
+const canSubmit = computed<boolean>((): boolean => code.value.length >= 4 && !destroying.value)
+const sendCodeLabel = computed<string>((): string => {
+    return countdown.value > 0 ? ('' + countdown.value + ' s') : t('setting.send_code')
+})
+
+onUnload(() => {
+    stopCountdown()
+})
+
+const stopCountdown = () => {
+    if (timer != 0) {
+        clearInterval(timer)
+        timer = 0
+    }
+}
+
+const startCountdown = () => {
+    stopCountdown()
+    countdown.value = RESEND_SECONDS
+    timer = setInterval((): void => {
+        countdown.value = countdown.value - 1
+        if (countdown.value <= 0) {
+            stopCountdown()
+        }
+    }, 1000)
+}
+
+const toast = (title: string) => {
+    uni.showToast({
+        title: title,
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
+const onCodeInput = (e: UniInputEvent) => {
+    code.value = e.detail.value
+}
+
+const sendCode = () => {
+    if (!canSendCode.value) {
+        return
+    }
+    appServerApi.sendDestroyAccountCode('')
+        .then((_) => {
+            toast(t('setting.send_code_success'))
+            startCountdown()
+        })
+        .catch((reason) => {
+            console.log('send destroy code fail', reason)
+            toast(t1('setting.send_code_fail', '' + reason))
+        })
+}
+
+const destroy = () => {
+    if (!canSubmit.value) {
+        return
+    }
+    destroying.value = true
+    appServerApi.destroyAccount(code.value)
+        .then((_) => {
+            // 服务端已删除账号所有信息，断开时不用再和 IM 服务交互推送/会话标记
+            wfc.disconnect(false, false)
+            clear()
+            uni.reLaunch({
+                url: '/pages/login/LoginPage'
+            } as ReLaunchOptions)
+        })
+        .catch((reason) => {
+            destroying.value = false
+            console.log('destroy account fail', reason)
+            toast(t1('setting.destroy_account_fail', '' + reason))
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.tip {
+    width: 100%;
+    margin-top: 24px;
+}
+
+.code-row {
+    width: 100%;
+    margin-top: 24px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.code-box {
+    flex: 1;
+    height: 44px;
+    border-radius: 6px;
+    border-width: 0.5px;
+    border-style: solid;
+    padding-left: 12px;
+    padding-right: 12px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.code-input {
+    flex: 1;
+    height: 44px;
+}
+
+.send-button {
+    flex-shrink: 0;
+    height: 44px;
+    margin-left: 8px;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.submit {
+    width: 100%;
+    height: 44px;
+    margin-top: 32px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+</style>

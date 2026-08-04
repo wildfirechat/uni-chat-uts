@@ -4,11 +4,11 @@
         <view class="flex-row flex-align-center">
             <image class="avatar" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
             <view class="flex-1">
-                <text class="single-line title" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.title }} </text>
-                <text class="single-line desc" :style="{ color: c.textSecondary }">{{ content.desc }}</text>
+                <text class="single-line title" :style="{ fontSize: fontPx(16), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.title }} </text>
+                <text class="single-line desc" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ content.desc }}</text>
             </view>
         </view>
-        <text class="type" :style="{ color: c.textSecondary, borderTopColor: c.hairlineSoft }">会议邀请</text>
+        <text class="type" :style="{ fontSize: fontPx(14), color: c.textSecondary, borderTopColor: c.hairlineSoft }">会议邀请</text>
     </view>
 </template>
 
@@ -19,6 +19,7 @@ import store from "@/store.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ConferenceInviteMessageContentView",
     styleIsolation: 'app'
@@ -70,14 +71,6 @@ const showConferenceInfo = () => {
     margin: 5px 10px 0 10px;
     border-top-width: 1px;
     border-top-style: solid;
-    font-size: 14px;
 }
 
-.title {
-    font-size: 16px;
-}
-
-.desc {
-    font-size: 14px;
-}
 </style>

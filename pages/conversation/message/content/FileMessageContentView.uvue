@@ -3,8 +3,8 @@
         :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
         <image class="file-icon" :src="fileIcon" />
         <view class="flex-column flex-align-start file-info">
-            <text class="file-name" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.name }}</text>
-            <text class="file-size single-line" :style="{ color: c.textSecondary }">{{ size }}</text>
+            <text class="file-name" :style="{ fontSize: fontPx(14), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.name }}</text>
+            <text class="file-size single-line" :style="{ fontSize: fontPx(13), color: c.textSecondary }">{{ size }}</text>
         </view>
     </view>
 </template>
@@ -15,6 +15,7 @@ import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
 import { humanSize, getFiletypeIcon } from "@/pages/util/helper.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "FileMessageContentView",
     styleIsolation: 'app'
@@ -96,10 +97,6 @@ const clickFile = () => {
     lines: 2;
     text-overflow: ellipsis;
     overflow: hidden;
-    font-size: 14px;
 }
 
-.file-size {
-    font-size: 13px;
-}
 </style>

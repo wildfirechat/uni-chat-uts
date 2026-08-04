@@ -3,10 +3,10 @@
         <video class="video" :src="url" :autoplay="true" :controls="true"></video>
         <view class="action-bar">
             <view class="action" @tap="saveToAlbum">
-                <text class="action-text">保存到相册</text>
+                <text class="action-text" :style="{ fontSize: fontPx(14) }">保存到相册</text>
             </view>
             <view v-if="message != null" class="action" @tap="forwardVideo">
-                <text class="action-text">转发</text>
+                <text class="action-text" :style="{ fontSize: fontPx(14) }">转发</text>
             </view>
         </view>
     </view>
@@ -19,6 +19,7 @@ import { forward } from "@/common/forward.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
 import { saveMessageMediaToAlbum } from "@/common/mediaSaver.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 
 const url = ref<string>('')
 // 从会话消息列表里反查对应的视频消息，用于转发/保存
@@ -118,6 +119,5 @@ const forwardVideo = () => {
 
 .action-text {
     color: #ffffff;
-    font-size: 14px;
 }
 </style>

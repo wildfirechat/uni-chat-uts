@@ -8,9 +8,9 @@
             <scroll-view class="conversation-list-container" direction="vertical">
                 <view class="create-group" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
                     @tap="showForwardByCreateConversationModal">
-                    <text class="create-group-text" :style="{ color: c.textPrimary }">创建群聊</text>
+                    <text class="create-group-text" :style="{ fontSize: fontPx(13), color: c.textPrimary }">创建群聊</text>
                 </view>
-                <text class="section-label" :style="{ color: c.textSecondary, backgroundColor: c.bottomBarBg }">最近聊天</text>
+                <text class="section-label" :style="{ fontSize: fontPx(12), color: c.textSecondary, backgroundColor: c.bottomBarBg }">最近聊天</text>
                 <view v-for="(conversationInfo, index) in conversationInfos" :key="index">
                     <view class="conversation-item" :style="{ backgroundColor: c.surface }"
                         @tap="onConversationItemClick(conversationInfo.conversation)">
@@ -18,24 +18,24 @@
                         <view class="item-header">
                             <image class="avatar" :style="{ backgroundColor: c.inputBg }" :src="portraitOf(conversationInfo)" />
                         </view>
-                        <text class="title single-line" :style="{ color: c.textPrimary }">{{ displayNameOf(conversationInfo) }}</text>
+                        <text class="title single-line" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ displayNameOf(conversationInfo) }}</text>
                     </view>
                 </view>
             </scroll-view>
         </view>
         <view class="checked-conversation-list-container" :style="{ backgroundColor: c.surface }">
             <view class="panel-header">
-                <text class="panel-title" :style="{ color: c.textPrimary }">分别发送给</text>
-                <text class="panel-desc" :style="{ color: c.textSecondary }" v-if="pickedConversations.length == 0">未选择聊天</text>
-                <text class="panel-desc" :style="{ color: c.textSecondary }" v-else>已选择{{ pickedConversations.length }}个聊天</text>
-                <button size="mini" @tap="confirm" class="confirm" :style="{ color: c.accent }">发送</button>
+                <text class="panel-title" :style="{ fontSize: fontPx(16), color: c.textPrimary }">分别发送给</text>
+                <text class="panel-desc" :style="{ fontSize: fontPx(12), color: c.textSecondary }" v-if="pickedConversations.length == 0">未选择聊天</text>
+                <text class="panel-desc" :style="{ fontSize: fontPx(12), color: c.textSecondary }" v-else>已选择{{ pickedConversations.length }}个聊天</text>
+                <button size="mini" @tap="confirm" class="confirm" :style="{ fontSize: fontPx(12), color: c.accent }">发送</button>
             </view>
             <scroll-view class="picked-content" direction="horizontal">
                 <view class="picked-user-container" v-for="(conversation, index) in pickedConversations" :key="index">
                     <view class="picked-user" @tap="unpConversation(conversation)">
                         <image class="avatar" :style="{ backgroundColor: c.inputBg }" :src="portraitOfConversation(conversation)" />
                     </view>
-                    <text class="name single-line" :style="{ color: c.textPrimary }">{{ displayNameOfConversation(conversation) }}</text>
+                    <text class="name single-line" :style="{ fontSize: fontPx(12), color: c.textPrimary }">{{ displayNameOfConversation(conversation) }}</text>
                 </view>
             </scroll-view>
             <ForwardMessageView ref="forwardMessageView" :forward-type="forwardType" :messages="messages" />
@@ -52,6 +52,7 @@ import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ForwardMessageByPickConversationView",
     styleIsolation: 'app'
@@ -180,16 +181,11 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
     align-items: center;
 }
 
-.create-group-text {
-    font-size: 13px;
-}
-
 .conversation-list-container {
     flex: 1;
 }
 
 .section-label {
-    font-size: 12px;
     padding-left: 15px;
 }
 
@@ -219,7 +215,6 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
 }
 
 .title {
-    font-size: 14px;
     padding-right: 10px;
     flex: 1;
 }
@@ -243,17 +238,14 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
 }
 
 .panel-title {
-    font-size: 16px;
     margin-left: 30px;
 }
 
 .panel-desc {
-    font-size: 12px;
     margin-right: 20px;
 }
 
 .confirm {
-    font-size: 12px;
     margin-right: 20px;
 }
 
@@ -275,7 +267,6 @@ const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] =>
 
 .name {
     width: 100%;
-    font-size: 12px;
     text-align: center;
 }
 

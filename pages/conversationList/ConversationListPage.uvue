@@ -2,7 +2,7 @@
     <view class="page-container" :style="{ backgroundColor: c.primaryBackground }">
         <NavBar title="野火" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
         <text v-if="connectionStatusDesc != ''" class="connection-status"
-            :style="{ color: c.textSecondary }">{{ connectionStatusDesc }}</text>
+            :style="{ color: c.textSecondary, fontSize: fontPx(13) }">{{ connectionStatusDesc }}</text>
         <list-view class="conversation-list" direction="vertical">
             <list-item class="conversation-item"
                 v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
@@ -31,6 +31,7 @@ import { go2ConversationPage } from "../../common/nav.uts";
 import { getTouchPoint } from "../../common/touch.uts";
 import { PopupMenuItem } from "../../components/chunLei-popups/popupMenu.uts";
 import { colors, AppColors } from "../../common/theme.uts";
+import { fontPx } from "../../common/layoutScale.uts";
 
 defineOptions({
     name: 'ConversationListPage'
@@ -235,7 +236,6 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
 .connection-status {
     text-align: center;
     padding: 5px 0;
-    font-size: 13px;
 }
 
 .conversation-list {
