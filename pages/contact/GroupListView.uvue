@@ -15,7 +15,8 @@ import GroupInfo from "../../wfc/model/groupInfo.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
 defineOptions({
-    name: "GroupListView"
+    name: "GroupListView",
+    styleIsolation: 'app'
 })
 
 const favGroupList = computed<GroupInfo[]>((): GroupInfo[] => {

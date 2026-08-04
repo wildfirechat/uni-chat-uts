@@ -40,7 +40,8 @@ import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
 defineOptions({
-    name: "ForwardMessageByCreateConversationView"
+    name: "ForwardMessageByCreateConversationView",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

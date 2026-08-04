@@ -113,7 +113,7 @@ defineExpose({
     overflow: hidden;
     background-color: #e7e7e7;
     text-overflow: ellipsis;
-    lines: 2;
+    white-space: nowrap;
 }
 
 .thumb {

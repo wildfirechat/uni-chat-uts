@@ -25,7 +25,8 @@ import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 
 defineOptions({
-    name: "FriendRequestListView"
+    name: "FriendRequestListView",
+    styleIsolation: 'app'
 })
 
 const isActive = ref<boolean>(false)

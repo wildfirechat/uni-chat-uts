@@ -22,7 +22,8 @@ import RichNotificationMessageContent from "../../../wfc/messages/notification/r
 import { navigateToPage } from "../../../common/nav.uts";
 
 defineOptions({
-    name: "RichNotificationMessageContentView"
+    name: "RichNotificationMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{

@@ -49,7 +49,8 @@ import Message from "@/wfc/messages/message.uts";
 import Config from "@/config.uts";
 
 defineOptions({
-    name: "ForwardMessageByPickConversationView"
+    name: "ForwardMessageByPickConversationView",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

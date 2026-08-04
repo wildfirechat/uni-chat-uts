@@ -27,7 +27,8 @@ class FlatUserListItem {
 }
 
 defineOptions({
-    name: "UserListView"
+    name: "UserListView",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

@@ -13,7 +13,8 @@ import organizationServerApi from "../../api/organizationServerApi.uts";
 import Config from "../../config.uts";
 
 defineOptions({
-    name: "OrganizationListView"
+    name: "OrganizationListView",
+    styleIsolation: 'app'
 })
 
 const rootOrganizations = ref<UTSJSONObject[]>([] as UTSJSONObject[])

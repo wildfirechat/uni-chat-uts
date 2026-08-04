@@ -3,8 +3,14 @@
  * - :root css 变量不支持，各页面直接使用具体值
  */
 
+/* 这里的类只有页面默认吃得到；组件必须 defineOptions({ styleIsolation: 'app' })，
+ * 否则模板里写 single-line 也是个空类，静默不生效。
+ *
+ * 单行截断不能用 lines: 1：vapor 模式下鸿蒙不支持 lines，编译产物里它是字符串 "1"，
+ * 鸿蒙 runtime 的 numberToFrameNodeNumber 直接返回 undefined，maxLines 根本不会被设置。
+ * white-space: nowrap 三端都支持（鸿蒙 runtime 里就是映射成 maxLines = 1）。 */
 .single-line {
-    lines: 1;
+    white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
 }

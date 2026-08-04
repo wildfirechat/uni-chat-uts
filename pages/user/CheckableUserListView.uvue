@@ -26,7 +26,8 @@ class FlatUserListItem {
 }
 
 defineOptions({
-    name: "CheckableUserListView"
+    name: "CheckableUserListView",
+    styleIsolation: 'app'
 })
 
 const props = withDefaults(defineProps<{

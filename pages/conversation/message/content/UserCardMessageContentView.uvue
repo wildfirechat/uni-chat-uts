@@ -15,7 +15,8 @@ import wfc from "@/wfc/client/wfc.uts";
 import store from "@/store.uts";
 
 defineOptions({
-    name: "UserCardMessageContentView"
+    name: "UserCardMessageContentView",
+    styleIsolation: 'app'
 })
 
 const props = defineProps<{
