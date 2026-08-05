@@ -4,6 +4,7 @@
 
 <script setup lang="uts">
 import { WorkspaceBridge } from './bridgeServerImpl.uts'
+import { webViewMessageObjs } from './webViewMessage.uts'
 
 const url = ref<string>('')
 const bridge = ref<WorkspaceBridge>(new WorkspaceBridge())
@@ -20,13 +21,9 @@ onReady(() => {
 })
 
 const onPostMessage = (event: UniWebViewMessageEvent) => {
-    const dataArr = event.detail.data
-    if (dataArr.length > 0) {
-        const obj = dataArr[0].getString('obj')
-        if (obj != null) {
-            bridge.value.messageFromWebView(obj)
-        }
-    }
+    webViewMessageObjs(event).forEach((obj: string) => {
+        bridge.value.messageFromWebView(obj)
+    })
 }
 
 const onLoaded = (_event: UniWebViewLoadEvent) => {

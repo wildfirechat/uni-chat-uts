@@ -1,0 +1,65 @@
+/**
+ * web-view @message 事件的数据解析。
+ *
+ * 文档里 event.detail.data 的类型：4.13（含）之后是 Array<UTSJSONObject>，
+ * 4.13 之前是 Map<string, any | null> | null。鸿蒙上的实际结构与文档不一致，
+ * 所以这里两种格式都兼容，调用方只拿最终的 obj 字符串。
+ */
+
+/**
+ * 从单条 postMessage 数据里取出 obj 字段
+ */
+function objOf(item: any | null): string | null {
+    if (item == null) {
+        return null
+    }
+    if (item instanceof UTSJSONObject) {
+        return (item as UTSJSONObject).getString('obj')
+    }
+    if (item instanceof Map<string, any>) {
+        const value = (item as Map<string, any>).get('obj')
+        return typeof value == 'string' ? value as string : null
+    }
+    if (typeof item == 'string') {
+        // 少数情况下直接透传 json 字符串
+        return item as string
+    }
+    // 兜底：其他结构，JSON 序列化再解析
+    try {
+        const str = JSON.stringify(item)
+        if (str != null) {
+            const json = JSON.parseObject(str)
+            if (json != null) {
+                return json.getString('obj')
+            }
+        }
+    } catch (e) {
+        console.error('parse webview message error', e)
+    }
+    return null
+}
+
+/**
+ * 解析 web-view @message 事件，返回其中所有非空的 obj 字符串
+ */
+export function webViewMessageObjs(event: UniWebViewMessageEvent): Array<string> {
+    const objs: Array<string> = []
+    const data = event.detail.data as any | null
+    if (data == null) {
+        return objs
+    }
+    if (data instanceof Array) {
+        (data as Array<any | null>).forEach((item: any | null) => {
+            const obj = objOf(item)
+            if (obj != null && obj != '') {
+                objs.push(obj!)
+            }
+        })
+    } else {
+        const obj = objOf(data)
+        if (obj != null && obj != '') {
+            objs.push(obj!)
+        }
+    }
+    return objs
+}
