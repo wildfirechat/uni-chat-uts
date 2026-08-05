@@ -20,12 +20,18 @@
         <view class="search-bar" :style="{ backgroundColor: c.surface }">
             <view class="search-box" :style="{ backgroundColor: c.inputBg }">
                 <text class="icomoon search-icon" :style="{ color: c.iconSecondary, fontSize: iconPx(16) }">&#xf21f;</text>
+                <!-- 头像必须是 scroll-view 的**直接子元素**，中间不能再套一层容器：
+                     scroll-view 的可滚动内容宽度按直接子元素的 `getLayoutLeft() + getLayoutWidth()`
+                     算（鸿蒙 runtime `UniScrollViewElement.getWrapperSize`），套 wrapper 的话 wrapper
+                     自己被拉伸成 scroll-view 的宽度，内容宽度就永远等于可视宽度 —— 超出的头像
+                     照样排出来了，但既被裁掉又滚不到。同 OrganizationPage 的面包屑。
+                     横排靠 .picked-strip 自己的 flex-direction: row，direction="horizontal"
+                     只管滚动方向，不改排版方向。 -->
                 <scroll-view v-if="checkedUsers.length > 0" class="picked-strip" direction="horizontal"
+                    :show-scrollbar="false" :scroll-with-animation="true" :scroll-into-view="pickedScrollIntoView"
                     :style="{ width: pickedStripWidth + 'px' }">
-                    <view class="picked-strip-inner">
-                        <image v-for="(user, index) in checkedUsers" :key="index" class="picked-avatar"
-                            :src="user.portrait" :style="{ backgroundColor: c.inputBg }" @tap="unpick(user)" />
-                    </view>
+                    <image v-for="(user, index) in checkedUsers" :key="index" class="picked-avatar" :id="'pk-' + index"
+                        :src="user.portrait" :style="{ backgroundColor: c.inputBg }" @tap="unpick(user)" />
                 </scroll-view>
                 <input class="search-input" type="text" :placeholder="t('common.search')" v-model="filterQuery"
                     :style="{ color: c.textPrimary, fontSize: fontPx(14) }" />
@@ -101,6 +107,8 @@ const filterQuery = ref<string>('')
 
 const userListView = ref<ComponentPublicInstance | null>(null)
 const scrollIntoViewId = ref<string>('')
+/** 已选头像条要滚到的那个头像的 id，见下面的 watch */
+const pickedScrollIntoView = ref<string>('')
 const statusBarHeight = ref<number>(0)
 
 /** 列表区顶边，索引条按它垂直居中 */
@@ -129,6 +137,28 @@ const checkedUsers = computed<UserInfo[]>((): UserInfo[] => {
     return picked.filter((u: UserInfo): boolean => {
         return initialCheckedUsers.value.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1
     })
+})
+
+/**
+ * 新选中一个人后，把最后那个头像滚进可视范围（同 OrganizationPage 面包屑的 `_keepCurrentCrumbVisible`：
+ * 目标节点靠右时 runtime 自己会 clamp 到最大滚动距离，等价于滚到底）。
+ *
+ * 只在人数**变多**时触发：取消选择会让后面的头像整体左移，本来就不会漏在可视区外，
+ * 这时再拽到末尾反而把用户手动滚过的位置拉走。
+ *
+ * 先置空再赋值：scroll-into-view 是属性，值没变不会重新触发。
+ * 延一帧再赋值是等新头像布局完成，`_scrollToItem` 要靠 getBoundingClientRect 算偏移；
+ * 同时 .picked-strip 的宽度也是这一帧才变宽的。
+ */
+watch(checkedUsers, (newUsers: UserInfo[], oldUsers: UserInfo[]) => {
+    pickedScrollIntoView.value = ''
+    if (newUsers.length <= oldUsers.length || newUsers.length == 0) {
+        return
+    }
+    const targetId = 'pk-' + (newUsers.length - 1)
+    setTimeout(() => {
+        pickedScrollIntoView.value = targetId
+    }, 50)
 })
 
 const confirmLabel = computed<string>((): string => {
@@ -347,22 +377,25 @@ const confirm = () => {
     flex-shrink: 0;
 }
 
+/* 排版方向由这里给：direction="horizontal" 只改滚动轴，不改 flex 主轴。
+ * 主轴变成横向后，头像按 left 依次排开、超出可视宽度也照排，scroll-view 才量得出
+ * 大于自身宽度的内容宽度。 */
 .picked-strip {
     height: 30px;
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 0;
     flex-shrink: 0;
 }
 
-.picked-strip-inner {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-}
-
+/* flex-shrink: 0 是关键：默认会被压缩到刚好塞进这条的宽度，那样内容宽度永远等于可视宽度，
+ * 既滚不动、头像又被挤扁 */
 .picked-avatar {
     width: 30px;
     height: 30px;
     border-radius: 4px;
     margin-right: 4px;
+    flex-shrink: 0;
 }
 
 .search-input {

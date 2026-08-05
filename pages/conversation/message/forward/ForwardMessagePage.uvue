@@ -9,13 +9,16 @@
         <view class="search-bar" :style="{ backgroundColor: c.surface }">
             <view class="search-box" :style="{ backgroundColor: c.inputBg }">
                 <text class="icomoon search-icon" :style="{ color: c.iconSecondary, fontSize: iconPx(16) }">&#xf21f;</text>
+                <!-- 头像必须是 scroll-view 的**直接子元素**，套一层容器的话 wrapper 会被拉伸成
+                     scroll-view 的宽度，内容宽度就永远等于可视宽度，超出的头像既被裁掉又滚不到。
+                     同 PickUserPage / OrganizationPage 面包屑。 -->
                 <scroll-view v-if="pickedConversations.length > 0" class="picked-strip" direction="horizontal"
+                    :show-scrollbar="false" :scroll-with-animation="true" :scroll-into-view="pickedScrollIntoView"
                     :style="{ width: pickedStripWidth + 'px' }">
-                    <view class="picked-strip-inner">
-                        <image v-for="(conversation, index) in pickedConversations" :key="index" class="picked-avatar"
-                            mode="aspectFill" :src="portraitOf(conversation)" :style="{ backgroundColor: c.inputBg }"
-                            @tap="onTargetTap(conversation)" />
-                    </view>
+                    <image v-for="(conversation, index) in pickedConversations" :key="index" class="picked-avatar"
+                        :id="'pk-' + index"
+                        mode="aspectFill" :src="portraitOf(conversation)" :style="{ backgroundColor: c.inputBg }"
+                        @tap="onTargetTap(conversation)" />
                 </scroll-view>
                 <input class="search-input" type="text" v-model="searchText" :placeholder="searchPlaceholder"
                     :placeholder-style="placeholderStyle" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }" />
@@ -136,6 +139,25 @@ const pickedStripWidth = computed<number>((): number => {
     const avail = winWidth - 140
     const want = pickedConversations.value.length * 34
     return want < avail ? want : avail
+})
+
+/** 已选头像条要滚到的那个头像的 id */
+const pickedScrollIntoView = ref<string>('')
+
+/**
+ * 新选中一个会话后把最后那个头像滚进可视范围（同 PickUserPage）。只在变多时触发，
+ * 取消选择时后面的头像本就整体左移，不需要拽到末尾。
+ * 先置空再赋值，值没变不会重新触发；延一帧等新头像和加宽后的条布局完成。
+ */
+watch(pickedConversations, (newList: Conversation[], oldList: Conversation[]) => {
+    pickedScrollIntoView.value = ''
+    if (newList.length <= oldList.length || newList.length == 0) {
+        return
+    }
+    const targetId = 'pk-' + (newList.length - 1)
+    setTimeout(() => {
+        pickedScrollIntoView.value = targetId
+    }, 50)
 })
 
 const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] => {
@@ -305,22 +327,22 @@ const buildGroupName = (members: UserInfo[]): string => {
     flex-shrink: 0;
 }
 
+/* 排版方向由这里给：direction="horizontal" 只改滚动轴，不改 flex 主轴 */
 .picked-strip {
     height: 30px;
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 0;
     flex-shrink: 0;
 }
 
-.picked-strip-inner {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-}
-
+/* flex-shrink: 0 是关键，否则头像被压缩到刚好塞进这条的宽度，内容宽度永远等于可视宽度 */
 .picked-avatar {
     width: 30px;
     height: 30px;
     border-radius: 4px;
     margin-right: 4px;
+    flex-shrink: 0;
 }
 
 .search-input {
