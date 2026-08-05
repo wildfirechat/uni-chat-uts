@@ -39,17 +39,20 @@
                 <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('search.no_result') }}</text>
             </view>
             <view v-for="item in messages" :key="item.messageId" class="row"
-                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="locateMessage(item)">
+                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft, height: rowPx(ROW_HEIGHT) }"
+                @tap="locateMessage(item)">
                 <image class="row-portrait" :style="{ backgroundColor: c.inputBg }" :src="portraitOf(item)" />
                 <view class="texts">
                     <view class="title-line">
                         <text class="title" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ senderOf(item) }}</text>
-                        <text :style="{ fontSize: fontPx(FONT_XS), color: c.textTertiary }">{{ item._timeStr }}</text>
+                        <text class="time" :style="{ fontSize: fontPx(FONT_XS), color: c.textTertiary }">{{ item._timeStr }}</text>
                     </view>
                     <!-- 命中的关键字用主题色标出来，与 flutter 的 _highlightedDigest 同构 -->
-                    <text class="digest" :style="{ fontSize: fontPx(FONT_SM), color: c.textSecondary }"><text
-                            v-for="(seg, si) in digestSegmentsOf(item)" :key="si"
-                            :style="{ color: seg.hit ? c.accent : c.textSecondary }">{{ seg.text }}</text></text>
+                    <view class="digest-line">
+                        <text class="digest" :style="{ fontSize: fontPx(FONT_SM), color: c.textSecondary }"><text
+                                v-for="(seg, si) in digestSegmentsOf(item)" :key="si"
+                                :style="{ color: seg.hit ? c.accent : c.textSecondary }">{{ seg.text }}</text></text>
+                    </view>
                 </view>
             </view>
             <view v-if="hasMoreMessages" class="footer">
@@ -63,11 +66,16 @@
                 <text :style="{ fontSize: fontPx(FONT_LG), color: c.textTertiary }">{{ t('file_record.empty') }}</text>
             </view>
             <view v-for="file in files" :key="file.messageUid" class="row"
-                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="showFileActions(file)">
+                :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft, height: rowPx(ROW_HEIGHT) }"
+                @tap="showFileActions(file)">
                 <image class="file-icon" :src="'/static/image/filetypes/' + file._fileIconName" />
                 <view class="texts">
-                    <text class="title" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ file.name }}</text>
-                    <text class="digest" :style="{ fontSize: fontPx(FONT_XS), color: c.textSecondary }">{{ fileMetaOf(file) }}</text>
+                    <view class="title-line">
+                        <text class="title" :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ file.name }}</text>
+                    </view>
+                    <view class="digest-line">
+                        <text class="digest" :style="{ fontSize: fontPx(FONT_XS), color: c.textSecondary }">{{ fileMetaOf(file) }}</text>
+                    </view>
                 </view>
             </view>
             <view v-if="hasMoreFiles" class="footer">
@@ -115,7 +123,7 @@ import { saveMessageFile } from "@/common/mediaSaver.uts";
 import { go2ConversationPage } from "@/common/nav.uts";
 import { getItem, setItem, removeItem } from "@/pages/util/storageHelper.uts";
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx, FONT_XS, FONT_SM, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
+import { fontPx, rowPx, FONT_XS, FONT_SM, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
 import { t } from "@/i18n/i18n.uts";
 import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
 
@@ -132,6 +140,14 @@ const TAB_DATE = 'date'
 const PAGE_SIZE = 30
 const HISTORY_KEY = 'conversation_search_history'
 const HISTORY_MAX = 10
+
+/** 消息行 / 文件行的行高基准，配 rowPx 走字号档位。头像 40 + 上下 padding 8 = 56 是下限。 */
+const ROW_HEIGHT = 64
+/** 摘要最多拿多少个字符去渲染。真正的视觉截断交给 text-overflow，这里是防线：
+ *  一条几千字的文本消息全量塞进 text 会白构造一遍富文本，也更容易在原生层被量成多行。 */
+const DIGEST_MAX = 80
+/** 命中关键字前面保留几个字符的上下文。 */
+const DIGEST_LEAD = 10
 
 class SearchTab {
     tag = ''
@@ -277,16 +293,29 @@ const senderOf = (message: Message): string => {
     return from != null ? from!._displayName : message.from
 }
 
+const clipDigest = (digest: string): string => {
+    return digest.length > DIGEST_MAX ? digest.substring(0, DIGEST_MAX) + '…' : digest
+}
+
 const digestSegmentsOf = (message: Message): DigestSegment[] => {
-    const digest = message.messageContent.digest(message)
+    // 摘要里的换行是硬换行，white-space: nowrap 管不住它（那只控制自动换行），
+    // 一条多行文本消息会直接把这一行撑成多行高，先压成空格。
+    let digest = message.messageContent.digest(message).replace(/[\r\n\t]+/g, ' ')
     const query = keyword.value.trim()
     const segments: DigestSegment[] = []
     if (query == '') {
-        segments.push(new DigestSegment(digest, false))
+        segments.push(new DigestSegment(clipDigest(digest), false))
         return segments
     }
-    const lowerDigest = digest.toLowerCase()
     const lowerQuery = query.toLowerCase()
+    const first = digest.toLowerCase().indexOf(lowerQuery)
+    if (first > DIGEST_LEAD) {
+        // 命中落在很靠后的位置时把窗口挪过去：单行只显示得下开头，
+        // 否则一条长消息搜出来，高亮那段永远在省略号后面，看不见。
+        digest = '…' + digest.substring(first - DIGEST_LEAD)
+    }
+    digest = clipDigest(digest)
+    const lowerDigest = digest.toLowerCase()
     let start = 0
     while (true) {
         const index = lowerDigest.indexOf(lowerQuery, start)
@@ -539,12 +568,15 @@ onBeforeUnmount(() => {
     justify-content: center;
 }
 
+/* 高度是定死的（模板上 :style 里的 rowPx(ROW_HEIGHT)，跟着字号档位走）。
+ * 摘要来自任意长度的消息正文，行高一旦跟内容走，长文本消息那行就会撑成好几行高。 */
 .row {
     width: 100%;
-    padding: 10px 16px;
+    padding: 8px 16px;
     display: flex;
     flex-direction: row;
     align-items: center;
+    overflow: hidden;
     border-bottom-width: 0.5px;
     border-bottom-style: solid;
 }
@@ -565,14 +597,26 @@ onBeforeUnmount(() => {
     margin-left: 12px;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
+/* 两行都套一层 flex-direction: row 的容器，里面的 text 再 flex: 1 —— 要截断的 text
+ * 必须有确定宽度，直接放在 column 容器里（宽度靠 stretch）截不住，长文本会换行。 */
 .title-line {
     width: 100%;
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
+    overflow: hidden;
+}
+
+.digest-line {
+    width: 100%;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    overflow: hidden;
 }
 
 .title {
@@ -582,8 +626,13 @@ onBeforeUnmount(() => {
     overflow: hidden;
 }
 
+.time {
+    flex-shrink: 0;
+    padding-left: 8px;
+}
+
 .digest {
-    margin-top: 4px;
+    flex: 1;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;

@@ -4,46 +4,50 @@
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchUser && userSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">新用户</text>
                 <view v-for="(user, index) in toShowUserList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="showUserDetail(user)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="user.portrait" />
                         <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ user.displayName }}</text>
-                        <button v-if="!isFriend(user)" class="add-button" size="mini" @tap="addFriend(user)">添加</button>
+                        <button v-if="!isFriend(user)" class="add-button" size="mini" @tap.stop="addFriend(user)">添加</button>
                     </view>
+                    <view v-if="index < toShowUserList.length - 1" class="item-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
                 </view>
-                <text v-if="!shouldShowAllUser && userSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(13), color: c.accent }" @tap="showAllUser">查看全部 {{ userSearchResult.length }}</text>
+                <text v-if="!shouldShowAllUser && userSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(12), color: c.accent }" @tap="showAllUser">查看全部</text>
             </view>
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchContact && contactSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">联系人</text>
                 <view v-for="(contact, index) in toShowContactList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" :hover-class="pressedClass" hover-stay-time="80" @tap="chatToContact(contact)">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="chatToContact(contact)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="contact.portrait" />
                         <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ contact._displayName }}</text>
                     </view>
+                    <view v-if="index < toShowContactList.length - 1" class="item-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
                 </view>
-                <text v-if="!shouldShowAllContact && contactSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(13), color: c.accent }" @tap="showAllContact">查看全部 {{ contactSearchResult.length }}</text>
+                <text v-if="!shouldShowAllContact && contactSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(12), color: c.accent }" @tap="showAllContact">查看全部</text>
             </view>
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchGroup && groupSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">群聊</text>
                 <view v-for="(group, index) in toShowGroupList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" :hover-class="pressedClass" hover-stay-time="80" @tap="chatToGroup(group)">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="chatToGroup(group)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="group.portrait" />
                         <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ group.remark != '' ? group.remark : group.name }}</text>
                     </view>
+                    <view v-if="index < toShowGroupList.length - 1" class="item-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
                 </view>
-                <text v-if="!shouldShowAllGroup && groupSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(13), color: c.accent }" @tap="showAllGroup">查看全部 {{ groupSearchResult.length }}</text>
+                <text v-if="!shouldShowAllGroup && groupSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(12), color: c.accent }" @tap="showAllGroup">查看全部</text>
             </view>
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchConversation && conversationSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">聊天记录</text>
                 <view v-for="(convR, index) in toShowConversationList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" :hover-class="pressedClass" hover-stay-time="80" @tap="onClickConversationSearchResultItem(convR)">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="onClickConversationSearchResultItem(convR)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="convPortrait(convR)" />
                         <view class="title-desc">
                             <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ convDisplayName(convR) }}</text>
                             <text class="desc" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ conversationMatchDesc(convR) }}</text>
                         </view>
                     </view>
+                    <view v-if="index < toShowConversationList.length - 1" class="item-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
                 </view>
-                <text v-if="!shouldShowAllConversation && conversationSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(13), color: c.accent }" @tap="showAllConversation">查看全部 {{ conversationSearchResult.length }}</text>
+                <text v-if="!shouldShowAllConversation && conversationSearchResult.length > 5" class="show-all" :style="{ fontSize: fontPx(12), color: c.accent }" @tap="showAllConversation">查看全部</text>
             </view>
         </view>
         <view v-else class="empty-container">
@@ -154,6 +158,15 @@ const addFriend = (user: UserInfo) => {
         } as ShowToastOptions);
     })
 }
+const showUserDetail = (user: UserInfo) => {
+    store.setCurrentFriend(user)
+    uni.navigateTo({
+        url: '/pages/contact/UserDetailPage',
+        fail: (err) => {
+            console.log('nav to UserDetailPage err', err);
+        }
+    } as NavigateToOptions)
+}
 const showAllUser = () => {
     shouldShowAllUser.value = true;
 }
@@ -242,8 +255,6 @@ onBeforeUnmount(() => {
 
 .category-label {
     padding: 10px 12px 2px 12px;
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
 }
 
 .search-result-item {
@@ -251,6 +262,15 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: row;
     align-items: center;
+}
+
+/* 分隔线做成兄弟节点、左边留出头像宽度：border-bottom 只能整行通铺，避不开头像。
+ * margin-left 要和右侧文字列的起点对齐：
+ * .search-result-item 的 padding-left 12 + 头像 34 + .item-name/.desc 的 padding-left 10 = 56。
+ * 改上面任何一个数，这里要跟着改。 */
+.item-divider {
+    height: 1px;
+    margin-left: 56px;
 }
 
 /* 本组件是默认的样式隔离（没有 styleIsolation: 'app'），吃不到 global.css 里的

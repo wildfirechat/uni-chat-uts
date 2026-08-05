@@ -1,6 +1,6 @@
 <template>
     <view class="conversation-item-container"
-        :style="{ backgroundColor: conversationInfo.top > 0 ? c.cellTop : c.surface, borderBottomColor: c.hairlineSoft }">
+        :style="{ backgroundColor: conversationInfo.top > 0 ? c.cellTop : c.surface }">
         <!-- 按下态挂在这层而不是外面那层：外层有自己的底色（置顶是 cellTop），
              而 hover-class 的半透明值是替换 background-color、透出**父节点**的底色，
              挂在有底色的那层上会把置顶色按没了。左内边距也一并挪到这层，
@@ -27,6 +27,10 @@
                 </view>
             </view>
         </view>
+        <!-- 分隔线做成 .conversation-item 的兄弟节点、左边留出头像宽度，
+             而不是画在根节点的 border-bottom 上：border 只能整行通铺，避不开头像。
+             挂在按下态那层外面，按下时分隔线不跟着变色。 -->
+        <view class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
     </view>
 </template>
 
@@ -154,8 +158,16 @@ const unreadMention = computed<number>((): number => {
 /* 行的底色、置顶底色、分隔线都画在这里（组件根节点），而不是外面那个 list-item：
  * list-item 走复用渲染，尽量不给它任何动态绑定。 */
 .conversation-item-container {
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
+    display: flex;
+    flex-direction: column;
+}
+
+/* margin-left 要和右侧文字列的起点对齐：
+ * .conversation-item 的 padding-left 10 + 头像 45 + .header 的 padding-right 10 = 65。
+ * 改上面任何一个数，这里要跟着改。 */
+.divider {
+    height: 1px;
+    margin-left: 65px;
 }
 
 .conversation-item {

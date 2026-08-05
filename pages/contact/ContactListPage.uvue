@@ -35,15 +35,19 @@
                     <view v-if="item.isLabel" class="user-label" :style="{ paddingLeft: '10px', backgroundColor: c.sectionGap }">
                         <text class="user-label-text" :class="fs13" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
                     </view>
-                    <view v-else class="user-item-content"
-                        :style="{ paddingLeft: '10px', backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
-                        :hover-class="pressedClass" hover-stay-time="80"
-                        @tap="showUserDetail(item.user as UserInfo)">
-                        <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
-                        <view class="name-container">
-                            <text class="single-line user-name" :class="fs15" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
-                            <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :class="fs10" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
+                    <view v-else class="user-item" :style="{ backgroundColor: c.surface }">
+                        <view class="user-item-content"
+                            :style="{ paddingLeft: '10px', backgroundColor: c.surface }"
+                            :hover-class="pressedClass" hover-stay-time="80"
+                            @tap="showUserDetail(item.user as UserInfo)">
+                            <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
+                            <view class="name-container">
+                                <text class="single-line user-name" :class="fs15" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
+                                <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :class="fs10" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
+                            </view>
                         </view>
+                        <!-- 分隔线做成兄弟节点、左边留出头像宽度：border-bottom 只能整行通铺，避不开头像 -->
+                        <view class="user-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
                     </view>
                 </list-item>
                 <list-item v-if="hasMoreContacts" class="contact-loading-row">
@@ -454,6 +458,12 @@ const showUserDetail = (user: UserInfo) => {
     padding: 5px 5px 5px 0;
 }
 
+.user-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
 .user-item-content {
     padding: 10px 5px 10px 0;
     display: flex;
@@ -461,8 +471,14 @@ const showUserDetail = (user: UserInfo) => {
     width: 100%;
     align-items: center;
     position: relative;
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
+}
+
+/* margin-left 要和右侧文字列的起点对齐：
+ * user-item-content 的 paddingLeft 10 + 头像 40 + .name-container 的 padding-left 10 = 60。
+ * 改上面任何一个数，这里要跟着改。 */
+.user-divider {
+    height: 1px;
+    margin-left: 60px;
 }
 
 .avatar {
