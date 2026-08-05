@@ -29,6 +29,16 @@ function toLogical(v: number, pixelRatio: number): number {
     // #endif
 }
 
+// 屏幕密度运行期不会变，而 touchmove 是逐帧回调，不能每次都去问一次 getSystemInfoSync
+let _pixelRatio: number = 0
+
+function pixelRatio(): number {
+    if (_pixelRatio == 0) {
+        _pixelRatio = uni.getSystemInfoSync().pixelRatio
+    }
+    return _pixelRatio
+}
+
 export function getTouchPoint(e: UniTouchEvent): TouchPoint | null {
     let t: UniTouch | null = null
     if (e.changedTouches.length > 0) {
@@ -39,6 +49,6 @@ export function getTouchPoint(e: UniTouchEvent): TouchPoint | null {
     if (t == null) {
         return null
     }
-    const sys = uni.getSystemInfoSync()
-    return new TouchPoint(toLogical(t.clientX, sys.pixelRatio), toLogical(t.clientY, sys.pixelRatio))
+    const ratio = pixelRatio()
+    return new TouchPoint(toLogical(t.clientX, ratio), toLogical(t.clientY, ratio))
 }

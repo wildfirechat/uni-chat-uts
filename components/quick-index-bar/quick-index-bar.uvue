@@ -1,0 +1,259 @@
+<template>
+    <view v-if="tags.length > 0" class="quick-index-bar" :style="{ top: top + 'px', bottom: bottom + 'px' }"
+        @touchmove="onTouchMove" @touchend="onTouchEnd" @touchcancel="onTouchEnd">
+        <view v-for="(tag, index) in tags" :key="index" class="quick-index-item" :style="{ height: itemHeight + 'px' }"
+            @touchstart="onItemTouchStart(index, $event)">
+            <text class="quick-index-text" :style="{ color: index == selectedIndex ? c.accent : c.textSecondary }">{{ tag }}</text>
+        </view>
+
+        <!-- 按住时屏幕正中的大字母气泡。fixed 才能escape 出这条 30px 宽的窄栏，
+             同 popup-menu 的做法（本项目已验证 fixed 三端可用） -->
+        <view v-if="touching && bubbleText != ''" class="quick-index-bubble"
+            :style="{ left: bubbleLeft + 'px', top: bubbleTop + 'px' }">
+            <text class="quick-index-bubble-text">{{ bubbleText }}</text>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 右侧字母索引条。对齐 `../flutter-chat/chat/lib/widget/sidebar_index.dart`。
+ *
+ * 与 flutter 一致的部分：
+ * - 栏宽 30、单项高度上限 20（排不下时按可用高度均分），整列垂直居中
+ * - 首项固定是「↑」回到顶部
+ * - 按下即跳（不等抬手），**手指上下滑动可连续切换分类**
+ * - 按住期间屏幕正中弹一个 80×80 的半透明大字母气泡，抬手消失
+ *
+ * 与 flutter 的刻意差异：
+ * - 字母颜色走主题令牌（textSecondary / accent）而不是 flutter 写死的 black54，
+ *   否则深色模式下这条栏看不见
+ * - 抬手后仍保留当前分类的高亮（flutter 抬手就清空），跟改版前本项目的行为一致
+ *
+ * ## 滑动切换为什么不用节点矩形来换算
+ *
+ * 直觉做法是量出本栏的 boundingClientRect，再用 `clientY - rect.top` 求落在第几项。
+ * 但鸿蒙运行时里 `getBoundingClientRect()` 的**位置是物理像素、尺寸是 vp**
+ * （runtime 的 `UniElement.ets`：`_getSize` 走了 px2vp，`_getPosition` 没有），
+ * 这条不一致哪天被修掉，换算就会静默错位。
+ *
+ * 所以这里不碰节点几何，改成：
+ * 1. `touchstart` 挂在每个字母上 —— 按到哪一项是原生事件给的，**必然准确**；
+ * 2. `touchmove` 只用触点**位移**推算跨了几项，位移经 [getTouchPoint] 归一化成逻辑像素
+ *    （鸿蒙触点是物理像素，见 common/touch.uts）；
+ * 3. 按下瞬间的「项内偏移」用 [top] / [bottom] 算一个估计值，并**夹在按下那一项的范围内**
+ *    —— 估算对了就是精确映射，估算歪了最多退化成「从该项中心起算」，误差不超过半项。
+ *
+ * 因此 [top] / [bottom] 只影响手感微调，传得不精确也不会跳错分类。
+ */
+import { colors, AppColors } from '@/common/theme.uts'
+import { quickIndexTagOf } from '@/common/pinyin.uts'
+import { getTouchPoint, TouchPoint } from '@/common/touch.uts'
+
+defineOptions({
+    name: 'quick-index-bar'
+})
+
+/** 单项高度上限，对齐 flutter SidebarIndex 的 20。排不下时按可用高度均分。 */
+const ITEM_MAX_HEIGHT = 20
+/** 首项：回到顶部。用字符而不是图标字体，组件吃不到全局 .icomoon。 */
+const BACK_TO_TOP_TAG = '↑'
+const BUBBLE_SIZE = 80
+
+const props = withDefaults(defineProps<{
+    /** 分类名（`UserInfo._category`）按列表顺序去重后的结果，空数组时整条栏不渲染。 */
+    categories: string[]
+    /** 本栏顶边相对页面顶部的距离，一般是「自定义导航栏底边」。 */
+    top?: number
+    /** 本栏底边相对页面底部的距离。 */
+    bottom?: number
+    /** 是否显示首项「↑」。 */
+    showBackToTop?: boolean
+}>(), {
+    top: 0,
+    bottom: 16,
+    showBackToTop: true
+})
+
+const emit = defineEmits(['select', 'backToTop'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const tags = computed<string[]>((): string[] => {
+    const list: string[] = []
+    if (props.categories.length == 0) {
+        return list
+    }
+    if (props.showBackToTop) {
+        list.push(BACK_TO_TOP_TAG)
+    }
+    for (let i = 0; i < props.categories.length; i++) {
+        list.push(quickIndexTagOf(props.categories[i]))
+    }
+    return list
+})
+
+// 可用高度要等页面上屏才准（Android 上过早取 windowHeight 不含导航栏/tabBar 高度，
+// 见 uni-app x getSystemInfo 文档），所以放到 onMounted 里取。
+const availHeight = ref<number>(0)
+
+const measure = () => {
+    const sys = uni.getSystemInfoSync()
+    // 本项目页面都是 navigationStyle: custom，内容区顶到屏幕顶（状态栏由 NavBar 自己垫），
+    // 而 windowHeight 不含状态栏与 tabBar，所以页面高 = statusBarHeight + windowHeight
+    const pageHeight = sys.statusBarHeight + sys.windowHeight
+    availHeight.value = pageHeight - props.top - props.bottom
+}
+
+const itemHeight = computed<number>((): number => {
+    const n = tags.value.length
+    if (n == 0 || availHeight.value <= 0) {
+        return ITEM_MAX_HEIGHT
+    }
+    const h = availHeight.value / n
+    return h < ITEM_MAX_HEIGHT ? h : ITEM_MAX_HEIGHT
+})
+
+/** 字母列顶边相对页面顶部的 y —— 本栏 justify-content: center 挤出来的上留白要算进去。 */
+const columnTop = computed<number>((): number => {
+    const blank = availHeight.value - itemHeight.value * tags.value.length
+    return props.top + (blank > 0 ? blank / 2 : 0)
+})
+
+const bubbleLeft = ref<number>(0)
+const bubbleTop = ref<number>(0)
+
+const selectedIndex = ref<number>(-1)
+const touching = ref<boolean>(false)
+// 按下那一刻的「列内 y」与「触点 y」，滑动时按两者的差推算当前项
+const anchorColumnY = ref<number>(0)
+const anchorTouchY = ref<number>(0)
+
+const bubbleText = computed<string>((): string => {
+    const i = selectedIndex.value
+    if (i < 0 || i >= tags.value.length) {
+        return ''
+    }
+    return tags.value[i]
+})
+
+const notifySelect = (index: number) => {
+    if (props.showBackToTop && index == 0) {
+        emit('backToTop')
+        return
+    }
+    const ci = props.showBackToTop ? index - 1 : index
+    if (ci >= 0 && ci < props.categories.length) {
+        emit('select', props.categories[ci])
+    }
+}
+
+const onItemTouchStart = (index: number, e: any) => {
+    const h = itemHeight.value
+    // 估不出来时退回「按在该项正中」
+    let columnY = (index + 0.5) * h
+    const point = getTouchPoint(e as UniTouchEvent)
+    if (point != null) {
+        anchorTouchY.value = (point as TouchPoint).y
+        const guess = (point as TouchPoint).y - columnTop.value
+        const low = index * h
+        const high = (index + 1) * h
+        columnY = guess < low ? low : (guess > high ? high : guess)
+    }
+    anchorColumnY.value = columnY
+    touching.value = true
+    // 按下必定跳一次：连点同一个字母也要能重新滚过去，和 flutter 的 onTapDown 一致
+    selectedIndex.value = index
+    notifySelect(index)
+}
+
+const onTouchMove = (e: any) => {
+    if (!touching.value) {
+        return
+    }
+    const point = getTouchPoint(e as UniTouchEvent)
+    if (point == null) {
+        return
+    }
+    const columnY = anchorColumnY.value + ((point as TouchPoint).y - anchorTouchY.value)
+    let index = Math.floor(columnY / itemHeight.value)
+    const max = tags.value.length - 1
+    if (index < 0) {
+        index = 0
+    } else if (index > max) {
+        index = max
+    }
+    if (index != selectedIndex.value) {
+        selectedIndex.value = index
+        notifySelect(index)
+    }
+}
+
+const onTouchEnd = () => {
+    touching.value = false
+}
+
+watch(() => props.categories, (_newValue, _oldValue) => {
+    selectedIndex.value = -1
+    touching.value = false
+})
+
+watch(() => props.top, (_newValue, _oldValue) => {
+    measure()
+})
+
+onMounted(() => {
+    const sys = uni.getSystemInfoSync()
+    bubbleLeft.value = (sys.windowWidth - BUBBLE_SIZE) / 2
+    bubbleTop.value = (sys.statusBarHeight + sys.windowHeight - BUBBLE_SIZE) / 2
+    measure()
+})
+</script>
+
+<style scoped>
+/* 栏宽 30 对齐 flutter SidebarIndex，同时也是滑动时的触摸区宽度 —— 再窄手指容易滑出去。
+ * 页面里的列表行要相应留出右侧 32px 的空档，否则长昵称会钻到字母下面。 */
+.quick-index-bar {
+    position: absolute;
+    right: 0;
+    width: 30px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.quick-index-item {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 索引条是图形化导航，字号刻意不跟字号档位放大：放大就排不下 26 个字母 */
+.quick-index-text {
+    font-size: 11px;
+    line-height: 1;
+}
+
+/* 气泡尺寸/字号同样不跟档位放大：80 的框放不下放大后的 40px 字 */
+.quick-index-bubble {
+    position: fixed;
+    width: 80px;
+    height: 80px;
+    border-radius: 8px;
+    background-color: #0000008A;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.quick-index-bubble-text {
+    font-size: 40px;
+    line-height: 48px;
+    color: #FFFFFF;
+    text-align: center;
+}
+</style>

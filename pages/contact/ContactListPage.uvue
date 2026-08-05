@@ -1,8 +1,9 @@
 <template>
     <view class="page-container" :style="{ backgroundColor: c.surface }">
         <NavBar title="通讯录" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
-        <list-view class="contact-list" direction="vertical" :scroll-into-view="scrollIntoViewId" :lower-threshold="200" @scrolltolower="onContactListToLower">
-            <list-item>
+        <list-view class="contact-list" direction="vertical" :scroll-into-view="scrollIntoViewId" :show-scrollbar="false"
+            :lower-threshold="200" @scrolltolower="onContactListToLower">
+            <list-item :id="TOP_ANCHOR_ID">
                 <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showNewFriends">
                     <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
                     <view class="category-item">
@@ -55,12 +56,8 @@
                 </list-item>
             </template>
         </list-view>
-        <view v-if="expandFriendList && quickIndexCategories.length > 0" class="quick-index-bar">
-            <view v-for="(category, ci) in quickIndexCategories" :key="ci" class="quick-index-item" @tap="jumpToCategory(category)">
-                <text class="quick-index-text" :class="{ active: category == quickIndexActiveCategory }"
-                    :style="{ color: category == quickIndexActiveCategory ? c.accent : c.textSecondary }">{{ quickIndexTag(category) }}</text>
-            </view>
-        </view>
+        <quick-index-bar v-if="expandFriendList" :categories="quickIndexCategories" :top="listTop" :bottom="16"
+            @select="jumpToCategory" @backToTop="scrollToTop" />
         <main-action-menu ref="mainActionMenu"></main-action-menu>
     </view>
 </template>
@@ -72,9 +69,16 @@ import NavBar from "../common/NavBar.uvue";
 
 import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
+import { anchorIdForCategory } from "@/common/pinyin.uts";
 defineOptions({
     name: "ContactListPage"
 })
+
+const ANCHOR_PREFIX = 'contact-label-'
+/** 索引条「↑」跳回的锚点：列表第一个固定入口行 */
+const TOP_ANCHOR_ID = 'contact-top'
+/** NavBar 的固定栏高，索引条要落在导航栏下方居中，见 pages/common/NavBar.uvue */
+const NAV_BAR_HEIGHT = 44
 
 
 const c = computed<AppColors>((): AppColors => colors())
@@ -123,23 +127,14 @@ class ContactSection {
 }
 
 const scrollIntoViewId = ref<string>('')
-const quickIndexActiveCategory = ref<string>('')
 const visibleCountsBySection = ref<number[]>([] as number[])
 const activeSectionIndex = ref<number>(0)
+/** 列表区顶边（导航栏底边），索引条按它垂直居中 */
+const listTop = ref<number>(0)
 
 const CONTACT_INITIAL_RENDER_COUNT = 120
 const CONTACT_RENDER_BATCH_SIZE = 220
 const QUICK_INDEX_PRELOAD_COUNT = 120
-
-const anchorIdForCategory = (category: string): string => {
-    if (category == '☆ 星标朋友') {
-        return 'contact-label-star'
-    }
-    if (category == '#') {
-        return 'contact-label-hash'
-    }
-    return 'contact-label-' + category.toLowerCase()
-}
 
 const contactSections = computed<ContactSection[]>((): ContactSection[] => {
     const sections: ContactSection[] = []
@@ -152,7 +147,7 @@ const contactSections = computed<ContactSection[]>((): ContactSection[] => {
             lastCategory = category
             current = new ContactSection()
             current.category = category
-            current.anchorId = anchorIdForCategory(category)
+            current.anchorId = anchorIdForCategory(ANCHOR_PREFIX, category)
             sections.push(current)
         }
         current.users.push(user)
@@ -215,15 +210,27 @@ const sectionIndexByCategory = computed<Map<string, number>>((): Map<string, num
     return map
 })
 
-const quickIndexTag = (category: string): string => {
-    if (category == '☆ 星标朋友') {
-        return '☆'
+/**
+ * 滚到某个锚点。`scroll-into-view` 只在值变化时生效，所以重复选同一个分类要先清空再置值；
+ * 而索引条上滑动切换时前后两次是不同分类，直接赋值即可 —— 那条路径每帧都会走，
+ * 不能白挨一次 setTimeout。
+ */
+const scrollToAnchor = (targetId: string) => {
+    if (scrollIntoViewId.value != targetId) {
+        scrollIntoViewId.value = targetId
+        return
     }
-    return category.toUpperCase()
+    scrollIntoViewId.value = ''
+    setTimeout(() => {
+        scrollIntoViewId.value = targetId
+    }, 16)
+}
+
+const scrollToTop = () => {
+    scrollToAnchor(TOP_ANCHOR_ID)
 }
 
 const jumpToCategory = (category: string) => {
-    quickIndexActiveCategory.value = category
     const sectionIndex = sectionIndexByCategory.value.get(category)
     if (sectionIndex == null) {
         return
@@ -238,12 +245,7 @@ const jumpToCategory = (category: string) => {
         visibleCounts[sectionIndex] = desiredVisibleCount
         visibleCountsBySection.value = visibleCounts
     }
-    const targetId = anchorIdForCategory(category)
-    // Toggle value to force re-scroll when tapping the same category repeatedly.
-    scrollIntoViewId.value = ''
-    setTimeout(() => {
-        scrollIntoViewId.value = targetId
-    }, 16)
+    scrollToAnchor(anchorIdForCategory(ANCHOR_PREFIX, category))
 }
 
 const resetVisibleSections = () => {
@@ -266,9 +268,12 @@ const resetVisibleSections = () => {
 watch(contactSections, (_newValue, _oldValue) => {
     resetVisibleSections()
     activeSectionIndex.value = 0
-    quickIndexActiveCategory.value = ''
     scrollIntoViewId.value = ''
 }, { immediate: true })
+
+onMounted(() => {
+    listTop.value = uni.getSystemInfoSync().statusBarHeight + NAV_BAR_HEIGHT
+})
 
 const onContactListToLower = () => {
     if (!hasMoreContacts.value) {
@@ -392,43 +397,17 @@ const showUserDetail = (user: UserInfo) => {
     flex: 1;
 }
 
-.quick-index-bar {
-    position: absolute;
-    right: 3px;
-    top: 110px;
-    bottom: 16px;
-    width: 18px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-.quick-index-item {
-    height: 15px;
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.quick-index-text {
-    font-size: 10px;
-    line-height: 1;
-}
-
-.quick-index-text.active {
-    font-weight: 600;
-}
-
 /* 行高/内边距都在这层，list-item 上不留任何样式：按下态要挂在 view 上
- * （hover-class 在 list-item 上无效），高度跟着一起挪下来 */
+ * （hover-class 在 list-item 上无效），高度跟着一起挪下来。
+ * 右侧 32px 是让给字母索引条的空档（栏宽 30），对齐 flutter 行上的 endIndent 32；
+ * 改索引条宽度时这一片 padding-right 要跟着改。 */
 .category-row {
     height: 50px;
     display: flex;
     flex-direction: row;
     align-items: center;
     padding-left: 10px;
+    padding-right: 32px;
 }
 
 .category-icon {
@@ -445,8 +424,9 @@ const showUserDetail = (user: UserInfo) => {
     align-items: center;
 }
 
+/* 右侧留白已经由 .category-row 的 padding-right 给足，这里不再单独顶开 */
 .desc {
-    margin-right: 15px;
+    margin-right: 0;
 }
 
 /* 底色画在内层 user-label / user-item-content 上：list-item 走复用渲染，不给它动态绑定 */
@@ -455,7 +435,7 @@ const showUserDetail = (user: UserInfo) => {
 }
 
 .user-label-text {
-    padding: 5px 5px 5px 0;
+    padding: 5px 32px 5px 0;
 }
 
 .user-item {
@@ -465,7 +445,7 @@ const showUserDetail = (user: UserInfo) => {
 }
 
 .user-item-content {
-    padding: 10px 5px 10px 0;
+    padding: 10px 32px 10px 0;
     display: flex;
     flex-direction: row;
     width: 100%;

@@ -71,9 +71,10 @@ const showOrganization = (organization: UTSJSONObject) => {
     border-radius: 3px;
 }
 
+/* 右侧 32px 是让给通讯录页字母索引条的空档，与 ContactListPage 的 .category-row 一致 */
 .organization-item {
     height: 50px;
-    padding: 5px 10px 5px 10px;
+    padding: 5px 32px 5px 10px;
     display: flex;
     flex-direction: row;
     align-items: center;

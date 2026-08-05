@@ -32,20 +32,16 @@
             </view>
         </view>
 
-        <list-view class="friend-list" direction="vertical" :scroll-into-view="scrollIntoViewId">
+        <list-view class="friend-list" direction="vertical" :scroll-into-view="scrollIntoViewId" :show-scrollbar="false">
             <CheckableUserListView ref="userListView" :users="filteredUsers" :initial-checked-users="initialCheckedUsers"
                 :uncheckable-users="uncheckableUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
                 :anchor-prefix="ANCHOR_PREFIX" :max-checked-count="maxSelected" @maxExceeded="onMaxExceeded"
-                padding-left="16px" />
+                padding-left="16px" padding-right="32px" />
         </list-view>
 
-        <!-- 右侧字母索引条。搜索态下分类标签本来就不显示，索引条一并收起 -->
-        <view v-if="quickIndexCategories.length > 0" class="quick-index-bar">
-            <view v-for="(category, ci) in quickIndexCategories" :key="ci" class="quick-index-item"
-                @tap="jumpToCategory(category)">
-                <text class="quick-index-text" :style="{ color: category == quickIndexActiveCategory ? c.accent : c.textSecondary }">{{ quickIndexTagOf(category) }}</text>
-            </view>
-        </view>
+        <!-- 右侧字母索引条。搜索态下分类标签本来就不显示，quickIndexCategories 会返回空数组，索引条一并收起 -->
+        <quick-index-bar :categories="quickIndexCategories" :top="listTop" :bottom="16" @select="jumpToCategory"
+            @backToTop="scrollToTop" />
     </view>
 </template>
 
@@ -60,8 +56,6 @@
  * - 补上 maxSelected 上限与「从组织架构选择」入口
  *
  * 与 flutter 的刻意差异：
- * - flutter 按住索引条时屏幕中央有一个大字母气泡（SidebarIndex 的 onTouch），这里只做点击跳转、
- *   不做拖动追踪 —— uni 侧索引条是一排独立 view，拿不到「手指滑过第几个」而不引入手势换算
  * - flutter 单选（maxSelected == 1）也走同一个页面，点一下就回调；uni 侧单选一直是独立的
  *   PickSingleUserPage，保持不动
  */
@@ -75,7 +69,7 @@ import {
     currentPickUsersOptions, notifyPickedUsers,
     pickOrganizationUsers, PickOrganizationUsersOptions
 } from "@/common/picker.uts";
-import { anchorIdForCategory, quickIndexTagOf } from "@/common/pinyin.uts";
+import { anchorIdForCategory } from "@/common/pinyin.uts";
 import { toast } from "@/common/prompt.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
 
@@ -87,6 +81,12 @@ defineOptions({
 })
 
 const ANCHOR_PREFIX = 'pick-label-'
+/** NavBar 的固定栏高，见 pages/common/NavBar.uvue */
+const NAV_BAR_HEIGHT = 44
+/** .org-entry 的行高 */
+const ORG_ENTRY_HEIGHT = 56
+/** .search-bar 的上下 padding 8 + .search-box 高 36 */
+const SEARCH_BAR_HEIGHT = 52
 
 const c = computed<AppColors>((): AppColors => colors())
 const users = ref<UserInfo[]>([] as UserInfo[])
@@ -101,7 +101,13 @@ const filterQuery = ref<string>('')
 
 const userListView = ref<ComponentPublicInstance | null>(null)
 const scrollIntoViewId = ref<string>('')
-const quickIndexActiveCategory = ref<string>('')
+const statusBarHeight = ref<number>(0)
+
+/** 列表区顶边，索引条按它垂直居中 */
+const listTop = computed<number>((): number => {
+    const entry = showOrganizationEntry.value ? ORG_ENTRY_HEIGHT : 0
+    return statusBarHeight.value + NAV_BAR_HEIGHT + entry + SEARCH_BAR_HEIGHT
+})
 
 /**
  * 已选头像条的宽度。窗口宽减去搜索图标、内边距和留给输入框的最小宽度，
@@ -177,6 +183,10 @@ onUnload(() => {
     pickState.users = []
 })
 
+onMounted(() => {
+    statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight
+})
+
 const unpick = (user: UserInfo) => {
     if (isUserUncheckable(user)) {
         return;
@@ -192,19 +202,38 @@ const onMaxExceeded = () => {
     toast(t1('pick.max_user_limit', '' + maxSelected.value))
 }
 
+/**
+ * 滚到某个锚点。`scroll-into-view` 只在值变化时生效，所以重复选同一个分类要先清空再置值；
+ * 而索引条上滑动切换时前后两次是不同分类，直接赋值即可 —— 那条路径每帧都会走，
+ * 不能白挨一次 setTimeout。
+ */
+const scrollToAnchor = (targetId: string) => {
+    if (scrollIntoViewId.value != targetId) {
+        scrollIntoViewId.value = targetId
+        return
+    }
+    scrollIntoViewId.value = ''
+    setTimeout(() => {
+        scrollIntoViewId.value = targetId
+    }, 16)
+}
+
 const jumpToCategory = (category: string) => {
-    quickIndexActiveCategory.value = category
     // 还没进渲染窗口的分类没有锚点节点，先让列表把那一段渲染出来
     const listView = userListView.value
     if (listView != null) {
         (listView as ComponentPublicInstance).$callMethod('ensureCategoryRendered', category)
     }
-    const targetId = anchorIdForCategory(ANCHOR_PREFIX, category)
-    // 连点同一个分类时要能重复滚动，先清空再置值
-    scrollIntoViewId.value = ''
-    setTimeout(() => {
-        scrollIntoViewId.value = targetId
-    }, 16)
+    scrollToAnchor(anchorIdForCategory(ANCHOR_PREFIX, category))
+}
+
+/** 本页列表顶部就是第一个分类标签，没有单独的表头行，「↑」直接跳第一个分类 */
+const scrollToTop = () => {
+    const categories = quickIndexCategories.value
+    if (categories.length == 0) {
+        return
+    }
+    jumpToCategory(categories[0])
 }
 
 /**
@@ -345,29 +374,4 @@ const confirm = () => {
     flex: 1;
 }
 
-.quick-index-bar {
-    position: absolute;
-    right: 3px;
-    top: 160px;
-    bottom: 16px;
-    width: 18px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-.quick-index-item {
-    height: 15px;
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-/* 索引条是图形化导航，字号刻意不跟档位放大：放大就排不下 26 个字母 */
-.quick-index-text {
-    font-size: 10px;
-    line-height: 1;
-}
 </style>
