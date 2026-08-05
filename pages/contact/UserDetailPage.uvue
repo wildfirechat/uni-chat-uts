@@ -47,8 +47,8 @@
         </scroll-view>
 
         <bottom-action-sheet v-model="showCallSheet" :items="callSheetItems" @select="onCallSheetSelect" />
-        <popup-menu v-model="showMoreMenu" :items="moreMenuItems" @select="onMoreMenuSelect"
-            :targetX="moreMenuX" :targetY="moreMenuY" :crossAxisCount="3" :popupWidth="220" />
+        <dropdown-menu v-model="showMoreMenu" :items="moreMenuItems" @select="onMoreMenuSelect"
+            :targetX="moreMenuX" :targetY="moreMenuY" />
     </view>
 </template>
 
@@ -68,9 +68,14 @@
  *
  * ## 与 flutter 的刻意差异
  *
- * - flutter 右上角是 PopupMenuButton（系统下拉菜单），这里复用消息长按那套 popup-menu 深色面板，
- *   省得再引入第二种菜单形态；菜单项集合与 flutter 一致
  * - flutter 的「删除好友」二次确认是 AlertDialog，这里走 showConfirmDialog（同项目其他页）
+ *
+ * ## 右上角菜单
+ *
+ * flutter 这里是 `PopupMenuButton`——系统风格的浅色竖排文字下拉，不是消息长按那套深色图标网格。
+ * 之前这页图省事复用了深色网格 popup-menu，视觉上和 flutter 差太远；改用
+ * [dropdown-menu](@/components/dropdown-menu/dropdown-menu.uvue)，跟随主题的浅色竖排列表，
+ * 对齐 flutter 观感。菜单项集合与 flutter 一致。
  */
 import NavBar from "@/pages/common/NavBar.uvue";
 import store, { contactState } from "@/store.uts";
@@ -98,7 +103,8 @@ defineOptions({
 })
 
 const c = computed<AppColors>((): AppColors => colors())
-const moreIcon = ref<string>('')
+// 三个点，与 ConversationPage 的「更多」入口同一个字形；原先这里错用了播放按钮的字形
+const moreIcon = ref<string>('')
 
 const user = ref<UserInfo | null>(contactState.currentFriend as UserInfo | null)
 const isStarred = ref<boolean>(false)

@@ -1,0 +1,221 @@
+<template>
+    <!-- 遮罩 + 面板结构同 popup-menu（鸿蒙上嵌套 fixed 节点的注意事项一致），
+         区别只在这里是浅色系统下拉外观，不是深色图标网格。 -->
+    <view v-if="modelValue" class="dropdown-menu-mask" @tap="dismiss">
+        <view class="dropdown-menu-panel" :class="isDark() ? '' : 'dropdown-panel-shadow'"
+            :style="{ top: panelTop + 'px', left: panelLeft + 'px', width: menuWidth + 'px', backgroundColor: c.popupBg, borderColor: isDark() ? c.hairline : 'transparent' }"
+            @tap.stop="onPanelTap">
+            <view v-for="(item, index) in items" :key="index" class="menu-row-wrapper">
+                <view class="menu-row" :hover-class="item.disabled ? '' : pressedClass" hover-stay-time="80"
+                    :style="{ opacity: item.disabled ? 0.4 : 1 }" @tap.stop="tapItem(item)">
+                    <text class="menu-row-text" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ item.title }}</text>
+                </view>
+                <view v-if="index < items.length - 1" class="menu-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 浅色系统风格下拉菜单：纯文字竖排列表 + 阴影（深色下用发丝线边框代替阴影），
+ * 跟随主题。对齐 flutter 侧 `PopupMenuButton` 在用户信息页的实际观感
+ * ——**不是** flutter `popup_menu_overlay.dart` 的 `PopupMenuPanel`（那个深色卡片 + 图标
+ * 网格/竖排两种形态已经由 [popup-menu](../popup-menu/popup-menu.uvue) 和
+ * [main-action-menu](../main-action-menu/main-action-menu.uvue) 分别覆盖，见后者的注释）。
+ *
+ * 定位是右对齐目标点（如导航栏右上角按钮），而不是居中——系统下拉菜单从触发按钮
+ * 下方向左展开是通用形态。上下方向仍按 popup-menu 的思路自动避让屏幕边缘。
+ *
+ * 深色下没有阴影可用（见 theme.uts 里 popupBg 的注释），改用 1px 发丝线边框，
+ * 靠 popupBg 比 surface 亮一档来读出浮层层次。
+ */
+import { PopupMenuItem } from '../../common/popupMenu.uts'
+import { colors, AppColors, isDark } from '../../common/theme.uts'
+import { fontPx, FONT_LG } from '../../common/layoutScale.uts'
+
+defineOptions({
+    name: 'dropdown-menu'
+})
+
+const props = withDefaults(defineProps<{
+    modelValue?: boolean
+    items?: PopupMenuItem[]
+    /** 目标（触发按钮）在屏幕坐标系里的矩形；菜单右边缘对齐 targetX + targetWidth */
+    targetX?: number
+    targetY?: number
+    targetWidth?: number
+    targetHeight?: number
+    menuWidth?: number
+}>(), {
+    modelValue: false,
+    items: (): PopupMenuItem[] => [] as PopupMenuItem[],
+    targetX: 0,
+    targetY: 0,
+    targetWidth: 0,
+    targetHeight: 0,
+    menuWidth: 200
+})
+
+const emit = defineEmits(['update:modelValue', 'select'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// 与 popup-menu 一致：尺寸是图形/布局常量，不跟字号档位放大，只有文字本身用 fontPx
+// ROW_HEIGHT 同时写在样式里的 .menu-row height 和 .menu-row-text line-height，三处要一致
+const ROW_HEIGHT = 46
+const DIVIDER_HEIGHT = 1
+const EDGE_MARGIN = 10
+const SAFE_GAP = 8
+
+const menuHeight = computed<number>((): number => {
+    const count = props.items.length
+    if (count == 0) {
+        return 0
+    }
+    return count * ROW_HEIGHT + (count - 1) * DIVIDER_HEIGHT
+})
+
+const targetTop = computed<number>((): number => props.targetY)
+const targetBottom = computed<number>((): number => props.targetY + props.targetHeight)
+const targetRight = computed<number>((): number => props.targetX + props.targetWidth)
+
+/** 下方放得下就放下方（系统下拉菜单的通常形态），否则放上方；都放不下选空间大的一侧 */
+const showAbove = computed<boolean>((): boolean => {
+    const sysInfo = uni.getSystemInfoSync()
+    const minTop = sysInfo.statusBarHeight + SAFE_GAP
+    const maxBottom = sysInfo.windowHeight - SAFE_GAP
+    const h = menuHeight.value
+    if (targetBottom.value + SAFE_GAP + h < maxBottom) {
+        return false
+    }
+    if (targetTop.value - SAFE_GAP - h > minTop) {
+        return true
+    }
+    return (targetTop.value - minTop) > (maxBottom - targetBottom.value)
+})
+
+const panelTop = computed<number>((): number => {
+    const sysInfo = uni.getSystemInfoSync()
+    const minTop = sysInfo.statusBarHeight + SAFE_GAP
+    const maxBottom = sysInfo.windowHeight - SAFE_GAP
+    const h = menuHeight.value
+    let top: number
+    if (showAbove.value) {
+        top = targetTop.value - SAFE_GAP - h
+        if (top < minTop) {
+            top = minTop
+        }
+    } else {
+        top = targetBottom.value + SAFE_GAP
+        if (top + h > maxBottom) {
+            top = maxBottom - h
+        }
+        if (top < minTop) {
+            top = minTop
+        }
+    }
+    return top
+})
+
+const panelLeft = computed<number>((): number => {
+    const winWidth = uni.getSystemInfoSync().windowWidth
+    let left = targetRight.value - props.menuWidth
+    if (left < EDGE_MARGIN) {
+        left = EDGE_MARGIN
+    }
+    if (left + props.menuWidth > winWidth - EDGE_MARGIN) {
+        left = winWidth - props.menuWidth - EDGE_MARGIN
+    }
+    return left
+})
+
+// 按下态两个色值对应 theme.uts 的 pressedOverlay，改令牌记得同步（同 option-item 的做法）
+const pressedClass = computed<string>((): string => isDark() ? 'row-pressed-dark' : 'row-pressed-light')
+
+const dismiss = () => {
+    emit('update:modelValue', false)
+}
+
+// 点在面板空隙上不关闭菜单，也不要穿透到下层
+const onPanelTap = () => {
+}
+
+const tapItem = (item: PopupMenuItem) => {
+    if (item.disabled) {
+        return
+    }
+    emit('update:modelValue', false)
+    emit('select', item)
+}
+</script>
+
+<style scoped>
+.dropdown-menu-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+    /* 鸿蒙上完全透明的节点可能不参与命中测试，用极低的不透明度保证能收到 tap */
+    background-color: rgba(0, 0, 0, 0.01);
+}
+
+.dropdown-menu-panel {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    overflow: hidden;
+    border-width: 1px;
+    border-style: solid;
+}
+
+/* 深色下改用发丝线边框（见上面组件注释），这里只给浅色叠阴影 */
+.dropdown-panel-shadow {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.menu-row-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.menu-row {
+    height: 46px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 16px;
+}
+
+/* line-height 必须等于 .menu-row 的 height（= 脚本里的 ROW_HEIGHT，改一个记得改另一个）：
+ * 光靠父级的 align-items: center 不够——鸿蒙 runtime 建 text 节点时写死了
+ * `.align(Alignment.TopStart)`，只要文字节点的盒子比行盒高一点，字就贴着盒子顶部画。
+ * 这里的 text 带 flex: 1，盒高由布局给（行高 46），不是由内容撑，所以会偏上。
+ * 把 line-height 顶到 46px，行盒就等于盒高，配合 runtime 的 halfLeading(true)
+ * 上下留白自动均分，三端都能稳定垂直居中。 */
+.menu-row-text {
+    flex: 1;
+    line-height: 46px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.menu-divider {
+    height: 0.5px;
+    margin: 0 12px;
+}
+
+.row-pressed-light {
+    background-color: #0000000A;
+}
+
+.row-pressed-dark {
+    background-color: #FFFFFF14;
+}
+</style>
