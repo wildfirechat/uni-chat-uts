@@ -66,6 +66,7 @@ import JoinCallRequestMessageContent from '../av/messages/joinCallRequestMessage
 import ConferenceInviteMessageContent from '../av/messages/conferenceInviteMessageContent.uts';
 import VoipStubMessageContent from '../av/messages/voipStubMessageContent.uts';
 import PttSoundMessageContent from '../ptt/pttSoundMessageContent.uts';
+import PollMessageContent from "../messages/pollMessageContent.uts";
 
 export type MessageContentCreator = () => MessageContent
 
@@ -195,5 +196,6 @@ export default class MessageConfig {
         new MessageContentRegistry('enterChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Enter_Channel_Chat, (): MessageContent => new EnterChannelChatMessageContent()),
         new MessageContentRegistry('leaveChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Leave_Channel_Chat, (): MessageContent => new LeaveChannelChatMessageContent()),
         new MessageContentRegistry('conferenceCommandMessageContent', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND)),
+        new MessageContentRegistry('pollMessageContent', PersistFlag.Persist_And_Count, MessageContentType.Poll, (): MessageContent => new PollMessageContent()),
     ];
 }

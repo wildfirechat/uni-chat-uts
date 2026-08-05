@@ -1,0 +1,107 @@
+import Config from "../config.uts";
+import { AuthCodeApiClient, AuthCodeApiError } from "./authCodeApiClient.uts";
+import { Poll, PollVoterDetail, pollFromJson, pollListFromJson, pollVoterDetailListFromJson } from "./pollModel.uts";
+
+/**
+ * 群投票服务。对齐 flutter `chat/lib/poll/poll_service.dart`。
+ *
+ * 独立后端（[Config.POLL_SERVER]），不走 IM 协议栈、不需要动原生插件；
+ * 鉴权走 authCode（appId = 'poll'，appType = 2），见 [AuthCodeApiClient]。
+ *
+ * 创建投票后**客户端不发消息** —— 服务端会自己往群里投一条 type=18 的投票消息。
+ */
+export class PollServerApi {
+    private client = new AuthCodeApiClient('poll', 2, (): string => Config.urlRedirect(Config.POLL_SERVER))
+
+    /** 投票服务是否配置。没配时输入框扩展面板不显示「群投票」，消息气泡也不可点。 */
+    isAvailable(): boolean {
+        return this.client.isAvailable()
+    }
+
+    /** 创建投票。`POST /api/polls` */
+    create(groupId: string, title: string, desc: string, options: string[],
+        visibility: number, type: number, maxSelect: number, anonymous: number,
+        endTime: number, showResult: number): Promise<Poll> {
+        const params = {
+            groupId: groupId,
+            title: title,
+            options: options,
+            visibility: visibility,
+            type: type,
+            maxSelect: maxSelect,
+            anonymous: anonymous,
+            endTime: endTime,
+            showResult: showResult
+        } as UTSJSONObject
+        if (desc != '') {
+            params['description'] = desc
+        }
+        return this._poll('/api/polls', params)
+    }
+
+    /** 投票详情。`POST /api/polls/{pollId}` */
+    getPoll(pollId: number): Promise<Poll> {
+        return this._poll('/api/polls/' + pollId, {} as UTSJSONObject)
+    }
+
+    /** 参与投票。`POST /api/polls/{pollId}/vote` */
+    vote(pollId: number, optionIds: number[]): Promise<UTSJSONObject | null> {
+        return this.client.post('/api/polls/' + pollId + '/vote', { optionIds: optionIds } as UTSJSONObject)
+    }
+
+    /** 结束投票（仅创建者）。`POST /api/polls/{pollId}/close` */
+    close(pollId: number): Promise<UTSJSONObject | null> {
+        return this.client.post('/api/polls/' + pollId + '/close', {} as UTSJSONObject)
+    }
+
+    /** 删除投票（仅创建者）。`POST /api/polls/{pollId}/delete` */
+    delete(pollId: number): Promise<UTSJSONObject | null> {
+        return this.client.post('/api/polls/' + pollId + '/delete', {} as UTSJSONObject)
+    }
+
+    /** 导出投票明细（仅实名投票的创建者）。`POST /api/polls/{pollId}/export` */
+    exportDetails(pollId: number): Promise<PollVoterDetail[]> {
+        return new Promise<PollVoterDetail[]>((resolve, reject) => {
+            this.client.post('/api/polls/' + pollId + '/export', {} as UTSJSONObject)
+                .then((body: UTSJSONObject | null): void => {
+                    resolve(pollVoterDetailListFromJson(body?.['data']))
+                })
+                .catch((err: any | null): void => {
+                    reject(err)
+                })
+        })
+    }
+
+    /** 我发起的投票。`POST /api/polls/my` */
+    getMyPolls(): Promise<Poll[]> {
+        return new Promise<Poll[]>((resolve, reject) => {
+            this.client.post('/api/polls/my', {} as UTSJSONObject)
+                .then((body: UTSJSONObject | null): void => {
+                    resolve(pollListFromJson(body?.['data']))
+                })
+                .catch((err: any | null): void => {
+                    reject(err)
+                })
+        })
+    }
+
+    private _poll(path: string, params: UTSJSONObject): Promise<Poll> {
+        return new Promise<Poll>((resolve, reject) => {
+            this.client.post(path, params)
+                .then((body: UTSJSONObject | null): void => {
+                    const data = body?.getJSON('data')
+                    if (data == null) {
+                        reject(new AuthCodeApiError(-1, 'empty poll data'))
+                        return
+                    }
+                    resolve(pollFromJson(data))
+                })
+                .catch((err: any | null): void => {
+                    reject(err)
+                })
+        })
+    }
+}
+
+const pollServerApi = new PollServerApi();
+export default pollServerApi;

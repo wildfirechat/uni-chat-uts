@@ -3,7 +3,7 @@
 > **基线**：`../flutter-chat` 的移动端形态（`chat/lib` 去掉 `pc/` 目录 + `moment/` 模块）。
 > **本文档取代** `FEATURE_GAP_TODO.md`（那份以 `../android-chat` 为基线，已不适用，可删除）。
 > **最后核对**：2026-08-05，对照 flutter-chat 分支当前状态。
-> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除三项（创建/搜索频道、登录页补齐、外部域，见 M4 小节）。
+> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除三项（创建/搜索频道、登录页补齐、外部域，见 M4 小节）；M5 投票代码侧完成（真机验证待做），接龙 / 网盘 / 发现页未开工。
 
 ---
 
@@ -378,6 +378,14 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
   - [GroupInfoPage](pages/conversation/GroupInfoPage.uvue) ← `group/group_info_screen.dart`，扫群码后的加群预览页
   - [ChannelDetailPage](pages/contact/ChannelDetailPage.uvue) ← `channel/channel_info_widget.dart`，频道详情 + 订阅/取消订阅
 - [x] **通话入口抽公共** — [common/avcall.uts](common/avcall.uts) ← `call/av_call_launcher.dart`，会话页和用户详情页共用
+- [x] **消息转发页对齐** `[UI]` — [ForwardMessagePage](pages/conversation/message/forward/ForwardMessagePage.uvue) ← `conversation/forward/pick_forward_page.dart`
+  - 原来是「选会话 / 创建会话」两个整页视图，各自底部常驻一块「已选 + 预览 + 留言 + 发送」面板，且**恒为多选**
+  - 现在按 flutter：标题栏可切**单选/多选**（标题跟着变「选择一个聊天 / 选择多个聊天」）；单选点一行直接弹确认框，多选在底栏点「发送(n)」再弹；已选目标以头像内嵌在搜索框左侧
+  - 新增 [ForwardTargetListView](pages/conversation/message/forward/ForwardTargetListView.uvue) ← `forward/widgets/forward_target_list.dart`：「创建群聊」入口 + 「最近聊天」；**搜索按 flutter 的 searchTypes 只搜好友和群**（不搜全网用户，否则陌生人会混进转发目标），结果分「好友 / 群组」两段
+  - 新增 [ForwardConfirmationSheet](pages/conversation/message/forward/ForwardConfirmationSheet.uvue) ← `conversation/forward_confirmation_sheet.dart`：发送给 + 内容预览（图片/视频带缩略图，视频叠播放角标）+ 留言 + 取消/发送
+  - 「创建群聊」改成 flutter 的语义：**选人 → 建群 → 回本页用新群弹确认框**（微信的做法），只选一个人时不建群、直接转到单聊；群名按「创建者,成员1,成员2…」拼接，超 24 字收尾成「xxx等」
+  - 与 flutter 的三处刻意差异（各文件头部有注释）：建群选人复用已有的 [PickUserPage](pages/pick/PickUserPage.uvue) 而不是在本页原地换界面；预览文字限高裁切而不是 3 行省略号（`lines` 鸿蒙 vapor 无效）；确认框的键盘避让自己接管（`adjust-position=false` + 等高 padding）
+  - 删除：`ForwardMessageByPickConversationView` / `ForwardMessageByCreateConversationView` / `ForwardMessageView` 三个旧视图，以及只服务于它们的 `store.forwardByCreateConversation`
 
 #### 本轮没做的
 
@@ -388,7 +396,6 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
   - **找回密码不做**，理由见本节开头的核对表
 - [ ] **外部域 / 互联互通** `[SDK❌ getDomainInfo]` — 仍按「原生改动攒批做」的原则，和 M2 的入群申请审批、M6 的 `sendMomentsRequest` 一起做
 - [ ] 收藏的群 / 订阅的频道两页的**行版式**（56px 行高 + 40px 头像 + 16px 标题）还是老样式，功能等价但不够贴 flutter
-- [ ] 消息转发页对齐（新增）
 
 #### 二维码是怎么验证的（这块没法靠肉眼看）
 
@@ -459,9 +466,20 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 
 这三个都是**纯 HTTP 服务 + 消息类型**，不碰原生，性价比高。
 
-- [ ] **投票** `[API❌ POLL_SERVER]`
+- [x] **投票** `[API❌ POLL_SERVER→已补]` — **代码侧完成**（`check-uvue-css` + 三端 `cli publish` 通过），**真机验证待做**
   - flutter 参考：`poll/`（8 个文件，2.2k 行），接口 `/api/polls`、`/api/polls/my`
-  - 含：创建投票、投票详情、我的投票列表、`poll_cell_builder` 消息气泡、输入框扩展面板入口
+  - 产出：
+    - [config.uts](config.uts) 补 `POLL_SERVER`；置空则扩展面板不显示入口、消息气泡也不可点（与 flutter 的 `PollService.isAvailable` 同义）
+    - [api/authCodeApiClient.uts](api/authCodeApiClient.uts) ← `utils/auth_code_api_client.dart` —— **接龙和网盘直接复用这个**，三家都是 authCode 鉴权 + `{code,message,data}` 响应
+    - [api/pollModel.uts](api/pollModel.uts) / [api/pollServerApi.uts](api/pollServerApi.uts) ← `poll_model.dart` / `poll_service.dart`
+    - [wfc/messages/pollMessageContent.uts](wfc/messages/pollMessageContent.uts)（消息类型 18）+ [messageConfig.uts](wfc/client/messageConfig.uts) 注册
+    - [PollHomePage](pages/poll/PollHomePage.uvue) / [CreatePollPage](pages/poll/CreatePollPage.uvue) / [PollListPage](pages/poll/PollListPage.uvue) / [PollDetailPage](pages/poll/PollDetailPage.uvue)
+    - [PollMessageContentView](pages/conversation/message/content/PollMessageContentView.uvue) ← `poll_cell_builder.dart`
+    - 输入框扩展面板入口（[MessageInputView](pages/conversation/MessageInputView.uvue)）：**群会话 + 配了服务地址**才出现，与 `plugin_board.dart` 一致
+    - [components/form-text-row](components/form-text-row/form-text-row.uvue) ← `widget/form_card.dart` 的 `FormTextRow`，接龙的创建页会复用
+    - i18n 三语各 69 条
+  - **创建投票后客户端不发消息** —— 投票服务端会自己往群里投那条 type=18 的消息，所以创建页只 `POST /api/polls` 然后返回
+  - 顺带修掉的存量问题：扩展面板的图标字形原来没写 `color`，深色模式下是黑字压深色底板（flutter 那边是 `iconSecondary`）
 - [ ] **接龙** `[API❌ COLLECTION_SERVER]`
   - flutter 参考：`collection/`（6 个文件，1.1k 行），接口 `/api/collections`
   - 含：创建接龙、接龙详情、`collection_cell_builder` 消息气泡、扩展面板入口
@@ -470,6 +488,58 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
   - 认证走 `getAuthCode`（uni 门面已有），含空间列表、目录浏览、上传下载、大文件预签名上传
   - 入口在发现页
 - [ ] **发现页补齐** `[UI]` — 对照 `discovery/discovery_tab.dart`：朋友圈、聊天室、机器人、**会议**、开发文档、**云盘**（uni 侧现有：聊天室、机器人、频道、开发手册）
+
+#### 投票 · 与 flutter 的刻意差异
+
+- **截止时间是一个三列 picker，不是「日期弹窗 → 时间弹窗」两步**：uni-app x 的 `<picker>` 只能由
+  点击拉起，没法在前一个关闭后程序化拉起下一个。合成一个（日期 / 时 / 分）的 `multiSelector`，
+  日期列第一项「不设置」用来清掉截止时间 —— flutter 那边选过之后反而清不掉
+- **「我的投票」删除是长按，不是左滑**：flutter 移动端用 `Dismissible`，uni 侧自己接管 touchmove
+  会和 scroll-view 的纵向滚动打架。删除还有第二条路：创建者进详情页（管理模式）底部就有「删除投票」
+- **不放「转发投票」入口**：flutter 的 `_forwardPoll` 只 toast「开发中」，按 §M2 的规矩
+  （宁可不放入口，也不放点了弹「暂未实现」的行）整个入口不出现
+- **导出明细走 `uni.openDocument`**：flutter 缺 share_plus，只把 CSV 落到临时目录再 toast 路径；
+  这里写完 CSV 后交给系统应用打开（用户可另存/分享），打不开时才退回 toast 路径 ——
+  与 [common/mediaSaver.uts](common/mediaSaver.uts) 保存文件的做法一致
+- **投票类型 / 最多选几项用 actionSheet**：没有 flutter `showFormOptionPicker` 的「当前项打勾」，
+  当前值已经显示在行右侧的 desc 上，信息不缺
+- **气泡标题单行截断**：flutter 是 2 行省略号，`lines` 在鸿蒙 vapor 无效（见 §M4），只能 nowrap
+- **不带投票结果消息（类型 19）**：flutter 的 imclient 注册了 `PollResultMessageContent`，但它自己
+  也没有对应的 cell_builder，渲染不出来。对齐 flutter 就不该做
+
+#### 投票 · 真机验证清单（鸿蒙优先）
+
+前置：`Config.POLL_SERVER` 指向可用的投票服务，且当前账号在某个群里。
+
+1. **入口可见性**：群会话 → 输入框「+」→ 面板里有「群投票」，图标是柱状图**不是豆腐块方框**；
+   **单聊的面板里不应该有这一项**；把 `POLL_SERVER` 置空重编，群里也不应该有
+2. **发起投票**：进「群投票 → 发起投票」，标题为空时右上角「发布」是灰的、点不动；
+   填了标题但某个选项为空，仍然点不动；两项都填齐才变蓝
+3. **选项增删**：默认两个选项，「添加选项」最多加到 10 个（第 11 次给提示）；
+   选项超过 2 个时每行右边出现减号，减到 2 个后减号消失
+4. **投票类型**：切到「多选」后下面**多出一行「最多选几项」**，可选值是 2~选项总数；
+   切回「单选」这一行消失；删选项删到比 maxSelect 少时，maxSelect 应自动跟着降
+5. **截止时间**：点这一行弹三列 picker（日期 / 时 / 分）—— **确认这一下能弹出来**
+   （行是 option-item 包在 picker 里，靠点击冒泡触发）；选完行右侧显示 `MM/DD HH:mm`；
+   再点进去选日期列的「不设置」，行右侧回到「无截止时间」
+6. **发布**：点「发布」→「投票创建成功」→ 回到群会话，**群里出现一条投票消息气泡**
+   （消息是服务端发的，可能有一两秒延迟）
+7. **气泡**：标题 + 描述 + 「0票 · 进行中 · 还剩 N 天」+ 分隔线 + 「参与投票」；
+   深色模式下发送气泡是实心蓝，气泡内所有文字都还读得出来
+8. **投票**：点气泡进详情 —— 单选是圆形勾选框、多选是方形；多选勾到上限时再点给提示，
+   标题栏变成「已选 2/3」；点「提交投票」→「投票成功」→ 页面刷新出票数条，
+   自己投的那项是主色、其余是灰色；**返回会话，气泡上的票数跟着变了**（靠回写本地消息）
+9. **重复投票**：已投票后再进详情，勾选框消失、自己投的那项左边是实心对勾，底部没有「提交投票」
+10. **我的投票**：「群投票 → 我的投票」列出自己发起的；下拉能刷新；空数据显示柱状图占位而不是白屏
+11. **管理模式**：从「我的投票」点进自己发起的投票 —— **没有勾选框**，底部是「导出明细」+「结束投票」；
+    点「结束投票」二次确认后状态变「已结束」，底部主按钮变成红色的「删除投票」
+12. **导出明细**：实名投票才有这个按钮（把投票建成匿名的再验一遍，**匿名时不应出现**）；
+    点了能唤起系统应用打开 CSV，打不开时应 toast 出文件路径而不是静默失败
+13. **删除**：详情页删除后返回列表，该条消失；列表页**长按**某条也能删（二次确认）
+14. **服务不可用**：把 `POLL_SERVER` 指到一个不通的地址，各页面应给出提示而不是空白卡住
+15. **深色模式 + 最大字号**：把上面每页再扫一遍，重点看**详情页的选项行**
+    （勾选框 + 选项文字 + 「N票 · NN%」挤在一行，最大档最容易把百分比顶出去）
+    和**创建页的选项行**（输入框 + 减号同行）
 
 ---
 
@@ -554,7 +624,10 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 
 ### 独立服务（新建 api 文件）
 
-`poll` → `/api/polls`；`collection` → `/api/collections`；`pan` → 网盘接口；ASR → `Config.ASR_SERVER`
+- 已补（M5）：`poll` → `/api/polls`，见 [api/pollServerApi.uts](api/pollServerApi.uts)；
+  鉴权的公共部分抽在 [api/authCodeApiClient.uts](api/authCodeApiClient.uts)，**接龙和网盘直接复用**
+- 待补：`collection` → `/api/collections`；`pan` → 网盘接口
+- 不在 app server 上的其它服务：ASR → `Config.ASR_SERVER`（见 [common/asr.uts](common/asr.uts)）
 
 ---
 
@@ -562,7 +635,7 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 
 - **会话列表**：列表/未读角标/置顶/静音/删除/标记已读未读/连接状态提示/tabBar badge；长按菜单（置顶、取消置顶、标记已读、标记未读、删除）与 flutter `conversation_list_widget.dart` 一致
 - **会话页**：文本、图片、视频、语音(AMR)、文件、表情贴纸、链接、名片、合并转发、引用、@提醒（含@全体）、撤回+重新编辑、多选（逐条/合并转发、删除）、草稿、下拉加载历史、向下翻页、消息定位高亮、未读/@我提示条、正在输入提示、已读回执（含群已读详情页）、清空聊天记录、保存到相册/本地
-- **消息类型注册**：62 项
+- **消息类型注册**：63 项（M5 补了投票消息，类型 18）
 - **通讯录**：新的朋友、群聊、频道列表、组织架构树、好友搜索/添加/删除、拼音索引
 - **群**：创建群、群名/公告、加人/踢人、退群/解散、保存到通讯录
 - **搜索**：门户（用户/联系人/群/会话消息）+ 会话内「查找聊天内容」面板（全部/文件/图片与视频/链接/日期 五个标签 + 搜索历史）
@@ -572,10 +645,12 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 - **通讯录/用户**：用户详情页（备注、星标朋友、黑名单、所在组织、发消息/加好友/音视频通话）、邀请好友、组织架构（面包屑/搜索/分组/选人模式）
 - **选人**：多选页（标题栏「完成(n)」、已选头像内嵌搜索框、字母索引、maxSelected、从组织架构选择）
 - **PC**：在线设备列表 + 踢下线、扫码登录确认
+- **群投票**：发起 / 参与 / 详情 / 我的投票 / 结束 / 删除 / 导出明细、投票消息气泡、群聊扩展面板入口
 
-### 渲染器差距（22 vs 16）
+### 渲染器差距（22 vs 17）
 
-flutter 有而 uni 没有的 cell_builder：`poll_cell_builder`（随 M5）、`collection_cell_builder`（随 M5）、`raw_call_start_cell_builder`。其余已对齐。
+flutter 有而 uni 没有的 cell_builder：`collection_cell_builder`（随 M5 接龙）、`raw_call_start_cell_builder`。
+`poll_cell_builder` 已随 M5 投票补上。其余已对齐。
 
 ---
 

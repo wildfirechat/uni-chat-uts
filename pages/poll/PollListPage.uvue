@@ -1,0 +1,286 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }"
+        :refresher-enabled="true" :refresher-triggered="triggered" :refresher-threshold="45"
+        @refresherrefresh="onRefresh" @refresherrestore="onRestore" @refresherabort="onRestore">
+        <view v-if="loading && polls.length == 0" class="empty">
+            <text class="empty-text" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ t('common.loading') }}</text>
+        </view>
+
+        <view v-else-if="polls.length == 0" class="empty">
+            <text class="icomoon" :style="{ color: c.textTertiary, fontSize: iconPx(56) }">&#xf2b5;</text>
+            <text class="empty-text" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ emptyText }}</text>
+        </view>
+
+        <view v-else class="list">
+            <view v-for="poll in polls" :key="poll.pollId" class="card" :style="{ backgroundColor: c.surface }"
+                @tap="openDetail(poll)" @longpress="confirmDelete(poll)">
+                <view class="card-head">
+                    <text class="card-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ poll.title }}</text>
+                    <view class="chip" :style="{ backgroundColor: chipBg(poll) }">
+                        <text class="chip-text" :style="{ color: chipFg(poll), fontSize: fontPx(FONT_XXS) }">{{ chipLabel(poll) }}</text>
+                    </view>
+                </view>
+
+                <text v-if="poll.desc != ''" class="card-desc"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ poll.desc }}</text>
+
+                <view class="card-meta">
+                    <text class="meta-text" :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ voterText(poll) }}</text>
+                    <text class="meta-text meta-gap" :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ voteText(poll) }}</text>
+                    <text class="meta-remaining"
+                        :style="{ color: poll.isEnded() ? c.textTertiary : c.warning, fontSize: fontPx(FONT_XS) }">{{ remainingText(poll) }}</text>
+                </view>
+            </view>
+        </view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 我发起的投票。对齐 flutter `poll/poll_list_screen.dart`。
+ *
+ * 与 flutter 的一处差异：flutter 移动端用 `Dismissible` 左滑删除，uni-app x 没有现成的
+ * 左滑手势组件（自己接管 touchmove 会和 scroll-view 的纵向滚动打架），改成**长按弹二次确认**。
+ * 删除入口本来就还有一条路：进详情页（创建者是管理模式）底部就有「删除投票」。
+ */
+import pollServerApi from "@/api/pollServerApi.uts";
+import { Poll } from "@/api/pollModel.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_XS, FONT_XXS } from "@/common/layoutScale.uts";
+import { showConfirmDialog, toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "PollListPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const polls = ref<Poll[]>([] as Poll[])
+const loading = ref<boolean>(false)
+const triggered = ref<boolean>(false)
+
+const emptyText = computed<string>((): string => {
+    return pollServerApi.isAvailable() ? t('poll.empty_list') : t('poll.service_not_configured')
+})
+
+const load = (showToastOnFail: boolean) => {
+    if (!pollServerApi.isAvailable()) {
+        triggered.value = false
+        return
+    }
+    loading.value = true
+    pollServerApi.getMyPolls()
+        .then((list: Poll[]): void => {
+            loading.value = false
+            triggered.value = false
+            polls.value = list
+        })
+        .catch((err: any | null): void => {
+            loading.value = false
+            triggered.value = false
+            console.log('load my polls fail', err)
+            if (showToastOnFail) {
+                toast(t('poll.load_failed'))
+            }
+        })
+}
+
+// onShow 在首次显示时也会触发，而那一次 onLoad 已经拉过了，不重复拉
+let loadedOnce = false
+
+onLoad((_options: OnLoadOptions) => {
+    loadedOnce = true
+    load(true)
+})
+
+// 详情页里可能改了状态（结束 / 删除），回到本页重拉一次
+onShow(() => {
+    if (loadedOnce) {
+        loadedOnce = false
+        return
+    }
+    load(false)
+})
+
+const onRefresh = () => {
+    triggered.value = true
+    load(true)
+}
+
+const onRestore = () => {
+    triggered.value = false
+}
+
+const chipLabel = (poll: Poll): string => {
+    if (poll.status == 1) {
+        return t('poll.status_ended')
+    }
+    return poll.hasVoted ? t('poll.has_voted') : t('poll.status_active')
+}
+
+const chipFg = (poll: Poll): string => {
+    if (poll.status == 1) {
+        return colors().textTertiary
+    }
+    return poll.hasVoted ? colors().success : colors().accent
+}
+
+const chipBg = (poll: Poll): string => {
+    if (poll.status == 1) {
+        return colors().hairlineSoft
+    }
+    return poll.hasVoted ? colors().successSoft : colors().accentSoft
+}
+
+const voterText = (poll: Poll): string => {
+    return poll.voterCount + t('poll.people_count')
+}
+
+const voteText = (poll: Poll): string => {
+    return poll.totalVotes + t('poll.votes')
+}
+
+/** 与 flutter `Poll.getRemainingTimeText` 同一套：已结束 / 已过期 / 还剩 N 天|小时|分钟 */
+const remainingText = (poll: Poll): string => {
+    if (poll.status == 1) {
+        return t('poll.status_ended')
+    }
+    if (poll.endTime <= 0) {
+        return ''
+    }
+    const remaining = poll.endTime - new Date().getTime()
+    if (remaining <= 0) {
+        return t('poll.expired')
+    }
+    const minutes = Math.floor(remaining / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    if (days > 0) {
+        return t1('poll.days_left', '' + days)
+    }
+    if (hours > 0) {
+        return t1('poll.hours_left', '' + hours)
+    }
+    return t1('poll.minutes_left', '' + minutes)
+}
+
+const openDetail = (poll: Poll) => {
+    uni.navigateTo({
+        url: '/pages/poll/PollDetailPage?pollId=' + poll.pollId + '&fromList=1',
+        fail: (err) => {
+            console.log('nav to PollDetailPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const confirmDelete = (poll: Poll) => {
+    if (!poll.isCreator) {
+        return
+    }
+    showConfirmDialog(t('common.confirm'), t('poll.delete_confirm'), true, () => {
+        pollServerApi.delete(poll.pollId)
+            .then((_): void => {
+                toast(t('poll.delete_success'))
+                load(false)
+            })
+            .catch((err: any | null): void => {
+                console.log('delete poll fail', err)
+                toast(t('poll.delete_failed'))
+            })
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.empty {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 120px;
+}
+
+.icomoon {
+    font-family: "icomoon";
+}
+
+.empty-text {
+    margin-top: 12px;
+}
+
+.list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+}
+
+.card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 8px;
+}
+
+.card-head {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+/* 标题吃掉剩余宽度，徽标定宽在右 —— 不用占位 view，见 option-item 的注释 */
+.card-title {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.chip {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.card-desc {
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.card-meta {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.meta-text {
+    flex-shrink: 0;
+}
+
+.meta-gap {
+    margin-left: 14px;
+}
+
+/* 剩余时间靠右：吃掉中间的空白，自己右对齐 */
+.meta-remaining {
+    flex: 1;
+    text-align: right;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+</style>

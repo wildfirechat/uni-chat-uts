@@ -14,6 +14,7 @@
         <CallStartMessageContentView :message="message" v-else-if="message.messageContent.type == 400" />
         <ConferenceInviteMessageContentView :message="message" v-else-if="message.messageContent.type == 408" />
         <UserCardMessageContentView :message="message" v-else-if="message.messageContent.type == 10" />
+        <PollMessageContentView :message="message" v-else-if="message.messageContent.type == 18" />
         <TestCustomMessageContentView :message="message" v-else-if="message.messageContent.type == 1001" />
         <!-- 更多自定义消息，注意 v-else-if -->
         <UnknownMessageContentView :message="message" v-else />
@@ -32,6 +33,7 @@ import CallStartMessageContentView from "@/pages/conversation/message/content/Ca
 import AudioMessageContentView from "@/pages/conversation/message/content/AudioMessageContentViewAMR.uvue";
 import CompositeMessageContentView from "@/pages/conversation/message/content/CompositeMessageContentView.uvue";
 import UserCardMessageContentView from "./content/UserCardMessageContentView.uvue";
+import PollMessageContentView from "./content/PollMessageContentView.uvue";
 import ConferenceInviteMessageContentView from "./content/ConferenceInviteMessageContentView.uvue";
 import UnknownMessageContentView from "./content/UnknownMessageContentView.uvue";
 import StreamingTextMessageContentView from "./content/StreamingTextMessageContentView.uvue";

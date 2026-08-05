@@ -1,0 +1,198 @@
+/**
+ * 群投票服务的数据模型。对齐 flutter `chat/lib/poll/poll_model.dart`。
+ *
+ * 与消息里的 [PollMessageContent] 的关系：消息体是**创建时的快照**（只有标题/状态/总票数），
+ * 这里是**服务端的实时状态**（选项、票数、我投了哪几项）。详情页拿到这份后会回写消息快照。
+ */
+
+export class PollOption {
+    optionId = 0
+    optionText = ''
+    sortOrder = 0
+    voteCount = 0
+    /** 服务端算好的百分比，0~100 整数 */
+    votePercent = 0
+}
+
+/** 实名投票的投票人明细，仅创建者可导出 */
+export class PollVoterDetail {
+    userId = ''
+    userName = ''
+    optionId = 0
+    optionText = ''
+    /** 毫秒时间戳 */
+    voteTime = 0
+}
+
+export class Poll {
+    pollId = 0
+    groupId = ''
+    creatorId = ''
+    title = ''
+    desc = ''
+    /** 可见性：1=仅群内，2=公开 */
+    visibility = 1
+    /** 类型：1=单选，2=多选 */
+    type = 1
+    /** 多选时最多可选几项 */
+    maxSelect = 1
+    /** 是否匿名：0=实名，1=匿名 */
+    anonymous = 0
+    /** 状态：0=进行中，1=已结束 */
+    status = 0
+    /** 截止时间，毫秒时间戳，0 表示无截止时间 */
+    endTime = 0
+    /** 是否始终显示结果：0=投票前隐藏，1=始终显示 */
+    showResult = 0
+    createdAt = 0
+    updatedAt = 0
+    hasVoted = false
+    isCreator = false
+    myOptionIds: number[] = []
+    deleted = false
+    /** 总票数（多选时一个人可以贡献多票） */
+    totalVotes = 0
+    /** 参与人数 */
+    voterCount = 0
+    options: PollOption[] = []
+    voterDetails: PollVoterDetail[] = []
+
+    /** 到了截止时间但服务端还没把 status 改成 1 时，本地也算已结束 */
+    isExpired(): boolean {
+        return this.endTime > 0 && this.endTime < new Date().getTime()
+    }
+
+    isEnded(): boolean {
+        return this.status == 1 || this.isExpired()
+    }
+
+    isSingleChoice(): boolean {
+        return this.type == 1
+    }
+
+    isMultiChoice(): boolean {
+        return this.type == 2
+    }
+
+    /**
+     * 是否展示票数条。
+     *
+     * 与 flutter `shouldShowResult` 一致：已结束或自己已投票才出结果。
+     * 注意 `showResult`（始终显示结果）这个创建项 flutter 的详情页**没有用上**，
+     * 这里也不用 —— 服务端在未投票时本来就可能不下发真实票数。
+     */
+    shouldShowResult(): boolean {
+        return this.status == 1 || this.hasVoted
+    }
+}
+
+export function pollOptionFromJson(o: UTSJSONObject): PollOption {
+    const option = new PollOption()
+    // 服务端列表接口返回 id，详情接口返回 optionId，两个都认（与 flutter 一致）
+    option.optionId = o.getNumber('id') ?? o.getNumber('optionId') ?? 0
+    option.optionText = o.getString('optionText') ?? ''
+    option.sortOrder = o.getNumber('sortOrder') ?? 0
+    option.voteCount = o.getNumber('voteCount') ?? 0
+    option.votePercent = o.getNumber('votePercent') ?? 0
+    return option
+}
+
+export function pollVoterDetailFromJson(o: UTSJSONObject): PollVoterDetail {
+    const detail = new PollVoterDetail()
+    detail.userId = o.getString('userId') ?? ''
+    detail.userName = o.getString('userName') ?? ''
+    detail.optionId = o.getNumber('optionId') ?? 0
+    detail.optionText = o.getString('optionText') ?? ''
+    detail.voteTime = o.getNumber('voteTime') ?? o.getNumber('createdAt') ?? 0
+    return detail
+}
+
+/**
+ * 把 any 收成 UTSJSONObject 数组。响应里的数组元素在各端可能不是 UTSJSONObject 实例，
+ * 逐个判类型，和 organizationModel 的 toJsonObjectList 同一处理。
+ */
+function jsonObjectList(value: any | null): UTSJSONObject[] {
+    const list: UTSJSONObject[] = []
+    if (value != null && value instanceof Array) {
+        const arr = value as Array<any>
+        for (let i = 0; i < arr.length; i++) {
+            const o = arr[i]
+            if (o instanceof UTSJSONObject) {
+                list.push(o as UTSJSONObject)
+            }
+        }
+    }
+    return list
+}
+
+function numberList(value: any | null): number[] {
+    const list: number[] = []
+    if (value != null && value instanceof Array) {
+        const arr = value as Array<any>
+        for (let i = 0; i < arr.length; i++) {
+            const n = arr[i]
+            if (typeof n == 'number') {
+                list.push(n as number)
+            }
+        }
+    }
+    return list
+}
+
+export function pollFromJson(o: UTSJSONObject): Poll {
+    const poll = new Poll()
+    poll.pollId = o.getNumber('id') ?? o.getNumber('pollId') ?? 0
+    poll.groupId = o.getString('groupId') ?? ''
+    poll.creatorId = o.getString('creatorId') ?? ''
+    poll.title = o.getString('title') ?? ''
+    poll.desc = o.getString('description') ?? o.getString('desc') ?? ''
+    poll.visibility = o.getNumber('visibility') ?? 1
+    poll.type = o.getNumber('type') ?? 1
+    poll.maxSelect = o.getNumber('maxSelect') ?? 1
+    poll.anonymous = o.getNumber('anonymous') ?? 0
+    poll.status = o.getNumber('status') ?? 0
+    poll.endTime = o.getNumber('endTime') ?? 0
+    poll.showResult = o.getNumber('showResult') ?? 0
+    poll.createdAt = o.getNumber('createdAt') ?? 0
+    poll.updatedAt = o.getNumber('updatedAt') ?? 0
+    poll.hasVoted = o.getBoolean('hasVoted') ?? false
+    poll.isCreator = o.getBoolean('isCreator') ?? false
+    poll.deleted = o.getBoolean('deleted') ?? false
+    poll.totalVotes = o.getNumber('totalVotes') ?? 0
+    poll.voterCount = o.getNumber('voterCount') ?? 0
+    poll.myOptionIds = numberList(o['myOptionIds'])
+
+    const options: PollOption[] = []
+    const optionJsons = jsonObjectList(o['options'])
+    for (let i = 0; i < optionJsons.length; i++) {
+        options.push(pollOptionFromJson(optionJsons[i]))
+    }
+    poll.options = options
+
+    const details: PollVoterDetail[] = []
+    const detailJsons = jsonObjectList(o['voterDetails'])
+    for (let i = 0; i < detailJsons.length; i++) {
+        details.push(pollVoterDetailFromJson(detailJsons[i]))
+    }
+    poll.voterDetails = details
+
+    return poll
+}
+
+export function pollListFromJson(value: any | null): Poll[] {
+    const polls: Poll[] = []
+    const jsons = jsonObjectList(value)
+    for (let i = 0; i < jsons.length; i++) {
+        polls.push(pollFromJson(jsons[i]))
+    }
+    return polls
+}
+
+export function pollVoterDetailListFromJson(value: any | null): PollVoterDetail[] {
+    const details: PollVoterDetail[] = []
+    const jsons = jsonObjectList(value)
+    for (let i = 0; i < jsons.length; i++) {
+        details.push(pollVoterDetailFromJson(jsons[i]))
+    }
+    return details
+}

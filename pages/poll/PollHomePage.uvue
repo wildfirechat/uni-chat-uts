@@ -1,0 +1,145 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="menu" :style="{ backgroundColor: c.surface }">
+            <view class="menu-item" :hover-class="pressedClass" hover-stay-time="80" @tap="openCreate">
+                <view class="menu-icon" :style="{ backgroundColor: c.accentSoft, width: iconPx(40), height: iconPx(40) }">
+                    <text class="icomoon" :style="{ fontSize: iconPx(22), color: c.accent }">&#xf218;</text>
+                </view>
+                <view class="menu-texts">
+                    <text class="menu-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ t('poll.create') }}</text>
+                    <text class="menu-subtitle" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ t('poll.create_subtitle') }}</text>
+                </view>
+                <text class="arrow" :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
+            </view>
+            <view class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+            <view class="menu-item" :hover-class="pressedClass" hover-stay-time="80" @tap="openList">
+                <view class="menu-icon" :style="{ backgroundColor: c.accentSoft, width: iconPx(40), height: iconPx(40) }">
+                    <text class="icomoon" :style="{ fontSize: iconPx(22), color: c.accent }">&#xf454;</text>
+                </view>
+                <view class="menu-texts">
+                    <text class="menu-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ t('poll.my_polls') }}</text>
+                    <text class="menu-subtitle" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ t('poll.my_polls_subtitle') }}</text>
+                </view>
+                <text class="arrow" :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
+            </view>
+        </view>
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 群投票入口：发起投票 / 我的投票。对齐 flutter `poll/poll_home_screen.dart`。
+ *
+ * 从群聊输入框的扩展面板进来，只带一个 groupId。
+ */
+import { colors, AppColors, isDark } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_XS } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "PollHomePage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// hover-class 只认静态类名，明暗两个按下态色值只能各写一份，值对应 theme.uts 的 pressedOverlay
+const pressedClass = computed<string>((): string => isDark() ? 'row-pressed-dark' : 'row-pressed-light')
+
+const groupId = ref<string>('')
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+})
+
+const openCreate = () => {
+    uni.navigateTo({
+        url: '/pages/poll/CreatePollPage?groupId=' + groupId.value,
+        fail: (err) => {
+            console.log('nav to CreatePollPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const openList = () => {
+    uni.navigateTo({
+        url: '/pages/poll/PollListPage',
+        fail: (err) => {
+            console.log('nav to PollListPage err', err)
+        }
+    } as NavigateToOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+.menu {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.row-pressed-light {
+    background-color: #0000000A;
+}
+
+.row-pressed-dark {
+    background-color: #FFFFFF14;
+}
+
+.menu-item {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 14px 16px;
+}
+
+.menu-icon {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.icomoon {
+    font-family: "icomoon";
+}
+
+/* 文字块吃掉剩余宽度，不用占位 view —— 鸿蒙上 flex-shrink: 0 兜不住，见 option-item 的注释 */
+.menu-texts {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-left: 12px;
+    overflow: hidden;
+}
+
+.menu-title {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.menu-subtitle {
+    margin-top: 2px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.arrow {
+    flex-shrink: 0;
+    font-family: "icomoon";
+}
+
+.divider {
+    height: 0.5px;
+    margin-left: 68px;
+}
+</style>

@@ -1,0 +1,406 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('poll.create')" :show-back="true" :right-text="t('poll.publish')"
+            :right-text-disabled="!canSubmit" @rightTextTap="createPoll" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="section">
+                <form-card :radius="8">
+                    <form-text-row :value="title" :placeholder="t('poll.title_hint')" :maxlength="60"
+                        @input="onTitleInput" />
+                    <form-text-row :value="desc" :placeholder="t('poll.desc_hint')" :multiline="true"
+                        :font-size="FONT_BASE" :maxlength="200" :show-bottom-divider="false" @input="onDescInput" />
+                </form-card>
+            </view>
+
+            <text class="section-label" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ t('poll.options_title') }}</text>
+            <view class="section section-tight">
+                <form-card :radius="8">
+                    <view v-for="(opt, i) in options" :key="i" class="option-row">
+                        <view class="option-field">
+                            <form-text-row :value="opt" :placeholder="optionPlaceholder(i)" :maxlength="60"
+                                :show-bottom-divider="false" @input="(v : string) => onOptionInput(i, v)" />
+                        </view>
+                        <text v-if="options.length > MIN_OPTIONS" class="icomoon remove-icon"
+                            :style="{ color: c.textTertiary, fontSize: iconPx(20) }" @tap="removeOption(i)">&#xf207;</text>
+                        <view class="row-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+                    </view>
+
+                    <view v-if="options.length < MAX_OPTIONS" class="add-row" @tap="addOption">
+                        <text class="icomoon" :style="{ color: c.accent, fontSize: iconPx(20) }">&#xf216;</text>
+                        <text class="add-text" :style="{ color: c.accent, fontSize: fontPx(FONT_LG) }">{{ t('poll.add_option') }}</text>
+                    </view>
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-item :title="t('poll.type')" :desc="typeDesc" @tap="pickType" />
+                    <option-item v-if="type == 2" :title="t('poll.max_select')" :desc="maxSelectDesc"
+                        @tap="pickMaxSelect" />
+                    <option-switch-item :title="t('poll.anonymous_vote')" :value="anonymous == 1"
+                        @change="onAnonymousChange" />
+                    <option-switch-item :title="t('poll.show_result')" :value="showResult == 1"
+                        @change="onShowResultChange" />
+                    <!-- flutter 是「先选日期弹窗、再选时间弹窗」两步；uni 侧没法在第一个 picker 关闭后
+                         自动拉起第二个，改成一个三列 picker 一次选完，第一列的「不设置」等价于清空截止时间 -->
+                    <picker mode="multiSelector" :range="endTimeRange" :value="endTimeIndexes"
+                        @change="onEndTimeChange">
+                        <option-item :title="t('poll.end_time')" :desc="endTimeDesc" :show-bottom-divider="false" />
+                    </picker>
+                </form-card>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 发起投票。对齐 flutter `poll/create_poll_screen.dart`（移动端整页表单 + 右上角「发布」）。
+ *
+ * 创建成功后**不需要自己发消息** —— 投票服务端会往群里投一条 type=18 的投票消息，
+ * 所以这里只 `POST /api/polls` 然后关页面。
+ *
+ * 与 flutter 的两处刻意差异：
+ * - 截止时间：flutter 是 showDatePicker + showTimePicker 两个弹窗串起来，uni-app x 的
+ *   `<picker>` 只能由点击拉起、没法在前一个关闭后程序化拉起下一个，所以合成一个三列
+ *   （日期 / 时 / 分）的 multiSelector，日期列第一项「不设置」用来清掉截止时间 ——
+ *   flutter 那边选过之后是清不掉的。
+ * - 投票类型 / 最多选几项用 `uni.showActionSheet`，没有 flutter `showFormOptionPicker`
+ *   的「当前项打勾」；当前值已经显示在行右侧的 desc 上，信息不缺。
+ */
+import pollServerApi from "@/api/pollServerApi.uts";
+import NavBar from "@/pages/common/NavBar.uvue";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_BASE, FONT_XS } from "@/common/layoutScale.uts";
+import { showSelectDialog, toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "CreatePollPage"
+})
+
+const MIN_OPTIONS = 2
+const MAX_OPTIONS = 10
+/** 截止时间最远可选一年，与 flutter 的 lastDate 一致 */
+const MAX_END_DAYS = 365
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const title = ref<string>('')
+const desc = ref<string>('')
+const options = ref<string[]>(['', ''] as string[])
+/** 1=单选，2=多选 */
+const type = ref<number>(1)
+const maxSelect = ref<number>(1)
+const anonymous = ref<number>(0)
+const showResult = ref<number>(0)
+/** 毫秒时间戳，0 = 无截止时间 */
+const endTime = ref<number>(0)
+const creating = ref<boolean>(false)
+
+// 可见性 flutter 侧固定为 1（仅群内），没有对应的表单项
+const VISIBILITY_GROUP_ONLY = 1
+
+onLoad((options_: OnLoadOptions) => {
+    groupId.value = options_['groupId'] ?? ''
+})
+
+function pad2(n: number): string {
+    return n < 10 ? '0' + n : '' + n
+}
+
+const canSubmit = computed<boolean>((): boolean => {
+    if (creating.value) {
+        return false
+    }
+    if (title.value.trim() == '') {
+        return false
+    }
+    const opts = options.value
+    for (let i = 0; i < opts.length; i++) {
+        if (opts[i].trim() == '') {
+            return false
+        }
+    }
+    return true
+})
+
+const typeDesc = computed<string>((): string => {
+    return type.value == 1 ? t('poll.single_choice') : t('poll.multi_choice')
+})
+
+const maxSelectDesc = computed<string>((): string => {
+    return maxSelect.value + t('poll.items')
+})
+
+const endTimeDesc = computed<string>((): string => {
+    const ts = endTime.value
+    if (ts <= 0) {
+        return t('poll.no_end_time')
+    }
+    const d = new Date(ts)
+    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+})
+
+/**
+ * 三列 picker 的候选值。日期列第 0 项是「不设置」，其后是今天起的 365 天，
+ * 所以第 n 项（n >= 1）对应今天 + (n - 1) 天。
+ */
+const endTimeRange = computed<string[][]>((): string[][] => {
+    const days: string[] = [t('poll.not_set')]
+    const base = new Date()
+    base.setHours(0, 0, 0, 0)
+    const baseTime = base.getTime()
+    for (let i = 0; i <= MAX_END_DAYS; i++) {
+        const d = new Date(baseTime + i * 86400000)
+        days.push(d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()))
+    }
+    const hours: string[] = []
+    for (let h = 0; h < 24; h++) {
+        hours.push(pad2(h))
+    }
+    const minutes: string[] = []
+    for (let m = 0; m < 60; m++) {
+        minutes.push(pad2(m))
+    }
+    return [days, hours, minutes]
+})
+
+/** picker 打开时定位到当前值；没设过截止时间就停在「不设置」+ 18:00 */
+const endTimeIndexes = computed<number[]>((): number[] => {
+    const ts = endTime.value
+    if (ts <= 0) {
+        return [0, 18, 0]
+    }
+    const d = new Date(ts)
+    const dayStart = new Date(ts)
+    dayStart.setHours(0, 0, 0, 0)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const offset = Math.round((dayStart.getTime() - today.getTime()) / 86400000)
+    const dayIndex = offset < 0 ? 1 : offset + 1
+    return [dayIndex, d.getHours(), d.getMinutes()]
+})
+
+const optionPlaceholder = (index: number): string => {
+    return t('poll.option') + ' ' + (index + 1)
+}
+
+const onTitleInput = (value: string) => {
+    title.value = value
+}
+
+const onDescInput = (value: string) => {
+    desc.value = value
+}
+
+const onOptionInput = (index: number, value: string) => {
+    const opts = options.value
+    if (index < 0 || index >= opts.length) {
+        return
+    }
+    // 整个数组替换才能触发 ref 的更新，改元素本身不会
+    const next: string[] = []
+    for (let i = 0; i < opts.length; i++) {
+        next.push(i == index ? value : opts[i])
+    }
+    options.value = next
+}
+
+const addOption = () => {
+    const opts = options.value
+    if (opts.length >= MAX_OPTIONS) {
+        toast(t1('poll.max_options_limit', '' + MAX_OPTIONS))
+        return
+    }
+    const next: string[] = []
+    for (let i = 0; i < opts.length; i++) {
+        next.push(opts[i])
+    }
+    next.push('')
+    options.value = next
+}
+
+const removeOption = (index: number) => {
+    const opts = options.value
+    if (opts.length <= MIN_OPTIONS) {
+        toast(t1('poll.min_options_required', '' + MIN_OPTIONS))
+        return
+    }
+    const next: string[] = []
+    for (let i = 0; i < opts.length; i++) {
+        if (i != index) {
+            next.push(opts[i])
+        }
+    }
+    options.value = next
+    // 选项变少后，「最多选几项」可能已越界
+    if (maxSelect.value > next.length) {
+        maxSelect.value = next.length
+    }
+}
+
+const pickType = () => {
+    showSelectDialog([t('poll.single_choice'), t('poll.multi_choice')], (index: number) => {
+        const picked = index + 1
+        type.value = picked
+        if (picked == 1) {
+            maxSelect.value = 1
+        } else if (maxSelect.value < 2) {
+            // 多选的下限是 2，否则等同单选
+            maxSelect.value = options.value.length >= 2 ? 2 : options.value.length
+        }
+    })
+}
+
+const pickMaxSelect = () => {
+    const labels: string[] = []
+    const values: number[] = []
+    for (let n = 2; n <= options.value.length; n++) {
+        labels.push(n + t('poll.items'))
+        values.push(n)
+    }
+    if (labels.length == 0) {
+        return
+    }
+    showSelectDialog(labels, (index: number) => {
+        maxSelect.value = values[index]
+    })
+}
+
+const onAnonymousChange = (value: boolean) => {
+    anonymous.value = value ? 1 : 0
+}
+
+const onShowResultChange = (value: boolean) => {
+    showResult.value = value ? 1 : 0
+}
+
+const onEndTimeChange = (e: UniPickerChangeEvent) => {
+    const picked = e.detail.value as number[]
+    if (picked.length < 3 || picked[0] == 0) {
+        endTime.value = 0
+        return
+    }
+    const base = new Date()
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + picked[0] - 1)
+    d.setHours(picked[1], picked[2], 0, 0)
+    endTime.value = d.getTime()
+}
+
+const createPoll = () => {
+    if (!canSubmit.value) {
+        return
+    }
+    if (!pollServerApi.isAvailable()) {
+        toast(t('poll.service_not_configured'))
+        return
+    }
+
+    const trimmedOptions: string[] = []
+    const opts = options.value
+    for (let i = 0; i < opts.length; i++) {
+        trimmedOptions.push(opts[i].trim())
+    }
+
+    creating.value = true
+    pollServerApi.create(groupId.value, title.value.trim(), desc.value.trim(), trimmedOptions,
+        VISIBILITY_GROUP_ONLY, type.value, type.value == 2 ? maxSelect.value : 1,
+        anonymous.value, endTime.value, showResult.value)
+        .then((_): void => {
+            creating.value = false
+            toast(t('poll.create_success'))
+            uni.navigateBack({
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+        })
+        .catch((err: any | null): void => {
+            creating.value = false
+            console.log('create poll fail', err)
+            toast(t('poll.create_failed'))
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    width: 100%;
+    flex: 1;
+}
+
+.section {
+    margin: 16px 16px 0 16px;
+}
+
+/* 分组标题下面的卡片贴着标题走，不再留 16px */
+.section-tight {
+    margin-top: 0;
+}
+
+.section-label {
+    margin: 16px 20px 8px 20px;
+}
+
+.option-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    position: relative;
+}
+
+/* 输入框吃掉剩余宽度。别改成给 form-text-row 直接加 flex:1 —— 父组件的 scoped class
+ * 加在子组件根节点上，vapor 下不保证生效，包一层 view 是稳的 */
+.option-field {
+    flex: 1;
+    overflow: hidden;
+}
+
+.remove-icon {
+    flex-shrink: 0;
+    font-family: "icomoon";
+    padding: 0 14px;
+}
+
+.row-divider {
+    position: absolute;
+    left: 14px;
+    right: 0;
+    bottom: 0;
+    height: 0.5px;
+}
+
+.add-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 14px;
+}
+
+.icomoon {
+    font-family: "icomoon";
+}
+
+.add-text {
+    margin-left: 8px;
+}
+
+.tail {
+    width: 100%;
+    height: 24px;
+}
+</style>

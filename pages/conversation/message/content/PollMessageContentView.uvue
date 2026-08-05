@@ -1,0 +1,174 @@
+<template>
+    <view class="poll-content-container" @tap="openDetail"
+        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+        <view class="head">
+            <text class="icomoon poll-icon" :style="{ fontSize: fontPx(16), color: onBubble }">&#xf2b5;</text>
+            <text class="poll-title" :style="{ fontSize: fontPx(15), color: onBubble }">{{ content.title }}</text>
+        </view>
+
+        <text v-if="content.desc != ''" class="poll-desc" :style="{ fontSize: fontPx(12), color: onBubbleWeak }">{{ content.desc }}</text>
+
+        <text class="poll-meta" :style="{ fontSize: fontPx(12), color: onBubbleWeak }">{{ metaText }}</text>
+
+        <view class="divider" :style="{ backgroundColor: onBubble + '26' }"></view>
+
+        <text class="poll-action" :style="{ fontSize: fontPx(12), color: onBubble }">{{ actionText }}</text>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 投票消息气泡。对齐 flutter `conversation/cell_builder/poll_cell_builder.dart`。
+ *
+ * 气泡内一律继承气泡的前景色（[onBubble]），层级用透明度表达、不用色相 ——
+ * 深色下发送气泡是实心蓝，任何固定的灰或主色都会糊到读不出来。
+ *
+ * 气泡上的票数/状态是**创建时的快照**，进详情页拉到最新值后会回写（见 PollDetailPage）。
+ */
+import Message from "@/wfc/messages/message.uts";
+import PollMessageContent from "@/wfc/messages/pollMessageContent.uts";
+import pollServerApi from "@/api/pollServerApi.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "PollMessageContentView",
+    styleIsolation: 'app'
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+const props = defineProps<{
+    message: Message
+}>()
+
+const content = computed<PollMessageContent>((): PollMessageContent => {
+    return props.message.messageContent as PollMessageContent
+})
+
+const onBubble = computed<string>((): string => {
+    return props.message.direction == 0 ? colors().bubbleSentText : colors().bubbleReceivedText
+})
+
+/** 次要信息：同一个前景色压到 70% 透明度，不另起色相 */
+const onBubbleWeak = computed<string>((): string => onBubble.value + 'B3')
+
+/** 票数 · 状态 · 剩余时间，合成一行 */
+const metaText = computed<string>((): string => {
+    const poll = content.value
+    const parts: string[] = [
+        poll.totalVotes + t('poll.votes'),
+        poll.isEnded() ? t('poll.status_ended') : t('poll.status_active')
+    ]
+    const remaining = remainingText()
+    if (remaining != '') {
+        parts.push(remaining)
+    }
+    return parts.join(' · ')
+})
+
+const actionText = computed<string>((): string => {
+    return content.value.isEnded() ? t('poll.view_result') : t('poll.join_action')
+})
+
+const remainingText = (): string => {
+    const poll = content.value
+    if (poll.status == 1) {
+        return t('poll.status_ended')
+    }
+    if (poll.endTime <= 0) {
+        return ''
+    }
+    const remaining = poll.endTime - new Date().getTime()
+    if (remaining <= 0) {
+        return t('poll.expired')
+    }
+    const minutes = Math.floor(remaining / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    if (days > 0) {
+        return t1('poll.days_left', '' + days)
+    }
+    if (hours > 0) {
+        return t1('poll.hours_left', '' + hours)
+    }
+    return t1('poll.minutes_left', '' + minutes)
+}
+
+const openDetail = () => {
+    // 服务没配就点不动，和 flutter 的 `if (!PollService.isAvailable) return;` 一致
+    if (!pollServerApi.isAvailable()) {
+        return
+    }
+    const pollId = parseInt(content.value.pollId)
+    if (isNaN(pollId) || pollId <= 0) {
+        return
+    }
+    uni.navigateTo({
+        url: '/pages/poll/PollDetailPage?pollId=' + pollId + '&messageId=' + props.message.messageId,
+        fail: (err) => {
+            console.log('nav to PollDetailPage err', err)
+        }
+    } as NavigateToOptions)
+}
+</script>
+
+<style scoped>
+.poll-content-container {
+    width: 220px;
+    margin: 0 10px;
+    padding: 12px;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+.head {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.icomoon {
+    font-family: "icomoon";
+}
+
+.poll-icon {
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+
+/* 标题吃掉剩余宽度；两行截断用 lines 在鸿蒙 vapor 下无效，只能单行 nowrap */
+.poll-title {
+    flex: 1;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.poll-desc {
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.poll-meta {
+    margin-top: 8px;
+}
+
+/* 分隔线是气泡前景色压到 15% 透明度（对齐 flutter 的 Opacity(0.15)），
+ * 不另起色相 —— 深色下发送气泡是实心蓝，固定的灰会糊掉 */
+.divider {
+    width: 100%;
+    height: 0.5px;
+    margin-top: 8px;
+}
+
+.poll-action {
+    margin-top: 8px;
+    font-weight: 500;
+}
+</style>

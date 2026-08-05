@@ -1,0 +1,116 @@
+import wfc from "../wfc/client/wfc.uts";
+
+/**
+ * 用 IM authCode 鉴权的业务后端（投票 / 接龙 / 网盘）共用的 HTTP 客户端。
+ * 对齐 flutter `chat/lib/utils/auth_code_api_client.dart`。
+ *
+ * 鉴权方式：每次请求先 `wfc.getAuthCode(appId, appType, host, ...)` 换一个一次性认证码，
+ * 放进 `authCode` 请求头。**不缓存 token** —— 与 flutter 一致，authCode 本来就是短期一次性的，
+ * 缓存反而要处理过期重试。这一点和 app server / 组织架构服务（缓存 authToken）不同。
+ *
+ * 约定的响应体是 `{ code: 0, message: '', data: ... }`，`code != 0` 一律视为业务错误。
+ * 注意这里的包装字段是 **data**，不是 app server 的 result。
+ */
+export class AuthCodeApiError extends Error {
+    errorCode: number
+
+    constructor(errorCode: number, message: string) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+
+    override toString(): string {
+        return this.message;
+    }
+}
+
+/**
+ * 从 URL 里取 host —— `getAuthCode` 的 target 参数要的是纯 host，不带 scheme 和 path。
+ */
+export function extractHost(url: string): string {
+    let host = url
+    if (host.startsWith('https://')) {
+        host = host.substring(8)
+    } else if (host.startsWith('http://')) {
+        host = host.substring(7)
+    }
+    const slashIndex = host.indexOf('/')
+    if (slashIndex > 0) {
+        host = host.substring(0, slashIndex)
+    }
+    return host
+}
+
+export class AuthCodeApiClient {
+    /** getAuthCode 的 appId，投票是 'poll' */
+    authCodeId: string
+    /** getAuthCode 的 appType，业务后端一律 2 */
+    authCodeType: number
+    /**
+     * 每次请求时求值而不是构造时定死 —— 双网环境下主备地址切换要立即生效
+     * （对齐 flutter 的 baseUrlProvider）。
+     */
+    baseUrlProvider: () => string
+
+    constructor(authCodeId: string, authCodeType: number, baseUrlProvider: () => string) {
+        this.authCodeId = authCodeId
+        this.authCodeType = authCodeType
+        this.baseUrlProvider = baseUrlProvider
+    }
+
+    /** 服务是否配置了地址。没配就别调接口，调用方据此隐藏入口。 */
+    isAvailable(): boolean {
+        return this.baseUrlProvider().trim() != ''
+    }
+
+    /**
+     * 带认证的 POST，resolve 的是整个响应体（已校验 code == 0），业务数据在 `data` 字段里。
+     *
+     * 全部接口都走 POST：投票服务里 `GET /api/polls/{id}` 这种读接口在 flutter 侧也是用
+     * POST 空 body 打的（见 `PollService.getPoll`），保持一致，不去猜服务端是否也认 GET。
+     */
+    post(path: string, params: UTSJSONObject): Promise<UTSJSONObject | null> {
+        return new Promise<UTSJSONObject | null>((resolve, reject) => {
+            const baseUrl = this.baseUrlProvider().trim()
+            if (baseUrl == '') {
+                reject(new AuthCodeApiError(-1, 'service not configured'))
+                return
+            }
+            wfc.getAuthCode(this.authCodeId, this.authCodeType, extractHost(baseUrl), (authCode: string) => {
+                uni.request<UTSJSONObject>({
+                    url: baseUrl + path,
+                    data: params,
+                    method: 'POST',
+                    header: {
+                        'content-type': 'application/json',
+                        'authCode': authCode
+                    } as UTSJSONObject,
+                    success: (res) => {
+                        if (res.statusCode != 200) {
+                            reject(new AuthCodeApiError(-1, 'request error, status code: ' + res.statusCode))
+                            return
+                        }
+                        const body = res.data
+                        if (body == null) {
+                            reject(new AuthCodeApiError(-1, 'empty response'))
+                            return
+                        }
+                        const code = body.getNumber('code') ?? -1
+                        if (code != 0) {
+                            reject(new AuthCodeApiError(code, body.getString('message') ?? ''))
+                            return
+                        }
+                        resolve(body)
+                    },
+                    fail: (err) => {
+                        console.log('authCodeApi request fail', path, err)
+                        reject(new AuthCodeApiError(-1, 'request error: ' + err.errMsg))
+                    }
+                } as RequestOptions<UTSJSONObject>)
+            }, (err: number) => {
+                console.log('authCodeApi getAuthCode fail', this.authCodeId, err)
+                reject(new AuthCodeApiError(err, 'get auth code failed'))
+            })
+        })
+    }
+}

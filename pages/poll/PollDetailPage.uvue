@@ -1,0 +1,729 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="navTitle" :show-back="true" />
+
+        <view v-if="poll == null" class="center">
+            <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ loading ? t('common.loading') : t('poll.load_failed') }}</text>
+        </view>
+
+        <scroll-view v-else class="body" direction="vertical">
+            <!-- 头部：标题 / 描述 / 发起人 / 状态徽标 -->
+            <view class="card" :style="{ backgroundColor: c.surface }">
+                <text class="poll-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ (poll as Poll).title }}</text>
+                <text v-if="(poll as Poll).desc != ''" class="poll-desc"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ (poll as Poll).desc }}</text>
+                <view class="creator-line">
+                    <image class="creator-portrait" :src="creatorPortrait" :style="{ backgroundColor: c.inputBg }" />
+                    <text class="creator-name" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ creatorText }}</text>
+                    <view class="chip" :style="{ backgroundColor: chipBg }">
+                        <text class="chip-text" :style="{ color: chipFg, fontSize: fontPx(FONT_XXS) }">{{ chipLabel }}</text>
+                    </view>
+                </view>
+            </view>
+
+            <!-- 选项 -->
+            <view class="card card-tight" :style="{ backgroundColor: c.surface }">
+                <view v-for="(option, i) in (poll as Poll).options" :key="option.optionId" class="option-row"
+                    :style="{ backgroundColor: isSelected(option) && canVote ? c.accentSoft : 'transparent' }"
+                    @tap="onOptionTap(option)">
+                    <view v-if="i > 0" class="option-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+                    <view class="option-line">
+                        <!-- 单选圆形、多选方形：形状要和「能选几个」对得上 -->
+                        <view v-if="canVote" class="check" :class="isSingleChoice ? 'check-round' : 'check-square'"
+                            :style="{ borderColor: isSelected(option) ? c.accent : c.textTertiary, backgroundColor: isSelected(option) ? c.accent : 'transparent', width: iconPx(20), height: iconPx(20) }">
+                            <text v-if="isSelected(option)" class="icomoon"
+                                :style="{ color: c.onAccent, fontSize: iconPx(12) }">&#xf122;</text>
+                        </view>
+                        <text v-else-if="isMyVote(option)" class="icomoon my-vote"
+                            :style="{ color: c.accent, fontSize: iconPx(20) }">&#xf120;</text>
+
+                        <text class="option-text" :style="{ color: optionTextColor(option), fontSize: fontPx(FONT_LG) }">{{ option.optionText }}</text>
+
+                        <text v-if="showResult" class="option-count"
+                            :style="{ color: isMyVote(option) ? c.accent : c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ optionCountText(option) }}</text>
+                    </view>
+
+                    <!-- 票数条：自己投的那项走主色，其余走灰阶 —— 结果的可读性来自长度，不是颜色 -->
+                    <view v-if="showResult" class="bar-track" :style="{ backgroundColor: c.hairlineSoft }">
+                        <view class="bar-fill"
+                            :style="{ width: barPercent(option) + '%', backgroundColor: isMyVote(option) ? c.accent : c.textTertiary }"></view>
+                    </view>
+                </view>
+            </view>
+
+            <text class="meta" :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ metaText }}</text>
+            <view class="tail"></view>
+        </scroll-view>
+
+        <view v-if="showBottomBar" class="bottom-bar"
+            :style="{ backgroundColor: c.surface, paddingBottom: (12 + safeAreaBottom) + 'px' }">
+            <view v-if="canExport" class="btn btn-secondary" :style="{ backgroundColor: c.buttonSecondaryBg }"
+                @tap="exportDetails">
+                <text :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ t('poll.export') }}</text>
+            </view>
+            <view v-if="primaryLabel != ''" class="btn"
+                :style="{ backgroundColor: primaryEnabled ? (primaryDanger ? c.danger : c.accent) : c.buttonSecondaryBg }"
+                @tap="onPrimaryTap">
+                <text :style="{ color: primaryEnabled ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ primaryLabel }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 投票详情。对齐 flutter `poll/poll_detail_screen.dart`。
+ *
+ * 两种模式（沿用 flutter / Android PollDetailActivity 的语义）：
+ * - **投票模式**：从消息气泡进来，可勾选并提交；已投票或已结束则只读，并展示票数条。
+ * - **管理模式**：创建者从「我的投票」进来，不投票，只做导出 / 结束 / 删除。
+ *
+ * 判定方式和 flutter 一样：`isCreator && 不是从消息进来`。所以创建者点自己发起的投票消息
+ * 仍然是投票模式（他也要能投）。
+ *
+ * 与 flutter 的两处刻意差异：
+ * - **不放「转发投票」入口**：flutter 的 `_forwardPoll` 只 toast「开发中」，按本项目
+ *   §M2 的规矩（宁可不放入口，也不放点了弹「暂未实现」的行），这里整个入口不出现。
+ * - **导出明细**：flutter 只把 CSV 落到临时目录再 toast 出路径（它缺 share_plus）。
+ *   这里写完 CSV 后走 `uni.openDocument` 交给系统应用打开（用户可另存/分享），
+ *   打不开时退回 toast 路径 —— 与 common/mediaSaver.uts 保存文件的做法一致。
+ */
+import pollServerApi from "@/api/pollServerApi.uts";
+import { Poll, PollOption, PollVoterDetail } from "@/api/pollModel.uts";
+import PollMessageContent from "@/wfc/messages/pollMessageContent.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import NavBar from "@/pages/common/NavBar.uvue";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_XL, FONT_XS, FONT_XXS } from "@/common/layoutScale.uts";
+import { showConfirmDialog, toast } from "@/common/prompt.uts";
+import { t, t1, t2 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "PollDetailPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const pollId = ref<number>(0)
+/** 从消息进来时带上，用于把最新状态回写到本地消息快照；从列表进来是 0 */
+const messageId = ref<number>(0)
+/** 从「我的投票」进来。与 isCreator 一起决定是不是管理模式 */
+const fromList = ref<boolean>(false)
+
+const poll = ref<Poll | null>(null)
+const loading = ref<boolean>(true)
+const selectedOptionIds = ref<number[]>([] as number[])
+const safeAreaBottom = ref<number>(0)
+
+const sysInfo = uni.getSystemInfoSync()
+safeAreaBottom.value = sysInfo.safeAreaInsets.bottom
+
+/** 管理模式：从列表进来且自己是创建者 */
+const isManagerMode = computed<boolean>((): boolean => {
+    const p = poll.value
+    return fromList.value && p != null && p!.isCreator
+})
+
+const canVote = computed<boolean>((): boolean => {
+    const p = poll.value
+    if (p == null || isManagerMode.value) {
+        return false
+    }
+    return !p!.hasVoted && !p!.isEnded()
+})
+
+const isSingleChoice = computed<boolean>((): boolean => {
+    const p = poll.value
+    return p == null || p!.isSingleChoice()
+})
+
+const showResult = computed<boolean>((): boolean => {
+    const p = poll.value
+    return p != null && p!.shouldShowResult()
+})
+
+/** 多选且已勾选时，标题栏显示「已选 2/3」，与 flutter 一致 */
+const navTitle = computed<string>((): string => {
+    const p = poll.value
+    if (p != null && canVote.value && p!.isMultiChoice() && selectedOptionIds.value.length > 0) {
+        return t2('poll.selected_count', '' + selectedOptionIds.value.length, '' + p!.maxSelect)
+    }
+    return t('poll.detail')
+})
+
+const creatorPortrait = computed<string>((): string => {
+    const p = poll.value
+    if (p == null || p!.creatorId == '') {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    const portrait = wfc.getUserInfo(p!.creatorId, false).portrait
+    return portrait == '' ? Config.DEFAULT_PORTRAIT_URL : portrait
+})
+
+const creatorText = computed<string>((): string => {
+    const p = poll.value
+    if (p == null || p!.creatorId == '') {
+        return ''
+    }
+    const name = wfc.getUserDisplayName(p!.creatorId)
+    return t1('poll.creator_format', name == '' ? p!.creatorId : name)
+})
+
+const chipLabel = computed<string>((): string => {
+    const p = poll.value
+    if (p == null) {
+        return ''
+    }
+    if (p!.isEnded()) {
+        return t('poll.status_ended')
+    }
+    return p!.hasVoted ? t('poll.has_voted') : t('poll.status_active')
+})
+
+const chipFg = computed<string>((): string => {
+    const p = poll.value
+    if (p != null && p!.isEnded()) {
+        return colors().textTertiary
+    }
+    return (p != null && p!.hasVoted) ? colors().success : colors().accent
+})
+
+const chipBg = computed<string>((): string => {
+    const p = poll.value
+    if (p != null && p!.isEnded()) {
+        return colors().hairlineSoft
+    }
+    return (p != null && p!.hasVoted) ? colors().successSoft : colors().accentSoft
+})
+
+/** 页脚一行灰字：实名/匿名 · N人参与 · 剩余时间 · 状态 */
+const metaText = computed<string>((): string => {
+    const p = poll.value
+    if (p == null) {
+        return ''
+    }
+    const parts: string[] = [
+        p!.anonymous == 1 ? t('poll.anonymous') : t('poll.named'),
+        t1('poll.voter_count', '' + p!.voterCount)
+    ]
+    const remaining = remainingText(p!)
+    if (remaining != '') {
+        parts.push(remaining)
+    }
+    if (p!.isEnded()) {
+        parts.push(t('poll.status_ended'))
+    } else if (p!.hasVoted) {
+        parts.push(t('poll.has_voted'))
+    }
+    return parts.join(' · ')
+})
+
+/** 匿名投票没有可导出的明细 */
+const canExport = computed<boolean>((): boolean => {
+    const p = poll.value
+    return isManagerMode.value && p != null && p!.anonymous != 1
+})
+
+const primaryLabel = computed<string>((): string => {
+    const p = poll.value
+    if (p == null) {
+        return ''
+    }
+    if (isManagerMode.value) {
+        return p!.isEnded() ? t('poll.delete') : t('poll.close')
+    }
+    return canVote.value ? t('poll.submit_vote') : ''
+})
+
+/** 管理模式下已结束时的主操作是「删除投票」，标红 */
+const primaryDanger = computed<boolean>((): boolean => {
+    const p = poll.value
+    return isManagerMode.value && p != null && p!.isEnded()
+})
+
+const primaryEnabled = computed<boolean>((): boolean => {
+    if (isManagerMode.value) {
+        return true
+    }
+    return canVote.value && selectedOptionIds.value.length > 0
+})
+
+const showBottomBar = computed<boolean>((): boolean => {
+    return poll.value != null && (primaryLabel.value != '' || canExport.value)
+})
+
+onLoad((options: OnLoadOptions) => {
+    pollId.value = parseInt(options['pollId'] ?? '0')
+    messageId.value = parseInt(options['messageId'] ?? '0')
+    fromList.value = (options['fromList'] ?? '') == '1'
+    fetchDetail()
+})
+
+const fetchDetail = () => {
+    if (!pollServerApi.isAvailable()) {
+        loading.value = false
+        toast(t('poll.service_not_configured'))
+        return
+    }
+    loading.value = true
+    pollServerApi.getPoll(pollId.value)
+        .then((result: Poll): void => {
+            loading.value = false
+            poll.value = result
+            // 只有投票模式才回填已选项：管理模式下勾选框根本不显示
+            if (!(fromList.value && result.isCreator)) {
+                const ids: number[] = []
+                for (let i = 0; i < result.myOptionIds.length; i++) {
+                    ids.push(result.myOptionIds[i])
+                }
+                selectedOptionIds.value = ids
+            }
+            updateLocalMessage(result)
+        })
+        .catch((err: any | null): void => {
+            loading.value = false
+            console.log('get poll fail', err)
+            toast(t('poll.load_failed'))
+        })
+}
+
+/**
+ * 服务端状态比消息里的快照新时，回写本地消息，气泡上的票数/状态才不会一直是旧的。
+ * 对齐 flutter 的 `_updateLocalMessageIfNeeded`。
+ */
+const updateLocalMessage = (result: Poll) => {
+    if (messageId.value <= 0) {
+        return
+    }
+    const message = wfc.getMessageById(messageId.value)
+    if (message == null) {
+        return
+    }
+    const content = message!.messageContent
+    if (!(content instanceof PollMessageContent)) {
+        return
+    }
+    const pollContent = content as PollMessageContent
+    let needUpdate = false
+    if (result.status != pollContent.status) {
+        pollContent.status = result.status
+        needUpdate = true
+    }
+    if (result.totalVotes != pollContent.totalVotes) {
+        pollContent.totalVotes = result.totalVotes
+        needUpdate = true
+    }
+    const now = new Date().getTime()
+    if (result.endTime > 0 && result.endTime < now && pollContent.endTime >= now) {
+        pollContent.status = 1
+        needUpdate = true
+    }
+    if (needUpdate) {
+        wfc.updateMessageContent(messageId.value, pollContent)
+    }
+}
+
+const isSelected = (option: PollOption): boolean => {
+    return selectedOptionIds.value.indexOf(option.optionId) >= 0
+}
+
+const isMyVote = (option: PollOption): boolean => {
+    const p = poll.value
+    if (p == null || isManagerMode.value) {
+        return false
+    }
+    return p!.myOptionIds.indexOf(option.optionId) >= 0
+}
+
+const optionTextColor = (option: PollOption): string => {
+    return (isMyVote(option) || (canVote.value && isSelected(option))) ? colors().accent : colors().textPrimary
+}
+
+const optionCountText = (option: PollOption): string => {
+    return option.voteCount + t('poll.votes') + ' · ' + option.votePercent + '%'
+}
+
+const barPercent = (option: PollOption): number => {
+    const percent = option.votePercent
+    if (percent < 0) {
+        return 0
+    }
+    return percent > 100 ? 100 : percent
+}
+
+const onOptionTap = (option: PollOption) => {
+    const p = poll.value
+    if (p == null || !canVote.value) {
+        return
+    }
+    const current = selectedOptionIds.value
+    const index = current.indexOf(option.optionId)
+    if (p!.isSingleChoice()) {
+        // 单选：再点一次取消，点别的直接换掉
+        selectedOptionIds.value = index >= 0 ? ([] as number[]) : [option.optionId]
+        return
+    }
+    if (index >= 0) {
+        const next: number[] = []
+        for (let i = 0; i < current.length; i++) {
+            if (current[i] != option.optionId) {
+                next.push(current[i])
+            }
+        }
+        selectedOptionIds.value = next
+        return
+    }
+    if (p!.maxSelect > 0 && current.length >= p!.maxSelect) {
+        toast(t1('poll.max_select_limit', '' + p!.maxSelect))
+        return
+    }
+    const next: number[] = []
+    for (let i = 0; i < current.length; i++) {
+        next.push(current[i])
+    }
+    next.push(option.optionId)
+    selectedOptionIds.value = next
+}
+
+const onPrimaryTap = () => {
+    if (isManagerMode.value) {
+        if (primaryDanger.value) {
+            deletePoll()
+        } else {
+            closePoll()
+        }
+        return
+    }
+    submitVote()
+}
+
+const submitVote = () => {
+    if (!canVote.value) {
+        return
+    }
+    if (selectedOptionIds.value.length == 0) {
+        toast(t('poll.select_option'))
+        return
+    }
+    pollServerApi.vote(pollId.value, selectedOptionIds.value)
+        .then((_): void => {
+            toast(t('poll.vote_success'))
+            fetchDetail()
+        })
+        .catch((err: any | null): void => {
+            console.log('vote fail', err)
+            toast(t('poll.vote_failed'))
+        })
+}
+
+const closePoll = () => {
+    showConfirmDialog(t('common.confirm'), t('poll.close_confirm'), true, () => {
+        pollServerApi.close(pollId.value)
+            .then((_): void => {
+                toast(t('poll.close_success'))
+                fetchDetail()
+            })
+            .catch((err: any | null): void => {
+                console.log('close poll fail', err)
+                toast(t('poll.close_failed'))
+            })
+    })
+}
+
+const deletePoll = () => {
+    showConfirmDialog(t('common.confirm'), t('poll.delete_confirm'), true, () => {
+        pollServerApi.delete(pollId.value)
+            .then((_): void => {
+                toast(t('poll.delete_success'))
+                uni.navigateBack({
+                    fail: (err) => {
+                        console.log('nav back err', err)
+                    }
+                } as NavigateBackOptions)
+            })
+            .catch((err: any | null): void => {
+                console.log('delete poll fail', err)
+                toast(t('poll.delete_failed'))
+            })
+    })
+}
+
+/** CSV 字段转义：含逗号/引号/换行时整体加引号，内部引号翻倍 */
+const escapeCsv = (field: string): string => {
+    if (field.indexOf(',') >= 0 || field.indexOf('"') >= 0 || field.indexOf('\n') >= 0) {
+        return '"' + field.replace(/"/g, '""') + '"'
+    }
+    return field
+}
+
+const safeFileName = (name: string): string => {
+    let safe = name.replace(/[/\\?%*|"<>:]/g, '_')
+    if (safe.length > 50) {
+        safe = safe.substring(0, 50)
+    }
+    return safe.trim() == '' ? t('poll.default_file_name') : safe
+}
+
+function pad2(n: number): string {
+    return n < 10 ? '0' + n : '' + n
+}
+
+const formatVoteTime = (ts: number): string => {
+    const d = new Date(ts)
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' '
+        + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds())
+}
+
+const exportDetails = () => {
+    const p = poll.value
+    if (p == null) {
+        return
+    }
+    pollServerApi.exportDetails(pollId.value)
+        .then((details: PollVoterDetail[]): void => {
+            if (details.length == 0) {
+                toast(t('poll.no_voter_details'))
+                return
+            }
+            // 开头的 BOM 是给 Excel 认 UTF-8 用的，去掉会乱码
+            let csv = '﻿' + t('poll.csv_option') + ',' + t('poll.csv_user') + ',' + t('poll.csv_time') + '\n'
+            for (let i = 0; i < details.length; i++) {
+                const d = details[i]
+                csv += escapeCsv(d.optionText) + ',' + escapeCsv(d.userName) + ',' + formatVoteTime(d.voteTime) + '\n'
+            }
+            const filePath = uni.env.CACHE_PATH + safeFileName(p!.title) + '_' + t('poll.details_suffix') + '.csv'
+            uni.getFileSystemManager().writeFile({
+                filePath: filePath,
+                data: csv,
+                encoding: 'utf-8',
+                success: () => {
+                    uni.openDocument({
+                        filePath: filePath,
+                        success: (_) => {
+                            console.log('open poll csv success')
+                        },
+                        fail: (err) => {
+                            console.log('open poll csv fail', err)
+                            toast(t1('poll.exported_to', filePath))
+                        }
+                    } as OpenDocumentOptions)
+                },
+                fail: (err) => {
+                    console.log('write poll csv fail', err)
+                    toast(t('poll.export_failed'))
+                }
+            } as WriteFileOptions)
+        })
+        .catch((err: any | null): void => {
+            console.log('export poll fail', err)
+            toast(t('poll.export_failed'))
+        })
+}
+
+/** 与列表页同一套剩余时间文案 */
+const remainingText = (p: Poll): string => {
+    if (p.isEnded()) {
+        return ''
+    }
+    if (p.endTime <= 0) {
+        return t('poll.no_end_time')
+    }
+    const remaining = p.endTime - new Date().getTime()
+    if (remaining <= 0) {
+        return ''
+    }
+    const minutes = Math.floor(remaining / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    if (days > 0) {
+        return t1('poll.days_left', '' + days)
+    }
+    if (hours > 0) {
+        return t1('poll.hours_left', '' + hours)
+    }
+    return t1('poll.minutes_left', '' + minutes)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.center {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.body {
+    width: 100%;
+    flex: 1;
+}
+
+.card {
+    margin: 16px 16px 0 16px;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 选项卡片自己给行留内边距，卡片本身不再留 */
+.card-tight {
+    margin-top: 12px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.poll-title {
+    font-weight: 600;
+}
+
+.poll-desc {
+    margin-top: 6px;
+}
+
+.creator-line {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 14px;
+}
+
+.creator-portrait {
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+/* 名字吃掉剩余宽度，徽标定宽在右 —— 不用占位 view，见 option-item 的注释 */
+.creator-name {
+    flex: 1;
+    margin-left: 8px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.chip {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.option-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    position: relative;
+}
+
+.option-divider {
+    position: absolute;
+    left: 16px;
+    right: 0;
+    top: 0;
+    height: 0.5px;
+}
+
+.option-line {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.check {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-width: 1.5px;
+    border-style: solid;
+    flex-shrink: 0;
+    margin-right: 12px;
+}
+
+.check-round {
+    border-radius: 100px;
+}
+
+.check-square {
+    border-radius: 4px;
+}
+
+.icomoon {
+    font-family: "icomoon";
+}
+
+.my-vote {
+    flex-shrink: 0;
+    margin-right: 12px;
+}
+
+.option-text {
+    flex: 1;
+}
+
+.option-count {
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.bar-track {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 4px;
+    border-radius: 2px;
+}
+
+.meta {
+    width: 100%;
+    margin-top: 12px;
+    text-align: center;
+}
+
+.tail {
+    width: 100%;
+    height: 24px;
+}
+
+.bottom-bar {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 16px;
+}
+
+.btn {
+    flex: 1;
+    height: 46px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+
+.btn-secondary {
+    margin-right: 12px;
+}
+</style>

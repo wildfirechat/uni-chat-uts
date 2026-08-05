@@ -1,0 +1,92 @@
+<template>
+    <view class="form-text-row">
+        <textarea v-if="multiline" class="field field-multiline" :value="value" :placeholder="placeholder"
+            :maxlength="maxlength" :auto-height="false" :adjust-position="adjustPosition"
+            :placeholder-style="placeholderStyle"
+            :style="{ color: c.textPrimary, fontSize: fontPx(fontSize), height: rowPx(66) }" @input="onInput" />
+        <input v-else class="field" :value="value" :placeholder="placeholder" :maxlength="maxlength"
+            :adjust-position="adjustPosition" :placeholder-style="placeholderStyle"
+            :style="{ color: c.textPrimary, fontSize: fontPx(fontSize), height: rowPx(44) }" @input="onInput" />
+        <view v-if="showBottomDivider" class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 表单卡片里的无边框输入行。对齐 flutter `widget/form_card.dart` 的 `FormTextRow`。
+ *
+ * 与 flutter 的两处差异：
+ * - flutter 的多行输入用 `maxLines: 3` 让输入框随内容长高，uni-app x 的 textarea
+ *   `auto-height` 在鸿蒙 vapor 下会和外层 scroll-view 打架（高度反复重算导致抖动），
+ *   所以给固定高度，超出部分内部滚动。
+ * - 占位符颜色只能通过 `placeholder-style` 传字符串，拿不到 `:style` 对象，
+ *   所以这里自己拼一段 css 文本；改主题令牌时它会跟着重算。
+ *
+ * 用在 form-card 里，最后一行传 `:show-bottom-divider="false"`（同 option-item 的规矩）。
+ */
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, rowPx, FONT_LG } from '@/common/layoutScale.uts'
+
+defineOptions({
+    name: 'form-text-row'
+})
+
+const props = withDefaults(defineProps<{
+    value?: string
+    placeholder?: string
+    /** true = 多行（textarea），false = 单行（input） */
+    multiline?: boolean
+    maxlength?: number
+    fontSize?: number
+    showBottomDivider?: boolean
+    /**
+     * 键盘弹出时是否让框架自动上推页面。会话页那套手动避让（见 MessageInputView）
+     * 只在会话页需要，这里默认交给框架。
+     */
+    adjustPosition?: boolean
+}>(), {
+    value: '',
+    placeholder: '',
+    multiline: false,
+    maxlength: 200,
+    fontSize: FONT_LG,
+    showBottomDivider: true,
+    adjustPosition: true
+})
+
+const emit = defineEmits(['input'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// 占位符只改颜色，字号跟着输入框自己的 :style 走（与本项目其他输入框一致）
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
+const onInput = (e: UniInputEvent) => {
+    emit('input', e.detail.value)
+}
+</script>
+
+<style scoped>
+.form-text-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 无边框：卡片本身就是边界，输入框再画一圈线就成了双层框 */
+.field {
+    width: 100%;
+    padding: 0 14px;
+    background-color: transparent;
+}
+
+.field-multiline {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.divider {
+    height: 0.5px;
+    margin-left: 14px;
+}
+</style>

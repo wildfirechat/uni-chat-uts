@@ -1,0 +1,96 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+/**
+ * 群投票消息。对齐 flutter `imclient/lib/message/poll_message_content.dart`（消息类型 18）。
+ *
+ * 这条消息**不是客户端发的** —— 客户端只调 `POST /api/polls` 创建投票，由投票服务端
+ * 往群里投递这条消息。所以 [encode] 实际只在转发/收藏这类场景走到。
+ *
+ * 消息体是快照：`status` / `totalVotes` 是创建（或上次回写）那一刻的值，会比服务端旧。
+ * 打开投票详情页时会拿最新值回写本地消息（见 PollDetailPage 的 updateLocalMessage）。
+ */
+export default class PollMessageContent extends MessageContent {
+    /** 投票 ID。消息里是字符串，投票服务的接口里是整数。 */
+    pollId = '';
+    groupId = '';
+    creatorId = '';
+    title = '';
+    desc = '';
+    /** 可见性：1=仅群内，2=公开 */
+    visibility = 1;
+    /** 类型：1=单选，2=多选 */
+    pollType = 1;
+    /** 是否匿名：0=实名，1=匿名 */
+    anonymous = 0;
+    /** 状态：0=进行中，1=已结束 */
+    status = 0;
+    /** 截止时间，毫秒时间戳，0 表示无截止时间 */
+    endTime = 0;
+    totalVotes = 0;
+
+    constructor() {
+        super(MessageContentType.Poll);
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.title;
+
+        const obj = {
+            pollId: this.pollId,
+            groupId: this.groupId,
+            creatorId: this.creatorId,
+            title: this.title,
+            visibility: this.visibility,
+            type: this.pollType,
+            anonymous: this.anonymous,
+            status: this.status,
+            endTime: this.endTime,
+            totalVotes: this.totalVotes
+        } as UTSJSONObject;
+        // 与 flutter 一致：desc 为空时不写这个字段
+        if (this.desc != '') {
+            obj['desc'] = this.desc;
+        }
+
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.title = payload.searchableContent;
+
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj == null) {
+            return;
+        }
+        this.pollId = obj.getString('pollId') ?? '';
+        this.groupId = obj.getString('groupId') ?? '';
+        this.creatorId = obj.getString('creatorId') ?? '';
+        this.title = obj.getString('title') ?? this.title;
+        this.desc = obj.getString('desc') ?? '';
+        this.visibility = obj.getNumber('visibility') ?? 1;
+        this.pollType = obj.getNumber('type') ?? 1;
+        this.anonymous = obj.getNumber('anonymous') ?? 0;
+        this.status = obj.getNumber('status') ?? 0;
+        this.endTime = obj.getNumber('endTime') ?? 0;
+        this.totalVotes = obj.getNumber('totalVotes') ?? 0;
+    }
+
+    override digest(message: any | null): string {
+        return '[投票]' + this.title;
+    }
+
+    /** 到了截止时间但服务端还没把 status 改成 1 时，本地也算已结束 */
+    isExpired(): boolean {
+        return this.endTime > 0 && this.endTime < new Date().getTime();
+    }
+
+    isEnded(): boolean {
+        return this.status == 1 || this.isExpired();
+    }
+}

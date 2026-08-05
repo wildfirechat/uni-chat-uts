@@ -26,6 +26,9 @@ export default class MessageContentType {
     static Streaming_Text_Generating = 14;
     //流式文本消息
     static Streaming_Text_Generated = 15;
+    // 群投票消息，由投票服务端在创建投票后发到群里。
+    // 注：flutter 的 imclient 还注册了 19（投票结果），但两端都没有对应的气泡渲染器，这里不带。
+    static Poll = 18;
     //对讲结束后保存的语音消息
     static Ptt_Voice = 23;
     static Mark_Unread_Sync = 31;

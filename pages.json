@@ -143,6 +143,36 @@
             }
         },
         {
+            "path": "pages/poll/PollHomePage",
+            "style": {
+                "navigationBarTitleText": "群投票"
+            }
+        },
+        {
+            // 右上角「发布」按钮要自定义导航栏
+            "path": "pages/poll/CreatePollPage",
+            "style": {
+                "navigationBarTitleText": "发起投票",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/poll/PollListPage",
+            "style": {
+                "navigationBarTitleText": "我的投票"
+            }
+        },
+        {
+            // 标题要随多选勾选数变化（「已选 2/3」），且底部有固定操作栏
+            "path": "pages/poll/PollDetailPage",
+            "style": {
+                "navigationBarTitleText": "投票详情",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
             "path": "pages/me/PcOnlineDevicesPage",
             "style": {
                 "navigationBarTitleText": "已登录设备"

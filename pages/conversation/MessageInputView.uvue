@@ -34,7 +34,8 @@
                 :style="{ height: keyboardHeight + 'px', backgroundColor: c.bottomBarBg }">
                 <view class="wf-ext-item" v-for="(v, i) in extList" @tap="onClickExt(v)" :key="i">
                     <view class="wf-ext-item-icon" :style="{ backgroundColor: c.surface }">
-                        <text class="wxfont ext-icon">{{ v.icon }}</text>
+                        <!-- 字形颜色跟主题走：原来没写 color，深色模式下是黑字压深色底板 -->
+                        <text class="ext-icon" :class="v.font" :style="{ color: c.iconSecondary }">{{ v.icon }}</text>
                     </view>
                     <text class="wf-ext-item-text" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ v.title }}</text>
                 </view>
@@ -94,6 +95,7 @@ import { toLocalFilePath } from "../../common/filePath.uts";
 
 import { toast } from "../../common/prompt.uts";
 import { t } from "../../i18n/i18n.uts";
+import pollServerApi from "../../api/pollServerApi.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, iconPx } from "@/common/layoutScale.uts";
@@ -101,11 +103,14 @@ class ExtItem {
     title = ''
     tag = ''
     icon = ''
+    /** icon 所属字体：wxfont（默认）或 icomoon。wxfont 里没有柱状图字形，投票只能借 icomoon */
+    font = 'wxfont'
 
-    constructor(title: string, tag: string, icon: string) {
+    constructor(title: string, tag: string, icon: string, font: string = 'wxfont') {
         this.title = title
         this.tag = tag
         this.icon = icon
+        this.font = font
     }
 }
 
@@ -126,15 +131,22 @@ const hideSendButton = ref<boolean>((Config.getWFCPlatform() == 1 || Config.getW
 const showVoice = ref<boolean>(false)
 const showPtt = ref<boolean>(false)
 const isPttEnable = ref<boolean>(Config.ENABLE_PTT && pttClient.isEnable())
-const extList = ref<ExtItem[]>([
-    new ExtItem('相册', 'image', ''),
-    new ExtItem('语音通话', 'voip_a', ''),
-    new ExtItem('视频通话', 'voip_v', ''),
-    new ExtItem('拍摄', 'shot', ''),
-    new ExtItem('文件', 'file', ''),
-    new ExtItem('位置', 'location', ''),
-    new ExtItem('名片', 'userCard', ''),
-] as ExtItem[])
+// 「群投票」只在群会话且配了投票服务时才出现，与 flutter `input_bar/plugin_board.dart` 一致
+const extList = computed<ExtItem[]>((): ExtItem[] => {
+    const items = [
+        new ExtItem('相册', 'image', ''),
+        new ExtItem('语音通话', 'voip_a', ''),
+        new ExtItem('视频通话', 'voip_v', ''),
+        new ExtItem('拍摄', 'shot', ''),
+        new ExtItem('文件', 'file', ''),
+        new ExtItem('位置', 'location', ''),
+        new ExtItem('名片', 'userCard', ''),
+    ] as ExtItem[]
+    if (props.conversationInfo.conversation.type == ConversationType.Group && pollServerApi.isAvailable()) {
+        items.push(new ExtItem(t('poll.poll'), 'poll', '\uf2b5', 'icomoon'))
+    }
+    return items
+})
 const showExt = ref<boolean>(false)
 const showEmoji = ref<boolean>(false)
 const text = ref<string>('')
@@ -359,6 +371,9 @@ const onClickExt = (ext: ExtItem) => {
         case 'userCard':
             pickUserCard();
             break;
+        case 'poll':
+            openPoll();
+            break;
         default:
             uni.showToast({
                 title: 'TODO ' + ext.title,
@@ -366,6 +381,16 @@ const onClickExt = (ext: ExtItem) => {
             } as ShowToastOptions)
             break;
     }
+}
+
+/** 群投票入口：发起投票 / 我的投票，对齐 flutter `PollHomeScreen.show` */
+const openPoll = () => {
+    uni.navigateTo({
+        url: '/pages/poll/PollHomePage?groupId=' + props.conversationInfo.conversation.target,
+        fail: (err) => {
+            console.log('nav to PollHomePage err', err)
+        }
+    } as NavigateToOptions)
 }
 
 const voip = (audioOnly: boolean) => {

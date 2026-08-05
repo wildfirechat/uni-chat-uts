@@ -47,6 +47,10 @@ export default class Config {
     // 置空则消息长按菜单不显示「语音转文字」。
     static ASR_SERVER = 'https://app.wildfirechat.net/asr/api/recognize';
 
+    // 群投票服务地址。独立服务，不走 IM 协议栈，鉴权走 getAuthCode（见 api/authCodeApiClient.uts）。
+    // 置空则群聊输入框的扩展面板不显示「群投票」入口，投票消息气泡也不再可点。
+    static POLL_SERVER = 'https://poll.wildfirechat.net';
+
     // 请仔细看注释
     // 仅仅是 HOST，没有 http 前缀，后面也没有端口
     // IM SERVER 的 host 地址，一定要和 APP_SERVER 对应起来，即 APP_SERVER 上配置的 im-server 和下面所配置的im-server 是同一个
