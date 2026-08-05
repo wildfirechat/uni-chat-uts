@@ -117,7 +117,11 @@ export default {
         "receipt_received_users": "已送達",
         "receipt_unreceived_users": "未送達",
         "sender": "消息發送者",
-        "content": "消息內容"
+        "content": "消息內容",
+        "delete_title": "刪除消息",
+        "delete_local": "刪除本地消息",
+        "delete_remote": "刪除遠程消息",
+        "delete_remote_fail": "刪除遠程消息失敗: {0}"
     },
     "conversation": {
         "forward_title": "分別發送給",

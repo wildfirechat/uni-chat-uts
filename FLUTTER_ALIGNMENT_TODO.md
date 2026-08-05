@@ -349,7 +349,8 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 
 - [x] **消息长按菜单形态对齐** `[UI]` — 新增 [popup-menu](components/popup-menu/popup-menu.uvue) ← `widget/popup_menu_overlay.dart`
   - 原来是 chunLei-popups 的深色**竖排纯文字列表**，flutter 是**深色卡片 + 4 列图标网格 + 指向气泡的小三角**，形态完全不同
-  - 菜单项顺序按 flutter `buildMessageMenuItems`：删除 → 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报；uni 多出的两项（远程删除、保存）紧跟各自同类项
+  - 菜单项顺序按 flutter `buildMessageMenuItems`：删除 → 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报；uni 多出的一项（保存）紧跟同类项
+  - 「删除」是**一项**不是两项：点了之后再弹 action sheet 选「删除本地消息 / 删除远程消息」，对齐 flutter `_showDeleteOptions`；没有 messageUid 的消息直接删本地
   - **会话列表的长按菜单不动** —— flutter 那边用的是 Material `showMenu`（浅色纯文字），chunLei-popups 已经对得上，两者本来就不是同一个形态
   - `PopupMenuItem` 挪到 [common/popupMenu.uts](common/popupMenu.uts)，两个菜单组件共用
 - [x] **选人页对齐** `[UI]` — [PickUserPage](pages/pick/PickUserPage.uvue) ← `contact/pick_user_screen.dart`

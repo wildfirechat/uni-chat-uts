@@ -117,7 +117,11 @@ export default {
         "receipt_received_users": "Delivered",
         "receipt_unreceived_users": "Undelivered",
         "sender": "Message Sender",
-        "content": "Message content"
+        "content": "Message content",
+        "delete_title": "Delete Message",
+        "delete_local": "Delete Local Message",
+        "delete_remote": "Delete Remote Message",
+        "delete_remote_fail": "Failed to delete remote message: {0}"
     },
     "conversation": {
         "forward_title": "Send separately",

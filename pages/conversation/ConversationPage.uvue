@@ -89,7 +89,7 @@ import { isFavoriteAble, favoriteMessage } from "@/common/favorite.uts";
 import { report } from "@/common/report.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
-import { t } from "@/i18n/i18n.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
 
 let innerAudioContext: InnerAudioContext | null = null;
 
@@ -586,11 +586,11 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
 
     // 顺序对齐 flutter `conversation_controller.dart` 的 buildMessageMenuItems：
     // 删除 → 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报。
-    // uni 侧多出的两项（远程删除、保存）紧跟各自的同类项，不打乱 flutter 的相对次序。
+    // uni 侧多出的一项（保存）紧跟同类项，不打乱 flutter 的相对次序。
+    // 「删除」只有一项，本地/远程由 showDeleteOptions 弹窗二选一，同 flutter `_showDeleteOptions`。
     // 图标是 icomoon（Ionicons）码位，加新项前先在 static/iconfonts/icomoon/style.css 里确认存在。
     const items: PopupMenuItem[] = [];
-    items.push(new PopupMenuItem('本地删除', 'delete', '\uf4c4'))
-    items.push(new PopupMenuItem('远程删除', 'deleteRemote', '\uf4c5'))
+    items.push(new PopupMenuItem(t('common.delete'), 'delete', '\uf4c4'))
     if (isCopyable(message)) {
         items.push(new PopupMenuItem('复制', 'copy', '\uf41b'))
     }
@@ -618,6 +618,43 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     showContextMenu.value = true;
 }
 
+// 对齐 flutter `conversation_controller.dart` 的 `_showDeleteOptions`：菜单里只有一项「删除」，
+// 点了之后再让用户选删本地还是删远程。flutter 用的是 SimpleDialog，uni 侧用 showActionSheet
+// （项目里其它二选一的地方也是它，见 MessageInputView 的「拍照/录像」）。
+const showDeleteOptions = (message: Message) => {
+    uni.showActionSheet({
+        title: t('message.delete_title'),
+        itemList: [t('message.delete_local'), t('message.delete_remote')],
+        success: (res) => {
+            if (res.tapIndex == 0) {
+                wfc.deleteMessage(message.messageId);
+            } else {
+                deleteRemoteMessage(message);
+            }
+        },
+        fail: (err) => {
+            console.log('show delete action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+// 没有 messageUid（还没发出去/发送失败）的消息在服务端不存在，只能删本地，同 flutter `_deleteRemoteMessage`
+const deleteRemoteMessage = (message: Message) => {
+    if (message.messageUid == '' || message.messageUid == '0') {
+        wfc.deleteMessage(message.messageId);
+        return
+    }
+    wfc.deleteRemoteMessageByUid(message.messageUid, () => {
+        console.log('delete remote message success')
+    }, (err: number) => {
+        console.log('delete remote message fail', err);
+        uni.showToast({
+            title: t1('message.delete_remote_fail', '' + err),
+            icon: 'none'
+        } as ShowToastOptions)
+    })
+}
+
 const onContextMenuItemSelect = (t: PopupMenuItem) => {
     const message = contextMenuMessage.value
     if (message == null) {
@@ -625,14 +662,7 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
     }
     switch (t.tag) {
         case 'delete':
-            wfc.deleteMessage(message.messageId);
-            break;
-        case 'deleteRemote':
-            wfc.deleteRemoteMessageByUid(message.messageUid, () => {
-                console.log('delete remote message success')
-            }, (err: number) => {
-                console.log('delete remote message fail', err);
-            })
+            showDeleteOptions(message);
             break;
         case 'forward':
             forwardMessage(message)
