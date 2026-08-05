@@ -75,13 +75,41 @@ export function toJsonObject(value: any | null): UTSJSONObject | null {
     return null
 }
 
+/**
+ * 组织服务返回的头像字段叫 `portraitUrl`，不是 `portrait`
+ * （服务端 `OrganizationEntity.portraitUrl` / `EmployeeEntity.portraitUrl`，
+ * flutter 侧同名，见 `organization.dart` / `employee.dart`）。
+ * 之前这里读的是 `portrait`，永远取不到值，所有部门和员工都退化成静态默认图。
+ * 仍然兜一层 `portrait`，兼容自建的字段名。
+ */
+function portraitUrlOf(o: UTSJSONObject): string {
+    const url = o.getString('portraitUrl')
+    if (url != null && url != '') {
+        return url
+    }
+    const legacy = o.getString('portrait')
+    return legacy != null ? legacy : ''
+}
+
+/**
+ * 员工没有头像时按名字动态生成一个，对齐 flutter `default_portrait_provider.dart` 的
+ * `userDefaultPortrait`：`${appServer}/avatar?name=xxx`，与 [wfc.defaultUserPortrait] 同一个接口。
+ * 名字也拿不到时才退回静态的默认灰头像。
+ */
+export function employeeDefaultPortrait(name: string): string {
+    if (name == '') {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    return `${Config.APP_SERVER}/avatar?name=${encodeURIComponent(name)}`
+}
+
 export function organizationFromJson(o: UTSJSONObject): Organization {
     const org = new Organization()
     org.id = o.getNumber('id') ?? 0
     org.parentId = o.getNumber('parentId') ?? 0
     org.name = o.getString('name') ?? ''
-    const portrait = o.getString('portrait')
-    org.portrait = portrait != null && portrait != '' ? portrait : Config.DEFAULT_DEPARTMENT_PORTRAIT_URL
+    const portrait = portraitUrlOf(o)
+    org.portrait = portrait != '' ? portrait : Config.DEFAULT_DEPARTMENT_PORTRAIT_URL
     org.memberCount = o.getNumber('memberCount') ?? 0
     return org
 }
@@ -92,8 +120,8 @@ export function employeeFromJson(o: UTSJSONObject): Employee {
     e.organizationId = o.getNumber('organizationId') ?? 0
     e.name = o.getString('name') ?? ''
     e.title = o.getString('title') ?? ''
-    const portrait = o.getString('portrait')
-    e.portrait = portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL
+    const portrait = portraitUrlOf(o)
+    e.portrait = portrait != '' ? portrait : employeeDefaultPortrait(e.name)
     e.mobile = o.getString('mobile') ?? ''
     e.email = o.getString('email') ?? ''
     e.gender = o.getNumber('gender') ?? 0

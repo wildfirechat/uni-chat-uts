@@ -6,7 +6,8 @@ import UserInfo from "../wfc/model/userInfo.uts";
 import {
     Organization, Employee, OrganizationEx, EmployeeEx,
     organizationListFromJson, employeeListFromJson,
-    organizationExFromJson, employeeExFromJson, toJsonObject
+    organizationExFromJson, employeeExFromJson, toJsonObject,
+    employeeDefaultPortrait
 } from "./organizationModel.uts";
 
 export class OrganizationServerApi {
@@ -141,8 +142,8 @@ export class OrganizationServerApi {
         userInfo.uid = employee.getString('employeeId') ?? '';
         userInfo.name = employee.getString('name') ?? '';
         userInfo.displayName = employee.getString('name') ?? '';
-        const portrait = employee.getString('portrait')
-        userInfo.portrait = portrait != null && portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL;
+        const portrait = employee.getString('portraitUrl') ?? employee.getString('portrait')
+        userInfo.portrait = portrait != null && portrait != '' ? portrait : employeeDefaultPortrait(userInfo.displayName);
         userInfo.gender = employee.getNumber('gender') ?? 0;
         userInfo.mobile = employee.getString('mobile') ?? '';
         userInfo.email = employee.getString('email') ?? '';

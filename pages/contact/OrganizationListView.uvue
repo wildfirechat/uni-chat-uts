@@ -45,8 +45,9 @@ onMounted(() => {
         })
 })
 
+// 组织服务的头像字段是 portraitUrl，不是 portrait（见 api/organizationModel.uts 的 portraitUrlOf）
 const portraitOf = (organization: UTSJSONObject): string => {
-    const portrait = organization.getString('portrait')
+    const portrait = organization.getString('portraitUrl') ?? organization.getString('portrait')
     return portrait != null && portrait != '' ? portrait : Config.DEFAULT_ORGANIZATION_PORTRAIT_URL
 }
 

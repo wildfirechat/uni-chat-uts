@@ -5,23 +5,32 @@
         <NavBar :title="t('organization.title')" :showBack="true" :interceptBack="true" :rightText="selectMode ? doneLabel : ''"
             @rightTextTap="onDone" @backTap="onBack" />
 
-        <!-- 面包屑。根层级也显示「组织架构」这一节，点上级回上级 -->
-        <scroll-view class="breadcrumb" direction="horizontal" :style="{ backgroundColor: c.conversationBg }">
-            <view class="breadcrumb-list">
-                <view class="breadcrumb-item">
-                    <text class="breadcrumb-link"
-                        :style="{ fontSize: fontPx(14), color: pathList.length == 0 ? c.textPrimary : c.accent }"
-                        @tap="popToRoot">{{ t('organization.title') }}</text>
-                    <text v-if="pathList.length > 0" class="icomoon breadcrumb-sep"
-                        :style="{ fontSize: iconPx(14), color: c.textSecondary }">&#xf3d1;</text>
-                </view>
-                <view v-for="(org, index) in pathList" :key="index" class="breadcrumb-item">
-                    <text class="breadcrumb-link"
-                        :style="{ fontSize: fontPx(14), color: index == pathList.length - 1 ? c.textPrimary : c.accent }"
-                        @tap="popToDepth(index)">{{ org.name }}</text>
-                    <text v-if="index != pathList.length - 1" class="icomoon breadcrumb-sep"
-                        :style="{ fontSize: iconPx(14), color: c.textSecondary }">&#xf3d1;</text>
-                </view>
+        <!-- 面包屑。根层级也显示「组织架构」这一节，点上级回上级。
+             层级深了会超出一屏，用 scroll-into-view 把当前部门那一节滚进可视范围。
+
+             每一节必须是 scroll-view 的**直接子元素**，中间不能再套一层容器：
+             scroll-view 的可滚动内容宽度是按直接子元素的 `getLayoutLeft() + getLayoutWidth()`
+             算出来的（鸿蒙 runtime `UniScrollViewElement.getWrapperSize`），套一层 wrapper 的话
+             wrapper 自己会被拉伸成 scroll-view 的宽度，内容宽度就永远等于屏宽 —— 超出屏幕的那些节
+             照样排出来了，但既被裁掉又滚不到。
+             横排靠 .breadcrumb 自己的 flex-direction: row，direction="horizontal" 只管滚动方向，
+             不会改排版方向。 -->
+        <scroll-view class="breadcrumb" direction="horizontal" :show-scrollbar="false"
+            :scroll-with-animation="true" :scroll-into-view="breadcrumbScrollIntoView"
+            :style="{ backgroundColor: c.conversationBg }">
+            <view class="breadcrumb-item" id="bc-root">
+                <text class="breadcrumb-link"
+                    :style="{ fontSize: fontPx(14), color: pathList.length == 0 ? c.textPrimary : c.accent }"
+                    @tap="popToRoot">{{ t('organization.title') }}</text>
+                <text v-if="pathList.length > 0" class="icomoon breadcrumb-sep"
+                    :style="{ fontSize: iconPx(14), color: c.textSecondary }">&#xf3d1;</text>
+            </view>
+            <view v-for="(org, index) in pathList" :key="index" class="breadcrumb-item" :id="'bc-' + index">
+                <text class="breadcrumb-link"
+                    :style="{ fontSize: fontPx(14), color: index == pathList.length - 1 ? c.textPrimary : c.accent }"
+                    @tap="popToDepth(index)">{{ org.name }}</text>
+                <text v-if="index != pathList.length - 1" class="icomoon breadcrumb-sep"
+                    :style="{ fontSize: iconPx(14), color: c.textSecondary }">&#xf3d1;</text>
             </view>
         </scroll-view>
 
@@ -149,6 +158,8 @@ const disabledIds = ref<string[]>([] as string[])
 
 /** 面包屑路径，最后一项就是当前部门；为空表示还在根层级 */
 const pathList = ref<Organization[]>([] as Organization[])
+/** 面包屑要滚到的那一节的 id，见下面的 watch */
+const breadcrumbScrollIntoView = ref<string>('')
 const subOrganizations = ref<Organization[]>([] as Organization[])
 const employees = ref<Employee[]>([] as Employee[])
 const loading = ref<boolean>(true)
@@ -163,6 +174,28 @@ const canGoUpInHierarchy = computed<boolean>((): boolean => pathList.value.lengt
 const doneLabel = computed<string>((): string => {
     const n = selectedIds.value.length
     return n > 0 ? '确定(' + n + '/' + maxSelected.value + ')' : '确定'
+})
+
+/**
+ * 层级变化后把当前部门那一节滚进可视范围（对齐 flutter `_keepCurrentCrumbVisible`：
+ * 它是滚到 maxScrollExtent，这里用 scroll-into-view 定位末节，末节靠右时 runtime 自己会
+ * clamp 到最大滚动距离，效果一样）。
+ *
+ * 只在 pathList 整体被替换时触发 —— 进下级/点面包屑退回都会换一个新数组，用户手动横向拖动
+ * 不会，所以不会把手动滚过的位置拽回去。
+ *
+ * 先置空再赋值：scroll-into-view 是属性，值没变不会重新触发。
+ * 延一帧再赋值是等新节点布局完成，`_scrollToItem` 要靠 getBoundingClientRect 算偏移。
+ */
+watch(pathList, (newPath: Organization[], _oldPath: Organization[]) => {
+    breadcrumbScrollIntoView.value = ''
+    if (newPath.length == 0) {
+        return
+    }
+    const targetId = 'bc-' + (newPath.length - 1)
+    setTimeout(() => {
+        breadcrumbScrollIntoView.value = targetId
+    }, 50)
 })
 
 onLoad((options: OnLoadOptions) => {
@@ -364,26 +397,37 @@ const onDone = () => {
     flex: 1;
 }
 
+/* 排版方向由这里给：direction="horizontal" 只改滚动轴，不改 flex 主轴。
+ * 主轴变成横向后，各节按 left 依次排开、超出屏宽也照排，scroll-view 才量得出
+ * 大于屏宽的内容宽度。 */
 .breadcrumb {
+    width: 100%;
     height: 36px;
     padding: 0 12px;
-}
-
-.breadcrumb-list {
-    display: flex;
     flex-direction: row;
-    align-items: center;
-    height: 36px;
+    flex-grow: 0;
+    flex-shrink: 0;
 }
 
+/* flex-shrink: 0 是关键：默认会被压缩到刚好塞进屏宽，那样内容宽度永远等于屏宽，
+ * 既滚不动、每节又被挤窄导致文字截断。
+ * 同理每节的文字 white-space: nowrap，长部门名往右延伸而不是折行。 */
 .breadcrumb-item {
     display: flex;
     flex-direction: row;
     align-items: center;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.breadcrumb-link {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .breadcrumb-sep {
     margin: 0 4px;
+    flex-shrink: 0;
 }
 
 .search-bar {
