@@ -1,0 +1,83 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+import { getGroupMemberDisplayName, getUserId } from '../../client/userBrief.uts'
+import { b64_to_utf8, utf8_to_b64 } from '../../util/base64.uts'
+import MessageContentType from "../messageContentType.uts";
+import MessagePayload from '../messagePayload.uts';
+import GroupNotificationContent from "./groupNotification.uts";
+
+/**
+ * 群管理员拒绝入群申请的通知消息（类型 125）。
+ *
+ * 报文格式以 android-chat 的 GroupRejectJoinNotificationContent 为准：
+ * binaryContent 是 { g: 群 id, o: 操作者, mi: { 被拒用户 id: 拒绝原因码 } }。
+ * flutter 侧 reject_join_group_notification_content.dart 读的是 m / r 两个字符串字段，
+ * 与服务端实际下发的 mi 对不上（那份是手写的，没有对过线上报文），所以这里不跟随 flutter。
+ */
+export default class RejectJoinGroupNotification extends GroupNotificationContent {
+    operator = '';
+    // 被拒绝的用户 id，顺序与 rejectReasons 一一对应
+    rejectedMembers: string[] = [];
+    // 每个被拒用户对应的拒绝原因码，服务端下发，当前 UI 不展示
+    rejectReasons: number[] = [];
+
+    constructor(operator: string = '') {
+        super(MessageContentType.RejectJoinGroup_Notification);
+        this.operator = operator;
+    }
+
+    override formatNotification(message: any | null): string {
+        let notifyStr = this.fromSelf ? '您' : getGroupMemberDisplayName(this.groupId, this.operator);
+        notifyStr += '拒绝了';
+        const selfId = getUserId();
+        for (let i = 0; i < this.rejectedMembers.length; i++) {
+            const uid = this.rejectedMembers[i];
+            notifyStr += ' ';
+            notifyStr += uid == selfId ? '您' : getGroupMemberDisplayName(this.groupId, uid);
+        }
+        notifyStr += ' 的入群申请';
+        return notifyStr;
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        const mi = {} as UTSJSONObject;
+        for (let i = 0; i < this.rejectedMembers.length; i++) {
+            mi.set(this.rejectedMembers[i], i < this.rejectReasons.length ? this.rejectReasons[i] : 0);
+        }
+        const obj = {
+            g: this.groupId,
+            o: this.operator,
+            mi: mi,
+        } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj != null) {
+            this.groupId = obj.getString('g') ?? '';
+            this.operator = obj.getString('o') ?? '';
+            this.rejectedMembers = [];
+            this.rejectReasons = [];
+            const mi = obj.getJSON('mi');
+            if (mi != null) {
+                // mi 的 key 是用户 id，是动态的，只能整体转成 Map 再遍历。
+                // 两点限制：UTSJSONObject.keys() 在 iOS 的 uni-app x 上不支持；
+                // UTS 的 Map 只有 forEach，没有 keys() / size，所以这里只能用 forEach。
+                const members: string[] = [];
+                const reasons: number[] = [];
+                mi.toMap().forEach((_value: any, key: string) => {
+                    members.push(key);
+                    reasons.push(mi.getNumber(key) ?? 0);
+                });
+                this.rejectedMembers = members;
+                this.rejectReasons = reasons;
+            }
+        }
+    }
+}

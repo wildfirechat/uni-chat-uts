@@ -28,6 +28,7 @@ export default class SoundMessageContent extends MediaMessageContent {
 
     override encode(): MessagePayload {
         const payload = super.encode();
+        payload.searchableContent = '[语音]';
         payload.mediaType = MessageContentMediaType.Voice;
         const obj = {
             duration: this.duration,

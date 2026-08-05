@@ -15,7 +15,7 @@ export default class AllowGroupMemberNotification extends GroupNotificationConte
     memberIds: string[] = []
 
     constructor(operator: string, allowType: number, memberIds: string[]) {
-        super(MessageContentType.MuteGroupMember_Notification)
+        super(MessageContentType.AllowGroupMember_Notification)
         this.operator = operator
         this.allowType = allowType
         this.memberIds = memberIds

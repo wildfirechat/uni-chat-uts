@@ -24,7 +24,10 @@ export default class StickerMessageContent extends MediaMessageContent {
 
     override encode(): MessagePayload {
         const payload = super.encode();
-        payload.mediaType = MessageContentMediaType.File;
+        payload.searchableContent = '[动态表情]';
+        // 原来这里写死成 File，与 android-chat（MessageContentMediaType.STICKER）
+        // 和 flutter（Media_Type_STICKER）都不一致，会把表情传到 file 桶。
+        payload.mediaType = MessageContentMediaType.Sticker;
         const obj = {
             x: this.width,
             y: this.height,

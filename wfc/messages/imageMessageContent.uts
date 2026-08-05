@@ -24,6 +24,9 @@ export default class ImageMessageContent extends MediaMessageContent {
 
     override encode(): MessagePayload {
         const payload = super.encode();
+        // searchableContent 是服务端推送文案和其他端会话摘要的取值来源，
+        // 媒体消息必须给占位文案，否则对端推送是空的。与 android-chat / flutter 一致。
+        payload.searchableContent = '[图片]';
         payload.mediaType = MessageContentMediaType.Image;
         payload.binaryContent = this.thumbnail;
         if (this.imageWidth > 0) {

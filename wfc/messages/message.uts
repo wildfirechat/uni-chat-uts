@@ -107,7 +107,7 @@ export default class Message {
                 (content as RecallMessageNotification)._conversation = conversation;
             }
         } catch (error) {
-            console.error('decode message payload failed, fallback to unknownMessage', payload.type, error);
+            // console.error('decode message payload failed, fallback to unknownMessage', payload.type, error);
             const flag = MessageConfig.getMessageContentPersitFlag(payload.type);
             if (PersistFlag.Persist == flag || PersistFlag.Persist_And_Count == flag) {
                 content = new UnknownMessageContent(payload);

@@ -36,6 +36,7 @@ import UserCardMessageContentView from "./content/UserCardMessageContentView.uvu
 import PollMessageContentView from "./content/PollMessageContentView.uvue";
 import ConferenceInviteMessageContentView from "./content/ConferenceInviteMessageContentView.uvue";
 import UnknownMessageContentView from "./content/UnknownMessageContentView.uvue";
+import LinkMessageContentView from "./content/LinkMessageContentView.uvue";
 import StreamingTextMessageContentView from "./content/StreamingTextMessageContentView.uvue";
 import TestCustomMessageContentView from "./content/TestCustomMessageContentView.uvue";
 

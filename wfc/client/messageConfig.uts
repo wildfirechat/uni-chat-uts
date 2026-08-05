@@ -20,6 +20,7 @@ import DismissGroupNotification from '../messages/notification/dismissGroupNotif
 import ModifyGroupAliasNotification from '../messages/notification/modifyGroupAliasNotification.uts';
 import ModifyGroupExtraNotification from '../messages/notification/modifyGroupExtraNotification.uts';
 import ModifyGroupMemberExtraNotification from '../messages/notification/modifyGroupMemberExtraNotification.uts';
+import RejectJoinGroupNotification from '../messages/notification/rejectJoinGroupNotification.uts';
 import QuitGroupNotification from '../messages/notification/quitGroupNotification.uts';
 import QuitVisiableGroupNotification from '../messages/notification/quitGroupVisiableNotification.uts';
 import QuitGroupVisiableNotification from '../messages/notification/quitGroupVisiableNotification.uts';
@@ -148,8 +149,10 @@ export default class MessageConfig {
         new MessageContentRegistry('compositeMessage', PersistFlag.Persist_And_Count, MessageContentType.Composite_Message, (): MessageContent => new CompositeMessageContent()),
         new MessageContentRegistry('tip', PersistFlag.Persist, MessageContentType.Tip_Notification, (): MessageContent => new TipNotificationMessageContent('')),
         new MessageContentRegistry('typing', PersistFlag.Transparent, MessageContentType.Typing, (): MessageContent => new TypingMessageContent()),
-        new MessageContentRegistry('friendGreeting', PersistFlag.Persist, MessageContentType.Friend_Added, (): MessageContent => new FriendGreetingNotification()),
-        new MessageContentRegistry('friendAdded', PersistFlag.Persist, MessageContentType.Friend_Greeting, (): MessageContent => new FriendAddedNotification()),
+        // 92 是「以上是打招呼的内容」，93 是「你们已经是好友了」。原来这两行的 type 与 creator 是错位的，
+        // 收到 92 会显示成 93 的文案，反之亦然。
+        new MessageContentRegistry('friendGreeting', PersistFlag.Persist, MessageContentType.Friend_Greeting, (): MessageContent => new FriendGreetingNotification()),
+        new MessageContentRegistry('friendAdded', PersistFlag.Persist, MessageContentType.Friend_Added, (): MessageContent => new FriendAddedNotification()),
         new MessageContentRegistry('addGroupMemberNotification', PersistFlag.Persist, MessageContentType.AddGroupMember_Notification, (): MessageContent => new AddGroupMemberNotification('', [])),
         new MessageContentRegistry('changeGroupNameNotification', PersistFlag.Persist, MessageContentType.ChangeGroupName_Notification, (): MessageContent => new ChangeGroupNameNotification('', '')),
         new MessageContentRegistry('changeGroupPortraitNotification', PersistFlag.Persist, MessageContentType.ChangeGroupPortrait_Notification, (): MessageContent => new ChangeGroupPortraitNotification('')),
@@ -160,6 +163,7 @@ export default class MessageConfig {
         new MessageContentRegistry('modifyGroupAliasNotification', PersistFlag.Persist, MessageContentType.ModifyGroupAlias_Notification, (): MessageContent => new ModifyGroupAliasNotification('', '')),
         new MessageContentRegistry('modifyGroupExtraNotification', PersistFlag.Persist, MessageContentType.ModifyGroupExtra_Notification, (): MessageContent => new ModifyGroupExtraNotification('', '')),
         new MessageContentRegistry('modifyGroupMemberExtraNotification', PersistFlag.Persist, MessageContentType.ModifyGroupMemberExtra_Notification, (): MessageContent => new ModifyGroupMemberExtraNotification('', '')),
+        new MessageContentRegistry('rejectJoinGroupNotification', PersistFlag.Persist, MessageContentType.RejectJoinGroup_Notification, (): MessageContent => new RejectJoinGroupNotification()),
         new MessageContentRegistry('quitGroupNotification', PersistFlag.Persist, MessageContentType.QuitGroup_Notification, (): MessageContent => new QuitGroupNotification('')),
         new MessageContentRegistry('quitGroupVisiableNotification', PersistFlag.Persist, MessageContentType.QuitGroup_Visible_Notification, (): MessageContent => new QuitVisiableGroupNotification('')),
         new MessageContentRegistry('transferGroupOwnerNotification', PersistFlag.Persist, MessageContentType.TransferGroupOwner_Notification, (): MessageContent => new TransferGroupOwnerNotification('', '')),
@@ -189,7 +193,9 @@ export default class MessageConfig {
         new MessageContentRegistry('joinCallRequest', PersistFlag.Transparent, MessageContentType.VOIP_Join_Call_Request, (): MessageContent => new JoinCallRequestMessageContent()),
         new MessageContentRegistry('markUnreadMessage', PersistFlag.No_Persist, MessageContentType.Mark_Unread_Sync, (): MessageContent => new MarkUnreadMessageContent()),
         new MessageContentRegistry('pcLoginRequest', PersistFlag.No_Persist, MessageContentType.PC_Login_Request, (): MessageContent => new PcLoginRequestMessageContent()),
-        new MessageContentRegistry('startSecretChat', PersistFlag.Persist_And_Count, MessageContentType.StartSecretChat_Notification, (): MessageContent => new StartSecretChatNotification()),
+        // Persist（不计未读）：android-chat 与 flutter 两侧都是 Persist，原来的 Persist_And_Count
+        // 会让这条通知在后台时弹一条「新消息来了」
+        new MessageContentRegistry('startSecretChat', PersistFlag.Persist, MessageContentType.StartSecretChat_Notification, (): MessageContent => new StartSecretChatNotification()),
         new MessageContentRegistry('richNotification', PersistFlag.Persist_And_Count, MessageContentType.Rich_Notification, (): MessageContent => new RichNotificationMessageContent()),
         new MessageContentRegistry('articlesMessageContent', PersistFlag.Persist_And_Count, MessageContentType.Articles, (): MessageContent => new ArticlesMessageContent()),
         new MessageContentRegistry('channelMenuEventMessageContent', PersistFlag.Transparent, MessageContentType.Channel_Menu_Event, (): MessageContent => new ChannelMenuEventMessageContent()),

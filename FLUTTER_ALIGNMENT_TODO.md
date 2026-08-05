@@ -636,7 +636,7 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 
 - **会话列表**：列表/未读角标/置顶/静音/删除/标记已读未读/连接状态提示/tabBar badge；长按菜单（置顶、取消置顶、标记已读、标记未读、删除）与 flutter `conversation_list_widget.dart` 一致
 - **会话页**：文本、图片、视频、语音(AMR)、文件、表情贴纸、链接、名片、合并转发、引用、@提醒（含@全体）、撤回+重新编辑、多选（逐条/合并转发、删除）、草稿、下拉加载历史、向下翻页、消息定位高亮、未读/@我提示条、正在输入提示、已读回执（含群已读详情页）、清空聊天记录、保存到相册/本地
-- **消息类型注册**：63 项（M5 补了投票消息，类型 18）
+- **消息类型注册**：64 项（M5 补了投票消息类型 18；消息层对齐补了拒绝入群通知类型 125，见 §七）
 - **通讯录**：新的朋友、群聊、频道列表、组织架构树、好友搜索/添加/删除、拼音索引
 - **群**：创建群、群名/公告、加人/踢人、退群/解散、保存到通讯录
 - **搜索**：门户（用户/联系人/群/会话消息）+ 会话内「查找聊天内容」面板（全部/文件/图片与视频/链接/日期 五个标签 + 搜索历史）
@@ -653,6 +653,10 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 flutter 有而 uni 没有的 cell_builder：`collection_cell_builder`（随 M5 接龙）、`raw_call_start_cell_builder`。
 `poll_cell_builder` 已随 M5 投票补上。其余已对齐。
 
+> `raw_call_start_cell_builder` **不用补**：那是 flutter 在没集成 avenginekit 时，
+> 400 消息落到 `RawVoipMessageContent` 的兜底渲染。uni 的 `messageConfig` 恒定注册
+> `CallStartMessageContent`，走不到这个分支。
+
 ---
 
 ## 六、执行建议
@@ -662,3 +666,76 @@ flutter 有而 uni 没有的 cell_builder：`collection_cell_builder`（随 M5 �
 3. **M5 三项（投票/接龙/网盘）可以并行插队。** 它们不碰原生、不碰主题以外的公共代码，适合在等原生插件发版时穿插做。
 4. **M7 先做可行性验证再排期。** 如果三端 avenginekit 的会议能力不齐，这一块可能要重新评估甚至砍掉。
 5. **每完成一个页面，同批补齐 i18n 词条**，不要留技术债。
+
+---
+
+## 七、消息层对齐（`wfc/messages/*` + `messageConfig.uts`）
+
+把 uni 的消息类型注册表、持久化标记、各消息的 encode/decode 与 flutter `imclient/lib/message/` 逐条对过一遍。
+
+### 关键结论：这一层不能以 flutter 为准
+
+flutter 的 imclient 是 Dart 手写移植，**有几处它自己就是错的**。判定基准应该是
+`../android-chat/client`（uni 三端插件包的就是这套原生 SDK，也是服务端实际下发的报文格式），
+flutter 只在与 android 一致时才作为参照。已确认 flutter 写错的地方：
+
+| 类型 | flutter 的实现 | 服务端实际报文（android / ios） |
+| --- | --- | --- |
+| 16 未送达 | 读 `payload.content` 当 reason | binaryContent 的 `mid`/`all`/`us`/`lme`/`lbe`/`rbe`/`rme`/`em` |
+| 124 修改群设置 | 读 `s`（map） | 读 `g`/`o`/`n`/`m` |
+| 125 拒绝入群 | 读 `m`（string）/`r`（string） | 读 `g`/`o`/`mi`（map: 用户 id → 原因码） |
+| 420 对讲邀请 | searchableContent=频道 id、pushContent=频道名 | content=callId，binaryContent 的 `h`/`t`/`d`/`p`（见 `WFCCPTTInviteMessageContent.m`） |
+
+**所以 16 / 124 / 420 三项没有补**——照抄 flutter 会得到一个永远解不出内容的类，比现在
+落到 `UnknownMessageContent` 更糟。要补的话按上表的报文格式写，别看 flutter。
+（124 在 android 侧是 `No_Persist`，本来就不入库、不渲染，补了也看不见。）
+
+### 本轮修掉的（都是 uni 侧的实际缺陷）
+
+- **类型 92 / 93 的 creator 装反了** —— `messageConfig.uts` 里 92（打招呼内容）注册的是
+  `FriendAddedNotification`、93（已成为好友）注册的是 `FriendGreetingNotification`。
+  结果这两条通知**互相显示了对方的文案**
+- **图片 / 视频 / 语音 / 表情 encode 时没写 `searchableContent`** —— android 和 flutter
+  都会写 `[图片]`/`[视频]`/`[语音]`/`[动态表情]`。服务端推送文案取的就是这个字段，
+  少了它**对端收到的推送正文是空的**；合并转发拼 searchableContent 时也会少掉这几类
+- **表情消息 `mediaType` 写死成 `File`** —— android（`STICKER`）和 flutter（`Media_Type_STICKER`）
+  都是 Sticker，会把表情传到 file 桶
+- **`AllowGroupMemberNotification` 的 `super()` 传的是 `MuteGroupMember_Notification`(118)** ——
+  应为 119。decode 时会被 `payload.type` 覆盖掉所以没暴露，但 encode 出去就是错的
+- **类型 40（开始密聊）的 flag 是 `Persist_And_Count`** —— android 和 flutter 都是 `Persist`，
+  多出来的 count 会让这条通知在后台时弹一条「新消息来了」
+- **补上类型 125（拒绝入群通知）** —— 按 android 的报文格式写，见
+  [rejectJoinGroupNotification.uts](wfc/messages/notification/rejectJoinGroupNotification.uts)。
+  它是 `NotificationMessageContent` 子类，会话页自动按灰色居中提示渲染，不用写渲染器。
+  没补之前群里会显示成「未知消息」
+
+### 刻意没动的
+
+- **类型 400（通话）的 flag 保持 `Persist`，没跟 android/flutter 改成 `Persist_And_Count`。**
+  uni 这张表里的 flag 只影响两件事：`store.notify()` 的本地通知横幅、以及 decode 失败时
+  是否兜底成 `UnknownMessageContent`；**真正的入库和未读计数由原生 SDK 决定，不看这张表**。
+  而 `notify()` 只在 App 退到后台时触发，此时来电已经由 VOIP 原生层弹了通知，
+  再加一条「新消息来了」是重复打扰。要改的话得先确认 VOIP 的通知路径
+- **12 / 31 / 71 / 72 / 408 / 416 / 417 的 flag 与 flutter 不同**——这几项 uni 与 android 一致，
+  是 flutter 把一批通知类消息统一写成了 `PERSIST`。不跟随
+- **19（投票结果）/ 25（会议纪要）/ 26（转写）** —— flutter 注册了但自己也没有 cell_builder，
+  渲染结果和不注册一样是「未知消息」。26 在 android 侧是 `Transparent`，flutter 写的 `PERSIST` 也是错的
+- **601/602（IoT）、610~613（备份/恢复）** —— 备份属 Backlog，IoT 不在移动端形态内
+
+### 验证
+
+`node scripts/check-uvue-css.js` 无新增问题；三端 `cli publish` 均编译通过。
+**真机验证待做**，清单见下。
+
+#### 消息层真机验证清单（鸿蒙优先）
+
+1. **推送正文**（最主要的一条）：A 给 B 发图片/视频/语音/表情各一条，**B 的 App 退到后台**，
+   看系统通知的正文是不是 `[图片]`/`[视频]`/`[语音]`/`[动态表情]`，而不是空白
+2. **表情发送**：发一条表情贴纸，对端能正常显示（mediaType 改了，走的是 sticker 桶，
+   **重点确认图还能拉出来**，历史消息不受影响）
+3. **好友通知文案**：加一个新好友，会话里那两条通知——打招呼那条显示「以上是打招呼的内容」，
+   成为好友那条显示「你们已经是好友了，可以开始聊天了。」（**改之前是反的**）
+4. **合并转发**：多选几条图片/语音合并转发，转发出去的消息在会话列表的摘要里能看到内容
+5. **拒绝入群**：在其他端（PC/Android）把某人的入群申请拒掉，uni 这边的群里应显示
+   「XXX 拒绝了 YYY 的入群申请」，而不是「未知消息」
+6. **回归**：普通图片/视频/语音/文件/表情的收发、会话列表摘要、群通知类消息的灰条文案各扫一遍

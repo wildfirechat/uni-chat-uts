@@ -24,6 +24,7 @@ export default class VideoMessageContent extends MediaMessageContent {
 
     override encode(): MessagePayload {
         const payload = super.encode();
+        payload.searchableContent = '[视频]';
         payload.binaryContent = this.thumbnail;
         const obj = {
             d: this.duration,
