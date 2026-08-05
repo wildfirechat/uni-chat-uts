@@ -3,7 +3,7 @@
 > **基线**：`../flutter-chat` 的移动端形态（`chat/lib` 去掉 `pc/` 目录 + `moment/` 模块）。
 > **本文档取代** `FEATURE_GAP_TODO.md`（那份以 `../android-chat` 为基线，已不适用，可删除）。
 > **最后核对**：2026-08-05，对照 flutter-chat 分支当前状态。
-> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除两项（入群申请审批 / 群二维码，见 M2 小节）。
+> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除三项（创建/搜索频道、登录页补齐、外部域，见 M4 小节）。
 
 ---
 
@@ -103,8 +103,9 @@
 
 ```bash
 node scripts/check-uvue-css.js                      # 样式子集校验（分平台、分 vapor）
-/Applications/HBuilderX.app/Contents/MacOS/cli publish app-android --type appResource --project .
+/Applications/HBuilderX.app/Contents/MacOS/cli publish app-android --type appResource --project uni-chat-uts
 # 把 app-android 换成 app-harmony / app-ios 各跑一次，约 15~30 秒一轮
+# 注意 --project 传的是**工程名**不是路径，写 `--project .` 会报「项目 . 不存在」
 ```
 
 `cli publish` 需要 HBuilderX 在后台运行。**没被任何页面引用的组件不会参与编译**，新组件要么接进页面，要么临时挂一个页面进 pages.json 编一次再摘掉。
@@ -220,7 +221,7 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 
 - **入群申请审批** `[SDK❌]` —— flutter `group/join_group_request_screen.dart`（410 行）。门面缺 4 个 API（见 §4），三端原生插件要各改一遍再重打包，按「原生改动攒批做」和 M6 的 `sendMomentsRequest`、M4 的 `getDomainInfo` 一起做。
   - ⚠️ **已知副作用**：群管理页的「加群方式」现在可以选到「需管理员验证」，但这一端批不了申请，得去其他端处理。
-- **群二维码** `[平台]` —— 项目里没有二维码生成能力，要先在 uts 里写 QR 编码器（约 500 行）+ canvas 绘制。挪到 M4 与「我的二维码」一起做，共用同一套能力。所以群信息页现在**没有**「群二维码」这一行 —— 宁可不放入口，也不放一个点了弹「暂未实现」的行。
+- ~~**群二维码** `[平台]`~~ —— **M4 已补**：编码器见 [common/qrcode.uts](common/qrcode.uts)，页面见 [GroupQrCodePage](pages/conversation/GroupQrCodePage.uvue)，群信息页的入口也已接上。（当时判断要与「我的二维码」共用能力，后来核对发现 flutter 移动端根本没有「我的二维码」，见 M4 小节的核对表。最终没走 canvas，用 view 游程渲染。）
 - **会话链接入口** —— 链接页本来就归 M3，那页落地时再把三个会话信息页的入口一起补上。
 
 #### M2 真机验证清单（鸿蒙优先）
@@ -332,27 +333,125 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 
 ### M4 · 通讯录、用户、登录
 
-- [ ] **用户详情页补齐** `[UI]`
-  - flutter 参考：`user_info_widget.dart`（747 行）
-  - 缺：更多信息、所在组织、朋友圈入口（依赖 M6）、黑名单开关、用户二维码
-- [ ] **收藏的群** `[UI]` — `contact/fav_groups.dart`，SDK 已有 `getFavGroupList` / `setFavGroup`
-- [ ] **邀请好友** `[UI]` — `contact/invite_friend.dart`
-- [ ] **组织架构补齐** `[UI]`
-  - flutter 参考：`organization/organization_screen.dart`（554 行）+ `organization_cache.dart`
-  - 缺：员工详情、部门成员列表、从组织架构选人
-- [ ] **外部域 / 互联互通** `[SDK❌ getDomainInfo]`
-  - flutter 参考：`mesh/domain_list_screen.dart`、`mesh/domain_profile_screen.dart`（合计 452 行，较小）
-- [ ] **频道补齐** `[UI]` — 频道详情/订阅、创建频道、搜索频道，SDK 均已有
-- [ ] **二维码生成与扫码分支** `[平台]`
-  - 我的二维码 / 群二维码生成（与 M2 共用 canvas 方案）
-  - 扫码结果分支：现在 [main-action-menu.uvue](components/main-action-menu/main-action-menu.uvue) 只处理用户，需补 群、频道、**PC 扫码登录**
-- [ ] **移动端管理 PC** `[API❌]`
-  - [x] 在线设备列表 + 踢下线 — **M3 已做**，见 [PcOnlineDevicesPage](pages/me/PcOnlineDevicesPage.uvue)（会话列表的 PC 在线横幅要有落点）
-  - [ ] 扫码登录 PC 确认页：需补 `/confirm_pc`、`/cancel_pc`、`/pc_session`
-- [ ] **登录页补齐** `[API❌]`
-  - flutter 参考：`login_screen.dart`
-  - 缺：密码登录 + 登录方式切换（`/login_pwd` 已有）、用户协议/隐私政策勾选、找回密码（需补 `/send_reset_code`、`/reset_pwd`）
-  - 滑块验证 `widget/slide_verify_dialog.dart`（451 行，含拖拽动画）—— uni 侧只有 `transition` 没有 `animation`，实现要简化，可接受
+**大部分代码侧已完成**（`check-uvue-css` + 三端 `cli publish` 全通过），**真机验证待做**。
+剩余三项见本节末尾「本轮没做的」。
+
+排期时对 flutter 的几处判断在落地核对时被推翻了，先记在这里，后面的条目按修正后的范围写：
+
+| 原计划 | 核对结果 |
+| --- | --- |
+| 「我的二维码」 | **flutter 移动端没有这个功能**。全项目只有两处 `QrImageView`：`conversation/group_qrcode_screen.dart`（群二维码，在范围内）和 `pc/pc_qr_login_screen.dart`（桌面登录页，§1 已排除）。用户详情页也没有二维码入口 —— 所以只做群二维码 |
+| 「找回密码」 | **flutter 没有对应页面**。`app_server.dart` 里有 `sendResetCode` / `resetPassword`，但全项目零调用方，移动端登录页只有验证码/密码两种登录。对齐 flutter 就不该做；真要做属于产品新增，不算对齐 |
+| 用户详情页的「更多信息」 | flutter 有这一行，但 onTap 是 `showToast(methodNotImpl)`，它自己也没实现。按 §M2「宁可不放入口，也不放一个点了弹『暂未实现』的行」**不放** |
+| 「收藏的群」是空白 | **早就有了**：[GroupListPage](pages/contact/GroupListPage.uvue) + [GroupListView](pages/contact/GroupListView.uvue) 读的就是 `wfc.getFavGroupList()`，等价于 flutter 的 `FavGroupsPage`；[ChannelListPage](pages/contact/ChannelListPage.uvue) 同理等价于 `SubscribedChannelsPage`。只是行高/字号还是老版式，这轮没动 |
+
+#### 已完成
+
+- [x] **消息长按菜单形态对齐** `[UI]` — 新增 [popup-menu](components/popup-menu/popup-menu.uvue) ← `widget/popup_menu_overlay.dart`
+  - 原来是 chunLei-popups 的深色**竖排纯文字列表**，flutter 是**深色卡片 + 4 列图标网格 + 指向气泡的小三角**，形态完全不同
+  - 菜单项顺序按 flutter `buildMessageMenuItems`：删除 → 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报；uni 多出的两项（远程删除、保存）紧跟各自同类项
+  - **会话列表的长按菜单不动** —— flutter 那边用的是 Material `showMenu`（浅色纯文字），chunLei-popups 已经对得上，两者本来就不是同一个形态
+  - `PopupMenuItem` 挪到 [common/popupMenu.uts](common/popupMenu.uts)，两个菜单组件共用
+- [x] **选人页对齐** `[UI]` — [PickUserPage](pages/pick/PickUserPage.uvue) ← `contact/pick_user_screen.dart`
+  - 确认按钮从底部面板挪到标题栏右上角「完成(n)」；已选的人改成头像内嵌在搜索框左侧（flutter 没有那块底部面板）
+  - 补上右侧字母索引条、`maxSelected` 上限、「从组织架构选择」入口
+  - 调用方按 flutter 对齐了标题与开关：发起群聊 / 添加群成员（保留组织入口）/ 移除群成员（`showOrganizationEntry: false`）
+  - [NavBar](pages/common/NavBar.uvue) 补 `rightText` / `rightTextDisabled` / `interceptBack` ← `widget/app_bar_actions.dart`
+- [x] **用户详情页重做** `[UI]` — [UserDetailPage](pages/contact/UserDetailPage.uvue) ← `user_info_widget.dart` 的 `_buildMobileBody`
+  - 原来是「备注名/野火ID/地区/标签」四行表格 + 一排底部图标，与 flutter 不是一个版式
+  - 现在：头像卡片（含备注行、野火号、星标图标）→ 所在组织 → 设置备注/修改昵称 → 发消息/加好友 + 音视频通话
+  - 右上角菜单（加入/移出黑名单、设为/取消星标朋友、删除好友、添加好友）复用 popup-menu，不再引入第二种菜单形态
+  - 朋友圈入口依赖 M6，暂缺
+- [x] **邀请好友** `[UI]` — [InviteFriendPage](pages/contact/InviteFriendPage.uvue) ← `contact/invite_friend.dart`
+  - 原来「添加好友」是拿写死的「你好，我是xxx」直接发出去，没给用户填的机会
+- [x] **组织架构补齐** `[UI]` — [OrganizationPage](pages/contact/OrganizationPage.uvue) ← `organization/organization_screen.dart`，取代原 `OrganizationTreePage`
+  - 补上：搜索部门成员（300ms 防抖）、下级部门/成员分组、层级内后退（返回键先退一级）、**选人模式**（选人页的组织入口落点）
+  - 新增 [api/organizationModel.uts](api/organizationModel.uts) 把 `UTSJSONObject` 取值收成类型化模型，三个调用方共用
+  - **顺带修掉两个接口参数 bug**：`getOrgEmployees` 传的是 `ids` 应为 `id`；`searchEmployee` 少传 `count`/`page` 且返回体是 `{contents:[...]}` 没解包 —— 两者都会让接口静默返回空
+- [x] **二维码生成** `[平台]` — [common/qrcode.uts](common/qrcode.uts) + [qr-code](components/qr-code/qr-code.uvue) + [GroupQrCodePage](pages/conversation/GroupQrCodePage.uvue)
+  - 群信息页补上「群二维码」这一行（M2 欠的那项）
+- [x] **扫码结果分支补齐** `[UI]` — [main-action-menu](components/main-action-menu/main-action-menu.uvue) ← `home.dart _handleQrCode`
+  - 原来只认用户二维码，现在补齐 群 / 频道 / PC 扫码登录 / 会议（会议属 M7，如实提示不支持）
+  - `WfcScheme` 补 `buildGroupLink` / `parse` / `queryParam`
+- [x] **扫码后的三个落地页**（不补的话扫码分支就是死链）
+  - [PcLoginConfirmPage](pages/me/PcLoginConfirmPage.uvue) ← `pc/pc_login_screen.dart`（文件在 `pc/` 下但**是手机上的页面**，属对齐范围）；`appServerApi` 补 `/scan_pc/{token}`、`/confirm_pc`、`/cancel_pc`
+  - [GroupInfoPage](pages/conversation/GroupInfoPage.uvue) ← `group/group_info_screen.dart`，扫群码后的加群预览页
+  - [ChannelDetailPage](pages/contact/ChannelDetailPage.uvue) ← `channel/channel_info_widget.dart`，频道详情 + 订阅/取消订阅
+- [x] **通话入口抽公共** — [common/avcall.uts](common/avcall.uts) ← `call/av_call_launcher.dart`，会话页和用户详情页共用
+
+#### 本轮没做的
+
+- [ ] **创建频道 / 搜索频道** `[UI]` — `channel/search_channel.dart`，SDK 的 `createChannel` / `searchChannel` 都有。频道详情页已落地，这两个是它的上游入口
+- [ ] **登录页补齐** `[API❌]` — 密码登录 + 登录方式切换（`/login_pwd` 已有）、用户协议/隐私政策勾选、滑块验证
+  - 铺垫已经做了：`Config` 补了 `USER_AGREEMENT_URL` / `PRIVACY_AGREEMENT_URL` / `ENABLE_SLIDE_VERIFY` / `PREFER_PASSWORD_LOGIN`，设置页那两个写死的地址也改成读 Config
+  - 滑块验证 `widget/slide_verify_dialog.dart`（451 行）需要 `/slide_verify/generate`、`/slide_verify/verify`；uni 侧只有 `transition` 没有 `animation`，实现要简化，可接受
+  - **找回密码不做**，理由见本节开头的核对表
+- [ ] **外部域 / 互联互通** `[SDK❌ getDomainInfo]` — 仍按「原生改动攒批做」的原则，和 M2 的入群申请审批、M6 的 `sendMomentsRequest` 一起做
+- [ ] 收藏的群 / 订阅的频道两页的**行版式**（56px 行高 + 40px 头像 + 16px 标题）还是老样式，功能等价但不够贴 flutter
+- [ ] 消息转发页对齐（新增）
+
+#### 二维码是怎么验证的（这块没法靠肉眼看）
+
+项目里没有二维码能力，编码器是新写的约 500 行位运算，写错了不会报错、只会生成一张扫不出来的图。
+所以落地前先在 JS 里写了同一套逻辑做对拍，三层验证：
+
+1. **Reed-Solomon 纠错码**：用 ISO/IEC 18004 附录 I 的标准例子（1-M）逐字节比对，完全一致
+   （顺带发现临时写来交叉验证的那份 Python 实现才是错的，标准向量把它挡下来了）
+2. **UTS 版与验证过的 JS 原型逐位一致**：242 条样本（含中文、emoji）矩阵完全相同 —— 保证转写没走样
+3. **端到端解码**：渲染成图后用 OpenCV 解码，240 条真实业务 payload 成功 237 条；
+   同一批 payload 用 segno（成熟参考实现）编码再解码是 238 条 —— **两者统计上没有差别**，
+   剩下的失败是识别器本身在该尺寸上的抖动，不是编码错误
+
+> 副产品结论：**纠错级别用 M 而不是 flutter 的 L**。实测 L 档在识别器上明显更容易失败（我的实现和 segno
+> 都会掉 3~4 成），M 档两者都稳定在 99%。二维码是满屏展示的，尺寸不紧张，多点冗余换识别率划算。
+
+**以上都是桌面端对拍，真机上还要用系统相机/各端扫码库实际扫一次。**
+
+#### 与 flutter 的刻意差异
+
+- **长按菜单锚点是触点不是气泡矩形**：flutter 传气泡的全局 Rect，vapor 下本项目没有用过 element API、
+  拿不到节点矩形，所以传 longpress 的触点。效果是三角指向手指而不是气泡中心，更贴手
+- **字母索引条只支持点击，不支持按住滑动**：flutter `SidebarIndex` 按住时屏幕中央有大字母气泡，
+  uni 侧索引条是一排独立 view，拿不到「手指滑过第几个」而不引入手势换算
+- **组织架构没有缓存层**：flutter 有跨页的 `OrganizationCache`，移动端一次只看一个部门，
+  进出重拉一次的代价小于维护缓存一致性
+- **二维码用 view 画不用 canvas**：canvas 要拿 `getContext('2d')` 就得走 element API，
+  本项目是 vapor 模式且全项目没有先例；按行做游程合并后节点数从 1089（v4 逐模块）降到两三百
+- **单选仍是独立页**：flutter 的 `maxSelected == 1` 复用同一个选人页，uni 侧 `PickSingleUserPage` 一直是独立的，保持不动
+
+#### 落地时踩到的三个坑
+
+1. **`defineOptions({...})` 里最后一个属性后面不能留注释。** Android 端的 SFC 转换会把尾随注释甩到对象
+   字面量外面，生成 `}\n// 注释\n, props, {` 这种残缺代码，报
+   `Unexpected token ':' ... for the computed key`，而且**报的是编译产物的行号**，很难定位。
+   鸿蒙（vapor）那条编译路径完全不受影响 —— 只编鸿蒙会漏掉这个错。
+2. **`check-uvue-css.js` 查不出非法选择器。** 它只校验属性名，`.org-row .row-title` 这种**后代选择器**
+   （uni-app x 不支持）它一声不吭，只有 `cli publish` 会报 `Invalid selector`。
+   要截断的文字自己 `flex: 1`，不要靠后代选择器补样式。
+3. **`cli publish --project` 传的是工程名不是路径。** §M0 那条命令里写的 `--project .` 实际会报
+   「项目 . 不存在，请先导入」，要写 `--project uni-chat-uts`。
+
+#### M4 真机验证清单（鸿蒙优先）
+
+1. **消息长按菜单**：长按任意消息 → 深色卡片 + 4 列图标网格，三角指向手指；靠近屏幕顶部的消息菜单应翻到下方；
+   点空白关闭、点菜单项执行；**图标不能是豆腐块方框**（码位没收进字体就会这样）
+2. **选人页**：从「+ → 发起群聊」进 —— 标题「发起群聊」，右上角「确定(n)」随选中数变化；
+   已选的人以头像出现在搜索框左侧，点头像可取消；右侧字母索引条点某字母能跳到该段；
+   配了组织服务时顶部有「从组织架构选择」，进去选完人回来能并进已选
+3. **添加/移除群成员**：群信息页 → 添加成员，已在群里的显示为勾选且点不动；移除成员页**不应有**组织架构入口
+4. **组织架构**：通讯录 → 组织 → 逐级进部门，面包屑跟着变、点上级能回上级；
+   **在下级部门时按返回键是退一级而不是关页面**，退到根部门再按才关；搜索框输入 300ms 后出成员
+5. **用户详情**：头像/昵称/备注行/野火号；右上角菜单四项都生效（拉黑、星标、删好友、加好友）；
+   点「添加好友」进邀请页填理由后能发出去；星标后名字右边出现黄色星
+6. **群二维码**：群信息页 → 群二维码 → **用另一台手机的微信/系统相机扫，能识别出 `wildfirechat://group/...`**；
+   深色模式下二维码区域仍是白底黑码
+7. **扫码分支**：分别扫 用户码 / 群码 / 频道码 / PC 登录码，各自进对应页面；
+   扫群码进的是「加入群聊」预览页（不是会话信息页），点加入能进群
+8. **PC 扫码登录**：PC 端打开登录二维码 → 手机扫 → 确认页显示电脑图标 → 点「登录」PC 端登录成功；
+   点「取消登录」PC 端应回到未登录态
+9. **频道详情**：从频道列表或扫码进入，订阅/取消订阅切换正常，已订阅时才有「进入会话」
+10. **深色模式 + 最大字号**：把上面每页再扫一遍，重点看**长按菜单的 4 列格子**（最大档最容易把文字挤出格）
+    和**选人页搜索框**（已选头像 + 输入框同处一行，头像多了会不会把输入框挤没）
 
 ---
 
@@ -438,7 +537,9 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 ### 只需改 `api/appServerApi.uts`（纯 HTTP，无原生工作量）
 
 - 已补（M1）：`/send_destroy_code`、`/destroy`、`/fav/list`、`/fav/add`、`/fav/del/{id}`
-- 待补：`/send_reset_code`、`/reset_pwd`、`/change_name`、`/confirm_pc`、`/cancel_pc`、`/pc_session`、`/conference/*`、`/group/members_for_portrait`
+- 已补（M4）：`/scan_pc/{token}`、`/confirm_pc`、`/cancel_pc`
+- 待补：`/change_name`、`/slide_verify/generate`、`/slide_verify/verify`（登录页滑块）、`/pc_session`（PC 端生成二维码用，手机侧用不到）、`/conference/*`、`/group/members_for_portrait`
+- **不补**：`/send_reset_code`、`/reset_pwd` —— flutter 里有这两个封装但零调用方，移动端没有找回密码页面，见 M4 小节
 
 M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`，见 [common/asr.uts](common/asr.uts)）
 
@@ -467,7 +568,10 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 - **搜索**：门户（用户/联系人/群/会话消息）+ 会话内「查找聊天内容」面板（全部/文件/图片与视频/链接/日期 五个标签 + 搜索历史）
 - **工作台**：WebView + JS bridge
 - **音视频**：单人/多人通话、对讲 PTT
-- **其他**：扫一扫（仅用户二维码）、头像上传、UniPush clientId 上报
+- **其他**：扫一扫（用户/群/频道/PC 扫码登录四类分支齐全）、群二维码生成、头像上传、UniPush clientId 上报
+- **通讯录/用户**：用户详情页（备注、星标朋友、黑名单、所在组织、发消息/加好友/音视频通话）、邀请好友、组织架构（面包屑/搜索/分组/选人模式）
+- **选人**：多选页（标题栏「完成(n)」、已选头像内嵌搜索框、字母索引、maxSelected、从组织架构选择）
+- **PC**：在线设备列表 + 踢下线、扫码登录确认
 
 ### 渲染器差距（22 vs 16）
 

@@ -54,7 +54,10 @@
         {
             "path": "pages/conversation/message/forward/ForwardMessagePage",
             "style": {
-                "navigationBarTitleText": "消息转发"
+                "navigationBarTitleText": "消息转发",
+                // 标题随单选/多选切换、右上角还有切换按钮，只能自定义导航栏
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {

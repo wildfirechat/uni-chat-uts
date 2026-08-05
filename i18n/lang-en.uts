@@ -191,6 +191,28 @@ export default {
         "pick_contact": "Select Contact",
         "picked_contact": "Selected contact"
     },
+    "forward": {
+        "pick_one_chat": "Select a Chat",
+        "pick_multiple_chats": "Select Multiple Chats",
+        "single_select": "Single Select",
+        "multi_select": "Multi Select",
+        "recent_chats": "Recent Chats",
+        "create_group_chat": "Create Group Chat",
+        "friends": "Friends",
+        "groups": "Group",
+        "no_search_result": "No result found",
+        "selected_chats_count": "Selected {0} chats",
+        "send_with_count": "Send({0})",
+        "send_to": "Send to:",
+        "leave_message": "Leave a message",
+        "message_tag": "[Message]",
+        "chat_history_tag": "[Chat History]",
+        "one_by_one": "Forward One by One",
+        "combined": "Forward Combined",
+        "total_messages": "Total {0} messages",
+        "group_name_etc": "{0} etc.",
+        "create_group_fail": "Failed to create: {0}"
+    },
     "search": {
         "new_user": "New User",
         "view_all": "View All",

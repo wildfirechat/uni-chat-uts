@@ -191,6 +191,28 @@ export default {
         "pick_contact": "選擇聯系人",
         "picked_contact": "已選擇聯系人"
     },
+    "forward": {
+        "pick_one_chat": "選擇一個聊天",
+        "pick_multiple_chats": "選擇多個聊天",
+        "single_select": "單選",
+        "multi_select": "多選",
+        "recent_chats": "最近聊天",
+        "create_group_chat": "創建群聊",
+        "friends": "好友",
+        "groups": "群組",
+        "no_search_result": "沒有搜索到結果",
+        "selected_chats_count": "已選擇{0}個聊天",
+        "send_with_count": "發送({0})",
+        "send_to": "發送給：",
+        "leave_message": "給朋友留言",
+        "message_tag": "[消息]",
+        "chat_history_tag": "[聊天記錄]",
+        "one_by_one": "逐條轉發",
+        "combined": "合並轉發",
+        "total_messages": "共{0}條消息",
+        "group_name_etc": "{0}等",
+        "create_group_fail": "創建失敗：{0}"
+    },
     "search": {
         "new_user": "新用戶",
         "view_all": "查看全部",

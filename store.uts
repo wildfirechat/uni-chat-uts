@@ -1346,16 +1346,6 @@ class Store {
         }
     }
 
-    forwardByCreateConversation(forwardType: number, users: UserInfo[], messages: Message[], extraMessageText: string = ''): void {
-        this.createConversation(users,
-            (conversation: Conversation) => {
-                this.forwardMessage(forwardType, [conversation], messages, extraMessageText)
-            },
-            (err: number) => {
-                console.error('createConversation error', err)
-            })
-    }
-
     setShouldAutoScrollToBottom(scroll: boolean): void {
         conversationState.shouldAutoScrollToBottom = scroll;
     }

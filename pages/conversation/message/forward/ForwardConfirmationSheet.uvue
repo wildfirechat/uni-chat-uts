@@ -1,0 +1,373 @@
+<template>
+    <view v-if="modelValue" class="mask" :style="{ backgroundColor: c.scrim, paddingBottom: maskPaddingBottom + 'px' }"
+        @tap="close">
+        <view class="sheet" :style="{ backgroundColor: c.popupBg }" @tap.stop="noop">
+            <text class="sheet-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ sendToLabel }}</text>
+
+            <!-- 目标：一个直接排一行，多个时限高滚动 -->
+            <view v-if="targets.length == 1" class="target-row">
+                <image class="target-portrait" mode="aspectFill" :src="portraitOf(targets[0])"
+                    :style="{ backgroundColor: c.inputBg }" />
+                <text class="target-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ titleOf(targets[0]) }}</text>
+            </view>
+            <scroll-view v-else class="target-list" direction="vertical">
+                <view v-for="(target, index) in targets" :key="index" class="target-row-wrapper">
+                    <view class="target-row">
+                        <image class="target-portrait" mode="aspectFill" :src="portraitOf(target)"
+                            :style="{ backgroundColor: c.inputBg }" />
+                        <text class="target-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ titleOf(target) }}</text>
+                    </view>
+                    <view v-if="index < targets.length - 1" class="target-divider"
+                        :style="{ backgroundColor: c.hairlineSoft }"></view>
+                </view>
+            </scroll-view>
+
+            <!-- 待转发内容预览 -->
+            <view v-if="messages.length > 0" class="preview" :style="{ backgroundColor: c.inputBg }">
+                <view v-if="previewThumbnail != ''" class="preview-thumb-box">
+                    <image class="preview-thumb" mode="aspectFill" :src="previewThumbnail" />
+                    <text v-if="previewIsVideo" class="icomoon preview-play" :style="{ color: c.onAccent }">&#xf488;</text>
+                </view>
+                <text class="preview-text" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ previewText }}</text>
+            </view>
+
+            <!-- 留言 -->
+            <view class="comment-box" :style="{ backgroundColor: c.inputBg }">
+                <input class="comment-input" type="text" v-model="comment" :adjust-position="false"
+                    :placeholder="leaveMessageLabel" :placeholder-style="placeholderStyle"
+                    :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }" />
+            </view>
+
+            <view class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+
+            <view class="actions">
+                <view class="action-button" :style="{ backgroundColor: c.buttonSecondaryBg }" @tap="close">
+                    <text :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ cancelLabel }}</text>
+                </view>
+                <view class="action-gap"></view>
+                <view class="action-button" :style="{ backgroundColor: c.accent }" @tap="confirm">
+                    <text :style="{ color: c.onAccent, fontSize: fontPx(FONT_LG) }">{{ sendLabel }}</text>
+                </view>
+            </view>
+
+            <view class="safe-area" :style="{ height: safeAreaBottom + 'px' }"></view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 转发确认弹层：发送给谁 + 转发内容预览 + 留言 + 取消/发送。
+ * 对齐 `../flutter-chat/chat/lib/conversation/forward_confirmation_sheet.dart`。
+ *
+ * 与 flutter 的三处刻意差异：
+ * - 没有上滑入场动画（同 bottom-action-sheet，理由见那份组件的注释）
+ * - 预览文字 flutter 是 `maxLines: 3` + 省略号；`lines` 在鸿蒙 vapor 下失效，
+ *   这里改成限高 + 溢出裁掉，没有省略号
+ * - 键盘避让自己接管：给留言框设 `adjust-position="false"`，键盘弹起时用等高的
+ *   padding 把整个弹层顶上去。position:fixed 的浮层交给系统避让在三端表现不一致
+ */
+import store from "@/store.uts";
+import Config from "@/config.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import Message from "@/wfc/messages/message.uts";
+import CompositeMessageContent from "@/wfc/messages/compositeMessageContent.uts";
+import ImageMessageContent from "@/wfc/messages/imageMessageContent.uts";
+import VideoMessageContent from "@/wfc/messages/videoMessageContent.uts";
+import ForwardType from "./ForwardType.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "ForwardConfirmationSheet"
+})
+
+const props = withDefaults(defineProps<{
+    modelValue?: boolean
+    targets?: Conversation[]
+    messages?: Message[]
+    forwardType?: number
+}>(), {
+    modelValue: false,
+    targets: (): Conversation[] => [] as Conversation[],
+    messages: (): Message[] => [] as Message[],
+    forwardType: 0
+})
+
+const emit = defineEmits(['update:modelValue', 'confirm'])
+
+const c = computed<AppColors>((): AppColors => colors())
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
+const sendToLabel = computed<string>((): string => t('forward.send_to'))
+const leaveMessageLabel = computed<string>((): string => t('forward.leave_message'))
+const cancelLabel = computed<string>((): string => t('common.cancel'))
+const sendLabel = computed<string>((): string => t('common.send'))
+
+const comment = ref<string>('')
+const keyboardHeight = ref<number>(0)
+let keyboardHeightChangeId = 0
+
+const safeAreaBottom = uni.getWindowInfo().safeAreaInsets.bottom
+
+// 键盘弹起时把弹层整体抬到键盘上方；收起时只留底部安全区（安全区由 .safe-area 补）
+const maskPaddingBottom = computed<number>((): number => keyboardHeight.value)
+
+onMounted(() => {
+    keyboardHeightChangeId = uni.onKeyboardHeightChange((res) => {
+        keyboardHeight.value = res.height
+    })
+})
+
+onUnmounted(() => {
+    if (keyboardHeightChangeId != 0) {
+        uni.offKeyboardHeightChange(keyboardHeightChangeId)
+        keyboardHeightChangeId = 0
+    }
+})
+
+// 每次弹出都是一次新的转发，留言不该留着上一次的
+watch(() => props.modelValue, (visible: boolean, _old: boolean) => {
+    if (visible) {
+        comment.value = ''
+    }
+})
+
+const titleOf = (conversation: Conversation): string => {
+    const target = store.ensureConversationTarget(conversation)
+    return target != null ? target._displayName : ''
+}
+
+const portraitOf = (conversation: Conversation): string => {
+    const target = store.ensureConversationTarget(conversation)
+    const portrait = target != null ? target.portrait : ''
+    if (portrait != '') {
+        return portrait
+    }
+    return conversation.type == ConversationType.Single ? Config.DEFAULT_PORTRAIT_URL : Config.DEFAULT_GROUP_PORTRAIT_URL
+}
+
+const firstContentThumbnail = computed<string>((): string => {
+    if (props.messages.length == 0) {
+        return ''
+    }
+    const content = props.messages[0].messageContent
+    if (content instanceof ImageMessageContent) {
+        return (content as ImageMessageContent).thumbnail
+    }
+    if (content instanceof VideoMessageContent) {
+        return (content as VideoMessageContent).thumbnail
+    }
+    return ''
+})
+
+const previewIsVideo = computed<boolean>((): boolean => {
+    if (props.messages.length == 0) {
+        return false
+    }
+    return props.messages[0].messageContent instanceof VideoMessageContent
+})
+
+/** 缩略图优先用消息自带的 base64，没有时退回图片消息的远端地址 */
+const previewThumbnail = computed<string>((): string => {
+    const thumbnail = firstContentThumbnail.value
+    if (thumbnail != '') {
+        return 'data:image/jpeg;base64,' + thumbnail
+    }
+    if (props.messages.length == 0) {
+        return ''
+    }
+    const content = props.messages[0].messageContent
+    if (content instanceof ImageMessageContent) {
+        return (content as ImageMessageContent).remotePath
+    }
+    return ''
+})
+
+const previewText = computed<string>((): string => {
+    const messages = props.messages
+    if (messages.length == 0) {
+        return ''
+    }
+    if (messages.length == 1) {
+        const message = messages[0]
+        return message.messageContent.digest(message)
+    }
+    if (messages[0].messageContent instanceof CompositeMessageContent) {
+        return t('forward.chat_history_tag')
+    }
+    const tag = props.forwardType == ForwardType.ONE_BY_ONE ? t('forward.one_by_one') : t('forward.combined')
+    return '[' + tag + '] ' + t1('forward.total_messages', '' + messages.length)
+})
+
+const noop = () => { }
+
+const close = () => {
+    emit('update:modelValue', false)
+}
+
+const confirm = () => {
+    const text = comment.value
+    emit('update:modelValue', false)
+    emit('confirm', text)
+}
+</script>
+
+<style scoped>
+/* 组件吃不到全局 class（样式隔离 2.0），图标字体自己声明一份 */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.sheet {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    overflow: hidden;
+}
+
+.sheet-title {
+    padding: 16px;
+    font-weight: bold;
+}
+
+.target-list {
+    width: 100%;
+    max-height: 200px;
+}
+
+.target-row-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.target-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 16px;
+}
+
+.target-portrait {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+/* 要截断的文字自己 flex:1；单行截断用 white-space，lines 在鸿蒙 vapor 下无效 */
+.target-title {
+    flex: 1;
+    margin-left: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 分隔线缩进 = 16(左边距) + 40(头像) + 12(间距)，排在行下面走正常流 */
+.target-divider {
+    height: 0.5px;
+    margin-left: 68px;
+}
+
+.preview {
+    margin: 12px 16px;
+    padding: 12px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.preview-thumb-box {
+    width: 64px;
+    height: 64px;
+    margin-right: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.preview-thumb {
+    width: 64px;
+    height: 64px;
+}
+
+.preview-play {
+    position: absolute;
+    font-size: 28px;
+}
+
+/* 三行封顶：flutter 是 maxLines:3 + 省略号，鸿蒙 vapor 没有 lines，改为限高裁切 */
+.preview-text {
+    flex: 1;
+    max-height: 63px;
+    overflow: hidden;
+}
+
+.comment-box {
+    margin: 8px 16px;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.comment-input {
+    width: 100%;
+    height: 24px;
+}
+
+.divider {
+    height: 0.5px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 16px 16px 16px;
+}
+
+.action-button {
+    flex: 1;
+    height: 48px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-gap {
+    width: 12px;
+}
+
+.safe-area {
+    width: 100%;
+}
+</style>

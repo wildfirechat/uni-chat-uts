@@ -1,51 +1,368 @@
 <template>
-    <view class="forward-page">
-        <ForwardMessageByPickConversationView v-if="forwardTargetType == 'pickConversation' && messages.length > 0"
-            :messages="messages" @forward-target-type="changeForwardTargetType" :forward-type="forwardType" />
-        <ForwardMessageByCreateConversationView v-if="forwardTargetType != 'pickConversation' && messages.length > 0"
-            :messages="messages" @forward-target-type="changeForwardTargetType" :forward-type="forwardType" />
+    <view class="forward-page" :style="{ backgroundColor: c.conversationBg }">
+        <NavBar :title="pageTitle" :showBack="true" :rightText="selectModeLabel" @rightTextTap="toggleMultiSelect" />
+
+        <!--
+            已选头像 + 搜索框同处一条（对齐 flutter forward/widgets/forward_search_bar.dart）：
+            头像横向滚动区限宽，输入框占剩下的部分。单选态没有已选头像。
+        -->
+        <view class="search-bar" :style="{ backgroundColor: c.surface }">
+            <view class="search-box" :style="{ backgroundColor: c.inputBg }">
+                <text class="icomoon search-icon" :style="{ color: c.iconSecondary, fontSize: iconPx(16) }">&#xf21f;</text>
+                <scroll-view v-if="pickedConversations.length > 0" class="picked-strip" direction="horizontal"
+                    :style="{ width: pickedStripWidth + 'px' }">
+                    <view class="picked-strip-inner">
+                        <image v-for="(conversation, index) in pickedConversations" :key="index" class="picked-avatar"
+                            mode="aspectFill" :src="portraitOf(conversation)" :style="{ backgroundColor: c.inputBg }"
+                            @tap="onTargetTap(conversation)" />
+                    </view>
+                </scroll-view>
+                <input class="search-input" type="text" v-model="searchText" :placeholder="searchPlaceholder"
+                    :placeholder-style="placeholderStyle" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }" />
+            </view>
+        </view>
+
+        <list-view class="target-list" direction="vertical">
+            <ForwardTargetListView :conversation-infos="conversationInfos" :search-text="searchText"
+                :searched-friends="searchedFriends" :searched-groups="searchedGroups" :multi-select="isMultiSelect"
+                :selected-conversations="pickedConversations" @targetTap="onTargetTap"
+                @createGroupTap="onCreateGroupTap" />
+        </list-view>
+
+        <!-- 多选态底栏：已选数量 + 发送(n)。单选态点一行就直接弹确认框，不需要底栏 -->
+        <view v-if="isMultiSelect" class="bottom-bar"
+            :style="{ backgroundColor: c.surface, borderTopColor: c.hairlineSoft, paddingBottom: safeAreaBottom + 'px' }">
+            <view class="bottom-bar-inner">
+                <text class="selected-count" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">{{ selectedCountLabel }}</text>
+                <view class="send-button"
+                    :style="{ backgroundColor: hasSelection ? c.accent : c.buttonSecondaryBg }" @tap="onSendTap">
+                    <text :style="{ color: hasSelection ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_BASE) }">{{ sendLabel }}</text>
+                </view>
+            </view>
+        </view>
+
+        <ForwardConfirmationSheet v-model="sheetVisible" :targets="sheetTargets" :messages="messages"
+            :forward-type="forwardType" @confirm="onConfirmForward" />
     </view>
 </template>
 
 <script setup lang="uts">
-import ForwardMessageByPickConversationView from "./ForwardMessageByPickConversationView.uvue";
-import ForwardMessageByCreateConversationView from "./ForwardMessageByCreateConversationView.uvue";
+/**
+ * 转发选目标页。对齐 `../flutter-chat/chat/lib/conversation/forward/pick_forward_page.dart`。
+ *
+ * 形态：搜索框 +「创建群聊」入口 + 最近聊天列表；右上角切单选/多选。
+ * 单选点一行即弹确认框，多选勾完在底栏点「发送(n)」再弹确认框 ——
+ * 留言、内容预览都在确认框里（[ForwardConfirmationSheet]），不再是常驻底部面板。
+ *
+ * 与 flutter 的两处刻意差异：
+ * - 建群选人 flutter 是在本页原地换一套界面（同一个 Scaffold 切 body），这里直接跳
+ *   已有的 [PickUserPage]（M4 已按 flutter `pick_user_screen.dart` 对齐过，带字母索引条）。
+ *   交互结果一致：选完人 → 建群 → 回到本页 → 用新群的会话弹确认框（微信的做法）
+ * - 搜索只搜好友和群（对齐 flutter 的 searchTypes），不搜全网用户
+ */
+import store, { conversationState, contactState, pickState } from "@/store.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import NavBar from "@/pages/common/NavBar.uvue";
+import ForwardTargetListView from "./ForwardTargetListView.uvue";
+import ForwardConfirmationSheet from "./ForwardConfirmationSheet.uvue";
 import ForwardType from "./ForwardType.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationInfo from "@/wfc/model/conversationInfo.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import GroupInfo from "@/wfc/model/groupInfo.uts";
+import GroupType from "@/wfc/model/groupType.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
 import Message from "@/wfc/messages/message.uts";
-import { pickState } from "../../../../store.uts";
 import { currentForwardOptions, clearForwardOptions } from "@/common/forward.uts";
+import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
+import { toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_BASE } from "@/common/layoutScale.uts";
 
 defineOptions({
     name: "ForwardMessagePage"
 })
 
+/** 建群人数上限与群名长度上限，对齐 flutter ForwardTargetController */
+const MAX_GROUP_MEMBERS = 1024
+const MAX_GROUP_NAME_LENGTH = 24
+
+const c = computed<AppColors>((): AppColors => colors())
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
 const forwardType = ref<number>(ForwardType.NORMAL as number)
 const messages = ref<Message[]>([] as Message[])
-const forwardTargetType = ref<string>('pickConversation')
+const isMultiSelect = ref<boolean>(false)
+const searchText = ref<string>('')
+const sheetVisible = ref<boolean>(false)
+const sheetTargets = ref<Conversation[]>([] as Conversation[])
+const creatingGroup = ref<boolean>(false)
+
+const safeAreaBottom = uni.getWindowInfo().safeAreaInsets.bottom
+
+const pageTitle = computed<string>((): string => {
+    return isMultiSelect.value ? t('forward.pick_multiple_chats') : t('forward.pick_one_chat')
+})
+
+const selectModeLabel = computed<string>((): string => {
+    return isMultiSelect.value ? t('forward.single_select') : t('forward.multi_select')
+})
+
+const searchPlaceholder = computed<string>((): string => t('common.search'))
+
+const pickedConversations = computed<Conversation[]>((): Conversation[] => {
+    return isMultiSelect.value ? pickState.conversations : [] as Conversation[]
+})
+
+const hasSelection = computed<boolean>((): boolean => pickedConversations.value.length > 0)
+
+const selectedCountLabel = computed<string>((): string => {
+    return t1('forward.selected_chats_count', '' + pickedConversations.value.length)
+})
+
+const sendLabel = computed<string>((): string => {
+    return t1('forward.send_with_count', '' + pickedConversations.value.length)
+})
+
+/**
+ * 已选头像条的宽度。窗口宽减去搜索图标、内边距和留给输入框的最小宽度，
+ * 不给定宽的话头像条会把输入框挤没（同 PickUserPage）。
+ */
+const pickedStripWidth = computed<number>((): number => {
+    const winWidth = uni.getSystemInfoSync().windowWidth
+    const avail = winWidth - 140
+    const want = pickedConversations.value.length * 34
+    return want < avail ? want : avail
+})
+
+const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] => {
+    return conversationState.conversationInfoList
+})
+
+const searchedFriends = computed<UserInfo[]>((): UserInfo[] => {
+    if (searchText.value == '') {
+        return [] as UserInfo[]
+    }
+    return store.filterContact(searchText.value)
+})
+
+const searchedGroups = computed<GroupInfo[]>((): GroupInfo[] => {
+    if (searchText.value == '') {
+        return [] as GroupInfo[]
+    }
+    return store.filterGroupConversation(searchText.value)
+})
 
 onLoad((_options: OnLoadOptions) => {
-    console.log('ForwardMessagePage onLoad')
+    // pickState 是全局的，上一次转发若异常退出可能留了残余
+    pickState.conversations = []
     const forwardOptions = currentForwardOptions()
     if (forwardOptions != null) {
-        forwardType.value = forwardOptions.forwardType;
-        messages.value = forwardOptions.messages;
+        forwardType.value = forwardOptions.forwardType
+        messages.value = forwardOptions.messages
     }
 })
 
 onUnload(() => {
-    clearForwardOptions();
-    pickState.conversations = [];
-    pickState.messages = [];
-    pickState.users = [];
+    clearForwardOptions()
+    pickState.conversations = []
 })
 
-const changeForwardTargetType = (type: string) => {
-    forwardTargetType.value = type;
+const portraitOf = (conversation: Conversation): string => {
+    const target = store.ensureConversationTarget(conversation)
+    const portrait = target != null ? target.portrait : ''
+    if (portrait != '') {
+        return portrait
+    }
+    return conversation.type == ConversationType.Single ? Config.DEFAULT_PORTRAIT_URL : Config.DEFAULT_GROUP_PORTRAIT_URL
+}
+
+const toggleMultiSelect = () => {
+    isMultiSelect.value = !isMultiSelect.value
+    if (!isMultiSelect.value) {
+        pickState.conversations = []
+    }
+}
+
+/** 多选态勾选后清空搜索，回到完整列表（与 flutter 一致） */
+const onTargetTap = (conversation: Conversation) => {
+    if (isMultiSelect.value) {
+        store.pickOrUnpickConversation(conversation)
+        if (searchText.value != '') {
+            searchText.value = ''
+        }
+    } else {
+        showConfirmationSheet([conversation])
+    }
+}
+
+const onSendTap = () => {
+    if (!hasSelection.value) {
+        return
+    }
+    showConfirmationSheet(pickState.conversations.slice(0))
+}
+
+const showConfirmationSheet = (targets: Conversation[]) => {
+    sheetTargets.value = targets
+    sheetVisible.value = true
+}
+
+const onConfirmForward = (comment: string) => {
+    store.forwardMessage(forwardType.value, sheetTargets.value, messages.value, comment)
+    pickState.conversations = []
+    uni.navigateBack({} as NavigateBackOptions)
+}
+
+/** 建群走微信的做法：选完成员建群，回到本页，再由确认弹窗完成转发 */
+const onCreateGroupTap = () => {
+    const options = new PickUsersOptions()
+    options.title = t('forward.create_group_chat')
+    options.confirmTitle = t('common.confirm')
+    options.maxSelected = MAX_GROUP_MEMBERS
+    options.successCB = (users: UserInfo[]) => {
+        onMembersPicked(users)
+    }
+    pickUsers(options)
+}
+
+const onMembersPicked = (users: UserInfo[]) => {
+    if (creatingGroup.value || users.length == 0) {
+        return
+    }
+    // 只选中一位好友时直接转发到单聊，无需建群
+    if (users.length == 1) {
+        onTargetTap(new Conversation(ConversationType.Single, users[0].uid, 0))
+        return
+    }
+
+    creatingGroup.value = true
+    const memberIds: string[] = []
+    for (let i = 0; i < users.length; i++) {
+        memberIds.push(users[i].uid)
+    }
+    wfc.createGroup(null, GroupType.Restricted, buildGroupName(users), null, null, memberIds, null, [0], null,
+        (groupId: string) => {
+            creatingGroup.value = false
+            onTargetTap(new Conversation(ConversationType.Group, groupId, 0))
+        },
+        (errorCode: number) => {
+            creatingGroup.value = false
+            toast(t1('forward.create_group_fail', '' + errorCode))
+        })
+}
+
+/** 群名按「创建者,成员1,成员2…」拼接，超长时收尾成「xxx等」，对齐 flutter `_buildGroupName` */
+const buildGroupName = (members: UserInfo[]): string => {
+    const selfUserInfo = contactState.selfUserInfo
+    let groupName = selfUserInfo != null ? selfUserInfo.displayName : ''
+    for (let i = 0; i < members.length; i++) {
+        const name = members[i].displayName
+        if (name == '') {
+            continue
+        }
+        if ((groupName + ',' + name).length > MAX_GROUP_NAME_LENGTH) {
+            return t1('forward.group_name_etc', groupName)
+        }
+        groupName = groupName + ',' + name
+    }
+    return groupName
 }
 </script>
 
 <style scoped>
+/* 组件吃不到全局 class（样式隔离 2.0），图标字体自己声明一份 */
+.icomoon {
+    font-family: "icomoon";
+}
+
 .forward-page {
+    display: flex;
+    flex-direction: column;
     flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.search-bar {
+    padding: 8px 16px;
+}
+
+.search-box {
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.search-icon {
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.picked-strip {
+    height: 30px;
+    flex-shrink: 0;
+}
+
+.picked-strip-inner {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.picked-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    margin-right: 4px;
+}
+
+.search-input {
+    flex: 1;
+    height: 30px;
+}
+
+.target-list {
+    flex: 1;
+}
+
+.bottom-bar {
+    width: 100%;
+    border-top-width: 0.5px;
+    border-top-style: solid;
+}
+
+.bottom-bar-inner {
+    height: 50px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+}
+
+.selected-count {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.send-button {
+    height: 32px;
+    border-radius: 6px;
+    margin-left: 12px;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 </style>
