@@ -72,9 +72,15 @@ const onTap = () => {
     padding: 10px 15px 10px 15px;
 }
 
+/* flex: 1 让标题占满整行后自己居中（行上的 justify-content: center 因此不再起作用，
+ * 但留着无害）。目的是给超长文案（英文/繁体下的「清空聊天记录」之类）一个确定宽度，
+ * 否则文字会顶破行宽；带 overflow: hidden 的 text 也必须有确定宽度才不会在鸿蒙上塌成 0。 */
 .title {
+    flex: 1;
     text-align: center;
     white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .divider {

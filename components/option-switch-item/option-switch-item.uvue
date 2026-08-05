@@ -3,7 +3,8 @@
         <view class="row" :style="{ minHeight: rowPx(36) }">
             <text class="title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ title }}</text>
 
-            <text v-if="desc != ''" class="desc" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ desc }}</text>
+            <text v-if="desc != ''" class="desc"
+                :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE), maxWidth: descMaxWidth }">{{ desc }}</text>
 
             <switch class="sw" :checked="value" :disabled="disabled" :active-background-color="c.accent"
                 :background-color="c.buttonSecondaryBg" :fore-color="c.surface" :active-fore-color="c.onAccent"
@@ -30,7 +31,11 @@ defineOptions({
 withDefaults(defineProps<{
     title?: string
     value?: boolean
-    /** 开关左侧的说明文字（如免打扰时段），右对齐、次要色。 */
+    /**
+     * 开关左侧的**短**值（如免打扰时段），右对齐、次要色，单行截断。
+     * 整句说明别塞这里 —— 剩余宽度只够十几个字，会被截成半句；那种文案放卡片下方的 hint 行
+     * （见 PcOnlineDevicesPage）。
+     */
     desc?: string
     disabled?: boolean
     showBottomDivider?: boolean
@@ -45,6 +50,10 @@ withDefaults(defineProps<{
 const emit = defineEmits(['change'])
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// 同 option-item：desc 不限宽的话会把 flex-basis: 0 的标题挤成 0 宽顶出屏幕。
+// max-width 不支持百分比，只能按窗口宽度算 px。
+const descMaxWidth = (uni.getWindowInfo().windowWidth * 0.5) + 'px'
 
 const onChange = (e: UniSwitchChangeEvent) => {
     emit('change', e.detail.value)
@@ -65,7 +74,9 @@ const onChange = (e: UniSwitchChangeEvent) => {
     padding: 10px 15px 10px 15px;
 }
 
-/* 同 option-item：标题吃剩余宽度，别用 flex-shrink:0 + flex:1 占位，鸿蒙上会把标题压成 0 宽 */
+/* 同 option-item：标题 flex: 1 吃剩余宽度（别改成 flex-shrink:0 / flex-basis:auto，
+ * 鸿蒙上带 overflow:hidden 的 text 没有确定宽度会被量成 0）；
+ * 它不被长 desc 挤掉靠的是 desc 的 max-width 上限。 */
 .title {
     flex: 1;
     white-space: nowrap;

@@ -8,7 +8,8 @@
 
             <text class="title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ title }}</text>
 
-            <text v-if="desc != ''" class="desc" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ desc }}</text>
+            <text v-if="desc != ''" class="desc"
+                :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE), maxWidth: descMaxWidth }">{{ descText }}</text>
 
             <text v-if="showRightArrow" class="arrow"
                 :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
@@ -60,6 +61,25 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits(['tap'])
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// desc 可能是用户输入的多行文本（群公告最典型）。行内只有一行，换行符会让第一行之后的内容
+// 全部消失 —— 首行恰好是空行时整个 desc 看起来就是空的。压成空格后至少首屏内容可见。
+const descText = computed<string>((): string => {
+    return props.desc.split('\r\n').join(' ').split('\n').join(' ')
+})
+
+/**
+ * 右侧值最多占半个屏幕宽。
+ *
+ * 不设上限时，长 desc（群公告、群名称这种用户输入）的 flex-basis 会撑满整行，
+ * 剩余空间为负，而标题是 `flex: 1`（flex-basis: 0）拿不到任何宽度 —— 「群公告」四个字
+ * 直接被顶出屏幕。
+ *
+ * 只能按窗口宽度算 px：`max-width` 在三端都**不支持百分比**（styler 只认 number|pixel）。
+ * 标题那边不能改成 flex-basis: auto 来自保 —— 带 overflow:hidden 的 text 一旦没有确定宽度，
+ * 鸿蒙上会量成 0，短标题也只剩省略号。
+ */
+const descMaxWidth = (uni.getWindowInfo().windowWidth * 0.5) + 'px'
 
 // hover-class 只认静态类名，拿不到 :style 绑定，所以按下态的两个色值只能在样式块里各写一份，
 // 值对应 theme.uts 的 pressedOverlay，改令牌记得同步
@@ -118,9 +138,12 @@ const onTap = () => {
     font-family: "wxfont";
 }
 
-/* 标题吃掉剩余宽度。**不要**改成 flex-shrink: 0 + 一个 flex:1 的占位 view ——
- * 鸿蒙上 flex-shrink: 0 没兜住，占位 view 会把宽度全抢走，标题被压成 0 宽，
- * 两个字的「关于」也只剩省略号。
+/* 标题吃掉剩余宽度，同时负责把右箭头顶到行尾。
+ *
+ * **不要**改成 flex-shrink: 0 或 flex-basis: auto（哪怕看着更"讲道理"）：带 overflow:hidden
+ * 的 text 一旦没有确定宽度，鸿蒙就把它量成 0，两个字的「关于」也只剩省略号；同理不要用
+ * 「标题 flex-shrink:0 + 一个 flex:1 的占位 view」。
+ * 标题不被长 desc 挤掉，靠的是 desc 那边的宽度上限，见 descMaxWidth。
  *
  * 单行截断不能用 lines：vapor 下鸿蒙不支持，white-space 三端都行。 */
 .title {
@@ -130,7 +153,8 @@ const onTap = () => {
     overflow: hidden;
 }
 
-/* 右侧当前值：内容多长占多长，不跟标题抢 */
+/* 右侧当前值：内容多长占多长，但最宽半屏（max-width 行内绑定，见 descMaxWidth），
+ * 超出部分出省略号，这样它永远挤不掉标题。 */
 .desc {
     flex-shrink: 0;
     margin-left: 12px;

@@ -11,9 +11,14 @@
             </view>
 
             <form-card>
-                <option-switch-item :title="t('pc.mobile_mute')" :desc="t('pc.mobile_mute_desc')" :value="isMute"
-                    :show-bottom-divider="false" @change="onMuteChange" />
+                <option-switch-item :title="t('pc.mobile_mute')" :value="isMute" :show-bottom-divider="false"
+                    @change="onMuteChange" />
             </form-card>
+
+            <!-- 说明是整句，放行内的 desc 只够显示十几个字，走卡片下方的 hint 行（同 InviteFriendPage） -->
+            <view class="hint">
+                <text :style="{ fontSize: fontPx(FONT_XS), color: c.textTertiary }">{{ t('pc.mobile_mute_desc') }}</text>
+            </view>
 
             <section-divider />
 
@@ -141,6 +146,11 @@ onShow(() => {
 
 .summary-text {
     margin-top: 8px;
+}
+
+.hint {
+    width: 100%;
+    padding: 8px 16px 0 16px;
 }
 
 .device-row {
