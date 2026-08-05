@@ -127,9 +127,9 @@ export function disconnect(disablePush: boolean, clearSession: boolean) {
     clientModule.disconnect(disablePush, clearSession)
 }
 
-// export const getUserId = function (): string {
-//     return clientModule.getUserId();
-// }
+export const getUserId = function (): string {
+    return clientModule.getCurrentUserId();
+}
 
 export function addHttpHeader(header: string, value: string) {
     clientModule.addHttpHeader(header, value)
