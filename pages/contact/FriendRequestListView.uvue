@@ -1,7 +1,8 @@
 <template>
     <view class="new-friend-item-container">
         <view v-for="(friendRequest, index) in friendRequestList" :key="index" @tap="showFriendRequest(friendRequest)"
-            class="new-friend-item" :style="{ borderBottomColor: c.hairlineSoft }">
+            class="new-friend-item" :style="{ borderBottomColor: c.hairlineSoft }"
+            :hover-class="pressedClass" hover-stay-time="80">
             <image class="avatar" :src="portraitOf(friendRequest)" :style="{ backgroundColor: c.inputBg }" />
             <view class="info">
                 <view class="name">
@@ -25,7 +26,7 @@ import EventType from "../../wfc/client/wfcEvent.uts";
 import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "FriendRequestListView",
@@ -34,6 +35,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 const isActive = ref<boolean>(false)
 
 const friendRequestList = computed<FriendRequest[]>((): FriendRequest[] => {

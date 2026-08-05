@@ -13,7 +13,7 @@
 
         <view v-else class="list">
             <view v-for="poll in polls" :key="poll.pollId" class="card" :style="{ backgroundColor: c.surface }"
-                @tap="openDetail(poll)" @longpress="confirmDelete(poll)">
+                :hover-class="pressedClass" hover-stay-time="80" @tap="openDetail(poll)" @longpress="confirmDelete(poll)">
                 <view class="card-head">
                     <text class="card-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ poll.title }}</text>
                     <view class="chip" :style="{ backgroundColor: chipBg(poll) }">
@@ -45,7 +45,7 @@
  */
 import pollServerApi from "@/api/pollServerApi.uts";
 import { Poll } from "@/api/pollModel.uts";
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx, iconPx, FONT_LG, FONT_XS, FONT_XXS } from "@/common/layoutScale.uts";
 import { showConfirmDialog, toast } from "@/common/prompt.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
@@ -55,6 +55,7 @@ defineOptions({
 })
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 const polls = ref<Poll[]>([] as Poll[])
 const loading = ref<boolean>(false)

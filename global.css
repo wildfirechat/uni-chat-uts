@@ -97,3 +97,24 @@
 .fs-20-2 { font-size: 23px; }
 .fs-20-3 { font-size: 26px; }
 .fs-20-4 { font-size: 29px; }
+
+/* ===== 列表行按下态 =====
+ *
+ * 用法：给行所在的 **view**（不是 list-item —— hover-class 只有 view / button / navigator
+ * 认，list-item 上写了没反应）加
+ *   :hover-class="pressedClass" hover-stay-time="80"
+ * pressedClass 来自 common/theme.uts 的 pressedRowClass()。
+ *
+ * 为什么必须明暗两套、且只能是静态类名：hover-class 拿不到 :style 绑定，运行时是把类名
+ * 先解析成一张 style map，按下时**逐条写进这个节点的行内样式**、松手再还原
+ * （见鸿蒙 runtime `dom/Hover.ts` 的 _addClass/_removeClass）。
+ * 两个后果：
+ *   1. 它盖得住行自己的 `:style="{ backgroundColor: ... }"`，不用为了按下态去掉行的底色；
+ *   2. 半透明值是**替换**而不是叠加 —— 它透出来的是父节点的底色，不是这一行自己的。
+ *      所以行有特殊底色时（如置顶会话的 cellTop），按下态要挂在它**里面**那层没有底色的
+ *      view 上，才是「盖在这行底色上」的观感。
+ *
+ * 色值对应 theme.uts 的 pressedOverlay，改令牌记得同步。
+ * 组件里用要 defineOptions({ styleIsolation: 'app' })，否则是个空类。 */
+.row-pressed-light { background-color: #0000000A; }
+.row-pressed-dark { background-color: #FFFFFF14; }

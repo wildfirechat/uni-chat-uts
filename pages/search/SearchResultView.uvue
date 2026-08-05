@@ -15,7 +15,7 @@
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchContact && contactSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">联系人</text>
                 <view v-for="(contact, index) in toShowContactList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="chatToContact(contact)">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" :hover-class="pressedClass" hover-stay-time="80" @tap="chatToContact(contact)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="contact.portrait" />
                         <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ contact._displayName }}</text>
                     </view>
@@ -25,7 +25,7 @@
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchGroup && groupSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">群聊</text>
                 <view v-for="(group, index) in toShowGroupList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="chatToGroup(group)">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" :hover-class="pressedClass" hover-stay-time="80" @tap="chatToGroup(group)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="group.portrait" />
                         <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ group.remark != '' ? group.remark : group.name }}</text>
                     </view>
@@ -35,7 +35,7 @@
             <view class="search-result-category-container" :style="{ backgroundColor: c.surface }" v-if="searchConversation && conversationSearchResult.length > 0">
                 <text class="category-label" :style="{ fontSize: fontPx(13), color: c.textTertiary }">聊天记录</text>
                 <view v-for="(convR, index) in toShowConversationList" :key="index">
-                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="onClickConversationSearchResultItem(convR)">
+                    <view class="search-result-item" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" :hover-class="pressedClass" hover-stay-time="80" @tap="onClickConversationSearchResultItem(convR)">
                         <image class="item-portrait" :style="{ backgroundColor: c.inputBg }" :src="convPortrait(convR)" />
                         <view class="title-desc">
                             <text class="item-name" :style="{ fontSize: fontPx(14), color: c.textPrimary }">{{ convDisplayName(convR) }}</text>
@@ -63,7 +63,7 @@ import wfc from "../../wfc/client/wfc.uts";
 import Config from "../../config.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "SearchResultView"
@@ -71,6 +71,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 const props = withDefaults(defineProps<{
     query?: string
     searchUser?: boolean
@@ -250,6 +251,16 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: row;
     align-items: center;
+}
+
+/* 本组件是默认的样式隔离（没有 styleIsolation: 'app'），吃不到 global.css 里的
+ * .row-pressed-*，所以在这里再声明一份。色值和用法见 global.css 的「列表行按下态」。 */
+.row-pressed-light {
+    background-color: #0000000A;
+}
+
+.row-pressed-dark {
+    background-color: #FFFFFF14;
 }
 
 .item-portrait {

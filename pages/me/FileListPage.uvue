@@ -15,7 +15,7 @@
         <list-view v-else class="list" direction="vertical" @scrolltolower="loadMore">
             <list-item v-for="file in files" :key="file.messageUid" class="row-item">
                 <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
-                    @tap="showActions(file)">
+                    :hover-class="pressedClass" hover-stay-time="80" @tap="showActions(file)">
                     <image class="file-icon" :src="'/static/image/filetypes/' + file._fileIconName" />
                     <view class="texts">
                         <text class="name" :class="[fs14, nameMaxHeight]" :style="{ color: c.textPrimary }">{{ file.name }}</text>
@@ -54,7 +54,7 @@ import FileMessageContent from "@/wfc/messages/fileMessageContent.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
 import { saveMessageFile } from "@/common/mediaSaver.uts";
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx, FONT_LG, fontClass, fontSizeIndex } from "@/common/layoutScale.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
 import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
@@ -67,6 +67,7 @@ defineOptions({
 const PAGE_SIZE = 20
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs12 = computed<string>((): string => fontClass(12))

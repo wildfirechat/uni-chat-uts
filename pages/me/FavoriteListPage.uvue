@@ -16,7 +16,7 @@
         <list-view v-else class="list" direction="vertical" @scrolltolower="loadMore">
             <list-item v-for="item in items" :key="item.favId" class="row-item">
                 <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
-                    @tap="showActions(item)">
+                    :hover-class="pressedClass" hover-stay-time="80" @tap="showActions(item)">
                     <image v-if="thumbOf(item) != ''" class="thumb" :src="thumbOf(item)" mode="aspectFill"
                         :style="{ backgroundColor: c.inputBg }" />
                     <view v-else class="thumb thumb-placeholder" :style="{ backgroundColor: c.inputBg }">
@@ -66,7 +66,7 @@ import LinkMessageContent from "@/wfc/messages/linkMessageContent.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import { forward } from "@/common/forward.uts";
 import { saveMessageFile } from "@/common/mediaSaver.uts";
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx, FONT_LG, fontClass, fontSizeIndex } from "@/common/layoutScale.uts";
 import { dateFormat } from "@/pages/util/helper.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
@@ -93,6 +93,7 @@ class CategoryTab {
 }
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs11 = computed<string>((): string => fontClass(11))

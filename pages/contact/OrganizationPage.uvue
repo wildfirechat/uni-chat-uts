@@ -57,6 +57,7 @@
                 </view>
                 <view v-for="(emp, index) in searchResults" :key="'s-' + index" class="employee-row"
                     :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft, opacity: isDisabled(emp.employeeId) ? 0.5 : 1 }"
+                    :hover-class="isDisabled(emp.employeeId) ? '' : pressedClass" hover-stay-time="80"
                     @tap="onEmployeeTap(emp)">
                     <round-checkbox v-if="selectMode" class="row-checkbox" :disabled="isDisabled(emp.employeeId)"
                         :checked="isChecked(emp.employeeId)" />
@@ -80,7 +81,8 @@
                         <text class="section-header-text" :style="{ fontSize: fontPx(13), color: c.textSecondary }">{{ t('organization.sub_departments') }}</text>
                     </view>
                     <view v-for="(org, index) in subOrganizations" :key="'o-' + index" class="org-row"
-                        :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }" @tap="enterOrganization(org)">
+                        :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+                        :hover-class="pressedClass" hover-stay-time="80" @tap="enterOrganization(org)">
                         <text class="icomoon row-icon" :style="{ color: c.accent, fontSize: iconPx(22) }">&#xf26c;</text>
                         <text class="org-row-title single-line" :style="{ fontSize: fontPx(16), color: c.textPrimary }">{{ org.name }}({{ org.memberCount }})</text>
                         <text class="icomoon row-arrow" :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d1;</text>
@@ -93,6 +95,7 @@
                     </view>
                     <view v-for="(emp, index) in employees" :key="'e-' + index" class="employee-row"
                         :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft, opacity: isDisabled(emp.employeeId) ? 0.5 : 1 }"
+                        :hover-class="isDisabled(emp.employeeId) ? '' : pressedClass" hover-stay-time="80"
                         @tap="onEmployeeTap(emp)">
                         <round-checkbox v-if="selectMode" class="row-checkbox" :disabled="isDisabled(emp.employeeId)"
                             :checked="isChecked(emp.employeeId)" />
@@ -142,7 +145,7 @@ import { currentPickOrganizationUsersOptions, notifyPickedOrganizationUsers } fr
 import { toast } from "@/common/prompt.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx, iconPx } from "@/common/layoutScale.uts";
 
 defineOptions({
@@ -150,6 +153,7 @@ defineOptions({
 })
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 const selectMode = ref<boolean>(false)
 const maxSelected = ref<number>(1024)

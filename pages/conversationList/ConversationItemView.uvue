@@ -1,7 +1,11 @@
 <template>
     <view class="conversation-item-container"
         :style="{ backgroundColor: conversationInfo.top > 0 ? c.cellTop : c.surface, borderBottomColor: c.hairlineSoft }">
-        <view class="conversation-item">
+        <!-- 按下态挂在这层而不是外面那层：外层有自己的底色（置顶是 cellTop），
+             而 hover-class 的半透明值是替换 background-color、透出**父节点**的底色，
+             挂在有底色的那层上会把置顶色按没了。左内边距也一并挪到这层，
+             否则按下态盖不到最左边 10px。 -->
+        <view class="conversation-item" :hover-class="pressedClass" hover-stay-time="80">
             <view class="header">
                 <image class="avatar" :src="portrait" mode="aspectFill" :style="{ backgroundColor: c.inputBg }" />
                 <text v-if="unread > 0" class="badge" :class="{ silent: conversationInfo.isSilent }"
@@ -34,7 +38,7 @@ import store, { conversationState } from "../../store.uts";
 import Draft from "../util/draft.uts";
 import NotificationMessageContent from "../../wfc/messages/notification/notificationMessageContent.uts";
 import Config from "../../config.uts";
-import { colors, AppColors } from "../../common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "../../common/theme.uts";
 import { fontClass } from "../../common/layoutScale.uts";
 
 defineOptions({
@@ -49,6 +53,7 @@ defineOptions({
 // 字号要跟设置里的档位走，所以改成切静态 class（global.css 的 .fs-<基准>-<档位>），
 // 和置顶态用 :class 切类是同一个套路，不碰 :style。
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // 行高 70px 不跟着放大：最大档下 20.3 + 18.85 = 39.15px，仍在 50px 的文字区里放得下，
 // 而给复用渲染的 item 改高度风险远大于收益。
@@ -149,7 +154,6 @@ const unreadMention = computed<number>((): number => {
 /* 行的底色、置顶底色、分隔线都画在这里（组件根节点），而不是外面那个 list-item：
  * list-item 走复用渲染，尽量不给它任何动态绑定。 */
 .conversation-item-container {
-    padding-left: 10px;
     border-bottom-width: 1px;
     border-bottom-style: solid;
 }
@@ -157,6 +161,7 @@ const unreadMention = computed<number>((): number => {
 .conversation-item {
     width: 100%;
     height: 70px;
+    padding-left: 10px;
     display: flex;
     flex-direction: row;
     align-items: center;

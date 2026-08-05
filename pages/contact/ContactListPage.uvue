@@ -2,25 +2,31 @@
     <view class="page-container" :style="{ backgroundColor: c.surface }">
         <NavBar title="通讯录" :rightIcon1="searchIcon" :rightIcon2="plusIcon" @right1Tap="onSearchTap" @right2Tap="onPlusTap" />
         <list-view class="contact-list" direction="vertical" :scroll-into-view="scrollIntoViewId" :lower-threshold="200" @scrolltolower="onContactListToLower">
-            <list-item @tap="showNewFriends" class="category-item-container">
-                <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
-                <view class="category-item" :style="{ backgroundColor: c.sectionGap }">
-                    <text class="title" :class="fs14" :style="{ color: c.textPrimary }">新的朋友</text>
-                    <text class="desc" :class="fs14" :style="{ color: c.danger }" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
+            <list-item>
+                <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showNewFriends">
+                    <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
+                    <view class="category-item">
+                        <text class="title" :class="fs14" :style="{ color: c.textPrimary }">新的朋友</text>
+                        <text class="desc" :class="fs14" :style="{ color: c.danger }" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
+                    </view>
                 </view>
             </list-item>
-            <list-item @tap="showGroups" class="category-item-container">
-                <image class="category-icon" src="/static/image/icon/ic_group_chat.png" />
-                <view class="category-item" :style="{ backgroundColor: c.sectionGap }">
-                    <text class="title" :class="fs14" :style="{ color: c.textPrimary }">群聊</text>
-                    <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ favGroupCount }}</text>
+            <list-item>
+                <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showGroups">
+                    <image class="category-icon" src="/static/image/icon/ic_group_chat.png" />
+                    <view class="category-item">
+                        <text class="title" :class="fs14" :style="{ color: c.textPrimary }">群聊</text>
+                        <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ favGroupCount }}</text>
+                    </view>
                 </view>
             </list-item>
-            <list-item @tap="showChannels" class="category-item-container">
-                <image class="category-icon" src="/static/image/icon/ic_channel_1.png" />
-                <view class="category-item" :style="{ backgroundColor: c.sectionGap }">
-                    <text class="title" :class="fs14" :style="{ color: c.textPrimary }">频道</text>
-                    <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ channelCount }}</text>
+            <list-item>
+                <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showChannels">
+                    <image class="category-icon" src="/static/image/icon/ic_channel_1.png" />
+                    <view class="category-item">
+                        <text class="title" :class="fs14" :style="{ color: c.textPrimary }">频道</text>
+                        <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ channelCount }}</text>
+                    </view>
                 </view>
             </list-item>
             <OrganizationListView />
@@ -31,6 +37,7 @@
                     </view>
                     <view v-else class="user-item-content"
                         :style="{ paddingLeft: '10px', backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+                        :hover-class="pressedClass" hover-stay-time="80"
                         @tap="showUserDetail(item.user as UserInfo)">
                         <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
                         <view class="name-container">
@@ -59,7 +66,7 @@ import UserInfo from "../../wfc/model/userInfo.uts";
 import OrganizationListView from "./OrganizationListView.uvue";
 import NavBar from "../common/NavBar.uvue";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ContactListPage"
@@ -67,6 +74,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs10 = computed<string>((): string => fontClass(10))
@@ -409,7 +417,9 @@ const showUserDetail = (user: UserInfo) => {
     font-weight: 600;
 }
 
-.category-item-container {
+/* 行高/内边距都在这层，list-item 上不留任何样式：按下态要挂在 view 上
+ * （hover-class 在 list-item 上无效），高度跟着一起挪下来 */
+.category-row {
     height: 50px;
     display: flex;
     flex-direction: row;

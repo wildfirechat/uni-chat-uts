@@ -1,6 +1,7 @@
 <template>
-    <list-item v-for="(organization, index) in rootOrganizations" :key="index" @tap="showOrganization(organization)">
-        <view class="organization-item" :style="{ backgroundColor: c.sectionGap }">
+    <list-item v-for="(organization, index) in rootOrganizations" :key="index">
+        <view class="organization-item" :hover-class="pressedClass" hover-stay-time="80"
+            @tap="showOrganization(organization)">
             <image class="avatar" :src="portraitOf(organization)" :style="{ backgroundColor: c.inputBg }" />
             <text class="org-name single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ organization.getString('name') ?? '' }}</text>
         </view>
@@ -12,7 +13,7 @@ import store from "../../store.uts";
 import organizationServerApi from "../../api/organizationServerApi.uts";
 import Config from "../../config.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
 defineOptions({
     name: "OrganizationListView",
@@ -21,6 +22,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs14 = computed<string>((): string => fontClass(14))

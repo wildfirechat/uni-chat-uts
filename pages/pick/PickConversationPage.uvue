@@ -3,7 +3,7 @@
         <list-view class="list" direction="vertical">
             <list-item v-for="info in conversations" :key="keyOf(info)" class="row-item">
                 <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
-                    @tap="pick(info)">
+                    :hover-class="pressedClass" hover-stay-time="80" @tap="pick(info)">
                     <image class="portrait" :src="portraitOf(info)" mode="aspectFill"
                         :style="{ backgroundColor: c.inputBg }" />
                     <text class="title" :class="fs16" :style="{ color: c.textPrimary }">{{ titleOf(info) }}</text>
@@ -28,7 +28,7 @@ import ConversationType from "@/wfc/model/conversationType.uts";
 import { ConversationTarget } from "@/wfc/model/conversation.uts";
 import store, { conversationState } from "@/store.uts";
 import Config from "@/config.uts";
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
 import { currentPickConversationOptions, notifyPickedConversation } from "@/common/picker.uts";
 
@@ -37,6 +37,7 @@ defineOptions({
 })
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs16 = computed<string>((): string => fontClass(16))

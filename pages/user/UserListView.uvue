@@ -5,6 +5,7 @@
         </view>
         <view v-else class="content"
             :style="{ paddingLeft: paddingLeft, backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }"
+            :hover-class="pressedClass" hover-stay-time="80"
             @tap="clickUserItem(item.user as UserInfo)">
             <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
             <view class="name-container">
@@ -22,7 +23,7 @@
 import store from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
 class FlatUserListItem {
     category = ''
@@ -37,6 +38,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs10 = computed<string>((): string => fontClass(10))

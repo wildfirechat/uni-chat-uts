@@ -220,6 +220,17 @@ export function colors(): AppColors {
     return isDark() ? DARK : LIGHT
 }
 
+/**
+ * 列表行按下态要用的 hover-class 名，对应 global.css 的 `.row-pressed-light/dark`。
+ * hover-class 只认静态类名、拿不到 :style，所以明暗两套只能靠切类名，用法和注意事项见 global.css。
+ *
+ * 读它会建立响应式依赖，在页面里包一层 computed 再给模板用：
+ * `const pressedClass = computed<string>((): string => pressedRowClass())`
+ */
+export function pressedRowClass(): string {
+    return isDark() ? 'row-pressed-dark' : 'row-pressed-light'
+}
+
 /** 用户选的档位：'system' / 'light' / 'dark'。 */
 export function themeMode(): string {
     return _mode.value

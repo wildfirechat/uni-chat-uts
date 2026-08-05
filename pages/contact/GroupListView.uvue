@@ -1,7 +1,7 @@
 <template>
     <view>
         <view class="group-item" :style="{ backgroundColor: c.surface }" v-for="(group, index) in favGroupList"
-            :key="index" @tap="showGroup(group)">
+            :key="index" :hover-class="pressedClass" hover-stay-time="80" @tap="showGroup(group)">
             <image class="avatar" :src="group.portrait" :style="{ backgroundColor: c.inputBg }" />
             <text class="group-name single-line" :style="{ fontSize: fontPx(13), color: c.textPrimary }">{{ group.name }}</text>
         </view>
@@ -15,7 +15,7 @@ import ConversationType from "../../wfc/model/conversationType.uts";
 import GroupInfo from "../../wfc/model/groupInfo.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "GroupListView",
@@ -24,6 +24,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 const favGroupList = computed<GroupInfo[]>((): GroupInfo[] => {
     return contactState.favGroupList
 })

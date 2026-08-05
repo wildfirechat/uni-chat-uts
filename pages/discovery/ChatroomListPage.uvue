@@ -1,12 +1,12 @@
 <template>
     <view class="chatroom-container" :style="{ backgroundColor: c.primaryBackground }">
-        <view class="item" :style="{ backgroundColor: c.surface }" @tap="go2Chatroom(1)">
+        <view class="item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="go2Chatroom(1)">
             <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室1</text>
         </view>
-        <view class="item" :style="{ backgroundColor: c.surface }" @tap="go2Chatroom(2)">
+        <view class="item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="go2Chatroom(2)">
             <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室1</text>
         </view>
-        <view class="item" :style="{ backgroundColor: c.surface }" @tap="go2Chatroom(3)">
+        <view class="item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="go2Chatroom(3)">
             <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室2</text>
         </view>
     </view>
@@ -18,10 +18,11 @@ import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 const go2Chatroom = (index: number) => {
     const conversation = new Conversation(ConversationType.ChatRoom, `chatroom${index}`, 0);
     store.setCurrentConversation(conversation);

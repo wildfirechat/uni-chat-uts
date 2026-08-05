@@ -2,8 +2,9 @@
     <view class="page-container" :style="{ backgroundColor: c.surface }">
         <NavBar title="频道列表" :showBack="true" :rightIcon1="searchIcon" @right1Tap="onSearchTap" />
         <scroll-view class="channel-list" direction="vertical">
-            <view v-for="(channel, index) in channelList" :key="index" @tap="showChannel(channel)">
-                <view class="channel-item" :style="{ borderBottomColor: c.hairlineSoft }">
+            <view v-for="(channel, index) in channelList" :key="index">
+                <view class="channel-item" :style="{ borderBottomColor: c.hairlineSoft }"
+                    :hover-class="pressedClass" hover-stay-time="80" @tap="showChannel(channel)">
                     <image class="avatar" :src="channel.portrait" :style="{ backgroundColor: c.inputBg }" />
                     <text class="channel-name single-line" :style="{ fontSize: fontPx(13), color: c.textPrimary }">{{ channel.name }}</text>
                 </view>
@@ -20,7 +21,7 @@ import ChannelInfo from "../../wfc/model/channelInfo.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import NavBar from "../common/NavBar.uvue";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
 defineOptions({
     name: "ChannelListPage"
@@ -28,6 +29,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 const searchIcon = ref<string>('\ue636')
 
 const channelList = computed<ChannelInfo[]>((): ChannelInfo[] => {

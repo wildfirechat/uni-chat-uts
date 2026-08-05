@@ -6,6 +6,7 @@
         </view>
         <view v-else class="content" :style="{ paddingLeft: paddingLeft, backgroundColor: c.surface }"
             :class="{ disabled: isUserUncheckable(item.user as UserInfo) }"
+            :hover-class="isUserUncheckable(item.user as UserInfo) ? '' : pressedClass" hover-stay-time="80"
             @tap="clickUserItem(item.user as UserInfo)">
             <round-checkbox class="checkbox" :disabled="isUserUncheckable(item.user as UserInfo)" :checked="isUserChecked(item.user as UserInfo)" />
             <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
@@ -21,7 +22,7 @@
 import store, { pickState } from "../../store.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 
-import { colors, AppColors } from "@/common/theme.uts";
+import { colors, AppColors, pressedRowClass } from "@/common/theme.uts";
 import { fontClass } from "@/common/layoutScale.uts";
 import { anchorIdForCategory } from "@/common/pinyin.uts";
 class FlatUserListItem {
@@ -39,6 +40,7 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
 
 // list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
 const fs12 = computed<string>((): string => fontClass(12))
