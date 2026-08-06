@@ -108,8 +108,11 @@ const localVideoElement = ref<UniNativeViewElement | null>(null as UniNativeView
 const remoteVideoElement = ref<UniNativeViewElement | null>(null as UniNativeViewElement | null)
 
 const participantUserInfo = computed<UserInfo>((): UserInfo => {
-    const session = session.value!
-    return getUserInfo(session.conversation.target, false)
+    const callSession = session.value
+    if (callSession == null) {
+        return new UserInfo()
+    }
+    return getUserInfo(callSession.conversation.target, false)
 })
 const selfUserInfo = computed<UserInfo>((): UserInfo => {
     return getUserInfo(wfc.getUserId(), false)
@@ -139,12 +142,11 @@ const setupSessionCallback = () => {
             }
         }
     }
-    callback.didChangeMode = (audioOnly: boolean): void => {
-        audioOnly.value = audioOnly
+    callback.didChangeMode = (isAudioOnly: boolean): void => {
+        audioOnly.value = isAudioOnly
     }
-    callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
-        const session = session.value
-        if (session == null) {
+    callback.didReceiveRemoteVideoTrack = (_userId: string, _screenSharing: boolean): void => {
+        if (session.value == null) {
             return
         }
         setupRemoteVideoView()
@@ -181,68 +183,68 @@ const onRemoteVideoViewInit = (e: UniNativeViewInitEvent) => {
 }
 
 const setupLocalVideoView = () => {
-    const session = session.value
+    const callSession = session.value
     const element = localVideoElement.value
-    if (session == null || element == null) {
+    if (callSession == null || element == null) {
         return
     }
-    avEngineKit.setLocalVideoView(session.callId, element)
+    avEngineKit.setLocalVideoView(callSession.callId, element)
 }
 
 const setupRemoteVideoView = () => {
-    const session = session.value
+    const callSession = session.value
     const element = remoteVideoElement.value
-    if (session == null || element == null) {
+    if (callSession == null || element == null) {
         return
     }
-    avEngineKit.setRemoteVideoView(session.callId, session.conversation.target, element)
+    avEngineKit.setRemoteVideoView(callSession.callId, callSession.conversation.target, element)
 }
 
 const switchVideoType = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    avEngineKit.setParticipantVideoType(session.callId, session.conversation.target, false, VideoType.BIG_STREAM)
+    avEngineKit.setParticipantVideoType(callSession.callId, callSession.conversation.target, false, VideoType.BIG_STREAM)
 }
 
 const answer = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     checkVoipPermissions(audioOnly.value).then((granted: boolean): void => {
         if (!granted) {
             return
         }
-        avEngineKit.answerCall(session.callId, false)
+        avEngineKit.answerCall(callSession.callId, false)
     })
 }
 
 const hangup = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    avEngineKit.endCall(session.callId)
+    avEngineKit.endCall(callSession.callId)
     session.value = null
 }
 
 const switchCamera = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    avEngineKit.switchCamera(session.callId)
+    avEngineKit.switchCamera(callSession.callId)
 }
 
 const mute = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     audioMuted.value = !audioMuted.value
-    avEngineKit.muteAudio(session.callId, audioMuted.value)
+    avEngineKit.muteAudio(callSession.callId, audioMuted.value)
 }
 
 const onVoipConnected = () => {
@@ -263,12 +265,12 @@ const onVoipConnected = () => {
 }
 
 const minimize = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     if (avEngineKit.checkOverlayPermission()) {
-        avEngineKit.minimize(session.callId)
+        avEngineKit.minimize(callSession.callId)
         uni.navigateBack({
             delta: 1,
             fail: (err) => {
@@ -286,12 +288,12 @@ const minimize = () => {
 onLoad((_options: OnLoadOptions) => {
     const pageOptions = takePageOptions()
     if (pageOptions != null && pageOptions instanceof CallSession) {
-        const session = pageOptions as CallSession
-        session.value = session
-        callState.value = session.state
-        audioOnly.value = session.audioOnly
-        if (session.connectedTime > 0) {
-            startTimestamp.value = session.connectedTime
+        const callSession = pageOptions as CallSession
+        session.value = callSession
+        callState.value = callSession.state
+        audioOnly.value = callSession.audioOnly
+        if (callSession.connectedTime > 0) {
+            startTimestamp.value = callSession.connectedTime
         }
     }
 })

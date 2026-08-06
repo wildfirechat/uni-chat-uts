@@ -143,21 +143,21 @@ const setupVideoViews = () => {
         return
     }
     nextTick((): void => {
-        const session = session.value
-        if (session == null) {
+        const callSession = session.value
+        if (callSession == null) {
             return
         }
         if (!selfVideoMuted.value) {
             const element = localVideoElement.value
             if (element != null) {
-                avEngineKit.setLocalVideoView(session.callId, element)
+                avEngineKit.setLocalVideoView(callSession.callId, element)
             }
         }
         participants.value.forEach((p: ParticipantProfile): void => {
             if (!p.videoMuted && p.state == CallState.STATUS_CONNECTED) {
                 const element = remoteVideoElements.value.get(p.userId)
                 if (element != null) {
-                    avEngineKit.setRemoteVideoView(session.callId, p.userId, element)
+                    avEngineKit.setRemoteVideoView(callSession.callId, p.userId, element)
                 }
             }
         })
@@ -165,8 +165,8 @@ const setupVideoViews = () => {
 }
 
 const broadcastMultiCallOngoing = () => {
-    const session = session.value
-    if (session == null || callState.value != CallState.STATUS_CONNECTED) {
+    const callSession = session.value
+    if (callSession == null || callState.value != CallState.STATUS_CONNECTED) {
         return
     }
     const selfId = wfc.getUserId()
@@ -177,11 +177,11 @@ const broadcastMultiCallOngoing = () => {
         }
     })
     const content = new MultiCallOngoingMessageContent()
-    content.callId = session.callId
-    content.initiator = session.initiator
-    content.audioOnly = session.audioOnly
+    content.callId = callSession.callId
+    content.initiator = callSession.initiator
+    content.audioOnly = callSession.audioOnly
     content.targets = targets
-    wfc.sendConversationMessage(session.conversation, content)
+    wfc.sendConversationMessage(callSession.conversation, content)
 }
 
 const onVoipConnected = () => {
@@ -201,25 +201,25 @@ const userInfoOf = (userId: string): UserInfo => {
 }
 
 const switchVideoType = (userId: string) => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    avEngineKit.setParticipantVideoType(session.callId, userId, false, VideoType.BIG_STREAM)
+    avEngineKit.setParticipantVideoType(callSession.callId, userId, false, VideoType.BIG_STREAM)
 }
 
 const hangup = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    avEngineKit.endCall(session.callId)
+    avEngineKit.endCall(callSession.callId)
     session.value = null
 }
 
 const answer = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     checkVoipPermissions(audioOnly.value).then((granted: boolean): void => {
@@ -227,42 +227,42 @@ const answer = () => {
             hangup()
             return
         }
-        avEngineKit.answerCall(session.callId, false)
+        avEngineKit.answerCall(callSession.callId, false)
     })
 }
 
 const switchCamera = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    avEngineKit.switchCamera(session.callId)
+    avEngineKit.switchCamera(callSession.callId)
 }
 
 const mute = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     selfAudioMuted.value = !selfAudioMuted.value
-    avEngineKit.muteAudio(session.callId, selfAudioMuted.value)
+    avEngineKit.muteAudio(callSession.callId, selfAudioMuted.value)
 }
 
 const muteVideo = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     selfVideoMuted.value = !selfVideoMuted.value
-    avEngineKit.muteVideo(session.callId, selfVideoMuted.value)
+    avEngineKit.muteVideo(callSession.callId, selfVideoMuted.value)
 }
 
 const invite = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    const groupMemberUserInfos = store.getGroupMemberUserInfos(session.conversation.target, false)
+    const groupMemberUserInfos = store.getGroupMemberUserInfos(callSession.conversation.target, false)
     const excluded: UserInfo[] = [selfUserInfo.value]
     participants.value.forEach((p: ParticipantProfile): void => {
         excluded.push(userInfoOf(p.userId))
@@ -277,7 +277,7 @@ const invite = () => {
         for (let i = 0; i < users.length; i++) {
             ids.push(users[i].uid)
         }
-        avEngineKit.inviteNewParticipant(session.callId, ids)
+        avEngineKit.inviteNewParticipant(callSession.callId, ids)
     }
     pickUsers(options)
 }
@@ -312,16 +312,16 @@ const setupSessionCallback = () => {
             }
         }
     }
-    callback.didChangeMode = (audioOnly: boolean): void => {
-        audioOnly.value = audioOnly
+    callback.didChangeMode = (isAudioOnly: boolean): void => {
+        audioOnly.value = isAudioOnly
     }
     callback.didParticipantJoined = (userId: string, screenSharing: boolean): void => {
-        const session = session.value
-        if (session == null) {
+        const callSession = session.value
+        if (callSession == null) {
             return
         }
         participants.value = participants.value.filter((p: ParticipantProfile): boolean => p.userId != userId)
-        const profile = avEngineKit.getParticipantProfile(session.callId, userId, screenSharing)
+        const profile = avEngineKit.getParticipantProfile(callSession.callId, userId, screenSharing)
         if (profile != null) {
             participants.value.push(profile)
         }
@@ -367,12 +367,12 @@ const setupSessionCallback = () => {
 }
 
 const minimize = () => {
-    const session = session.value
-    if (session == null) {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
     if (avEngineKit.checkOverlayPermission()) {
-        avEngineKit.minimize(session.callId)
+        avEngineKit.minimize(callSession.callId)
         uni.navigateBack({
             delta: 1,
             fail: (err) => {
@@ -390,13 +390,13 @@ const minimize = () => {
 onLoad((_options: OnLoadOptions) => {
     const pageOptions = takePageOptions()
     if (pageOptions != null && pageOptions instanceof CallSession) {
-        const session = pageOptions as CallSession
-        session.value = session
-        callState.value = session.state
-        audioOnly.value = session.audioOnly
-        initiatorId.value = session.initiator
-        if (session.connectedTime > 0) {
-            startTimestamp.value = session.connectedTime
+        const callSession = pageOptions as CallSession
+        session.value = callSession
+        callState.value = callSession.state
+        audioOnly.value = callSession.audioOnly
+        initiatorId.value = callSession.initiator
+        if (callSession.connectedTime > 0) {
+            startTimestamp.value = callSession.connectedTime
         }
     }
 })
