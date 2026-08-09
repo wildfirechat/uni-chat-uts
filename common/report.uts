@@ -13,7 +13,9 @@ import { t } from "../i18n/i18n.uts";
 /** 举报接收方：官方账号，与 flutter 一致。 */
 export const REPORT_TARGET_USER_ID = 'cgc8c8VV'
 
-export function report(): void {
+// 写成箭头常量而不是 export function：GeneralSettingsPage 的模板里直接 @tap="report"，
+// 模板表达式编译成 unref(report)，要求它是个值；Kotlin 的 fun 名字不能当值用
+export const report = (): void => {
     uni.showModal({
         title: t('setting.report'),
         content: t('setting.report_tip'),

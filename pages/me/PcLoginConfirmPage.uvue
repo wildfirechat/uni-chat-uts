@@ -45,16 +45,6 @@ const token = ref<string>('')
 const loading = ref<boolean>(true)
 const canConfirm = ref<boolean>(false)
 
-onLoad((options: OnLoadOptions) => {
-    token.value = options['token'] ?? ''
-    if (token.value == '') {
-        toast(t('pc.invalid_token'))
-        back()
-        return
-    }
-    scan()
-})
-
 const back = () => {
     setTimeout(() => {
         uni.navigateBack({} as NavigateBackOptions)
@@ -81,6 +71,16 @@ const scan = () => {
             back()
         })
 }
+
+onLoad((options: OnLoadOptions) => {
+    token.value = options['token'] ?? ''
+    if (token.value == '') {
+        toast(t('pc.invalid_token'))
+        back()
+        return
+    }
+    scan()
+})
 
 const confirmLogin = () => {
     loading.value = true

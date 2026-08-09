@@ -108,6 +108,15 @@ node scripts/check-uvue-css.js                      # 样式子集校验（分�
 # 注意 --project 传的是**工程名**不是路径，写 `--project .` 会报「项目 . 不存在」
 ```
 
+⚠️ **`publish --type appResource` 只出前端产物，android 端不跑 Kotlin 编译**（20 秒就结束，
+日志里没有「编译为 android class」这一步）。下面「android 编译的五条硬规则」那一整类错误
+它一条都报不出来。android 的类型检查必须用：
+
+```bash
+/Applications/HBuilderX.app/Contents/MacOS/cli launch app-android --project uni-chat-uts --compile true
+# 约 75~135 秒一轮，日志里能看到「当前工程 N 个页面，正在编译为 android class」
+```
+
 `cli publish` 需要 HBuilderX 在后台运行。**没被任何页面引用的组件不会参与编译**，新组件要么接进页面，要么临时挂一个页面进 pages.json 编一次再摘掉。
 
 **但编译通过 ≠ 跑得对，改完必须真机验证（当前主力测试平台是鸿蒙）。**
@@ -137,6 +146,45 @@ node scripts/check-uvue-css.js                      # 样式子集校验（分�
 2. **`text` 带 `overflow: hidden` 必须有确定宽度。** 别写「标题 `flex-shrink: 0` + 一个 `flex: 1` 占位 view」——
    鸿蒙上 `flex-shrink: 0` 兜不住，占位 view 把宽度抢光，两个字的「关于」都会变成省略号。
    正确写法：要截断的文字自己 `flex: 1`，右侧次要值 `flex-shrink: 0`，不要占位 view。
+
+### android 编译的五条硬规则（鸿蒙能过、android 过不去）
+
+鸿蒙走 JS/ArkTS，类型宽松；android 落成 Kotlin，下面三条在鸿蒙上完全无感，只有 android 报错。
+**先看清楚：编译器一轮只报 4 条错误就停，改完必须反复编到干净，不能看到「没报」就以为改完了。**
+
+```bash
+/Applications/HBuilderX.app/Contents/MacOS/cli launch app-android --project uni-chat-uts --compile true
+# 约 75 秒一轮
+```
+
+1. **class 类型的 props，模板里取不到成员。** `defineProps<{ message: Message }>()` 编译出来是
+   `open var message: Any by $props` —— 类型被抹成 `Any`，模板里 `message.direction` /
+   `message._showTime` 一律报「找不到名称 xxx」（error18，其实就是 Kotlin 的 unresolved reference）。
+   **数组和基础类型不受影响**（`UTSArray<Message>` / `String` 都保留了类型），所以
+   `props.desc as string` 这种是白加的。
+   修法：在 script 里 `as` 好类型，用 `computed` 暴露给模板 —— 别在模板里堆 `as`：
+
+   ```uts
+   const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+   ```
+
+   script 里同理，`props.message.messageContent` 取不到，要先 `const m = props.message as Message`。
+2. **模板里用到的导入函数必须是箭头函数常量。** 模板表达式编译成 `unref(fontPx)(10)`，
+   `unref(...)` 要求 `fontPx` 是个**值**；`export function fontPx()` 落成 Kotlin 的 `fun fontPx()`，
+   函数名不能当值用，直接报错。所以 `common/layoutScale.uts` 里给模板用的
+   `px/fontPx/iconPx/rowPx` 全部写成 `export const x = (...) => {}`；
+   只在 script 里调用的（`scale`、`fontClass`）保持 `export function` 没问题。
+3. **`Int` 和 `Number` 不通用。** `urls.indexOf(x)` 在 android 上返回 `Int`，
+   `let current = urls.indexOf(x)` 之后再 `current = urls.length - 1`（`Number`）就类型不匹配。
+   变量显式标 `: number`。同理 `UTSJSONObject.toMap()` 落成 kotlin `Map`，
+   `forEach` 只收一个 entry 参数，跨端要遍历动态 key 用静态的 `UTSJSONObject.keys(obj)`。
+   **数字比较一律 `==` / `!=`，不要写 `===` / `!==`** —— 后者落成 Kotlin 的引用相等，
+   `Number` 和 `Int` 装箱后比的是对象身份，编译器只给 warning，错在运行时（voip 页踩过）。
+4. **`<script setup>` 里的 `const` 是顺序执行的 `val`，引用不到后面声明的。** 两个 `computed`
+   互相引用时，被引用的那个必须写在前面，报「找不到名称 xxx」。
+5. **箭头常量不能递归调自己。** `const load = () => { ... load() ... }` 落成
+   `val load = fun(){ ... }`，初始化时自己还不存在。要递归就写成 `function load(): void {}`
+   —— 但这样它就不能再出现在模板里了（见第 2 条），两者互斥。
 
 ---
 

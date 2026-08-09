@@ -1,7 +1,7 @@
 <template>
-    <view class="link-message-container" @tap="openLink" :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+    <view class="link-message-container" @tap="openLink" :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <view class="link-info">
-            <text class="link-title" :style="{ fontSize: fontPx(15), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
+            <text class="link-title" :style="{ fontSize: fontPx(15), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
             <text v-if="content.contentDigest != ''" class="link-digest"
                 :style="{ fontSize: fontPx(13), color: c.textTertiary }">{{ content.contentDigest }}</text>
         </view>
@@ -26,8 +26,12 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const content = computed<LinkMessageContent>((): LinkMessageContent => {
-    return props.message.messageContent as LinkMessageContent
+    const message = props.message as Message
+    return message.messageContent as LinkMessageContent
 })
 
 const title = computed<string>((): string => {

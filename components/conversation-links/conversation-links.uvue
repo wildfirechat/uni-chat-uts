@@ -115,7 +115,7 @@ const load = () => {
         return
     }
     loading.value = true
-    const messages = store.getMessagesInTypesAndTimes(props.conversation,
+    const messages = store.getMessagesInTypesAndTimes(props.conversation as Conversation,
         [MessageContentType.Link], 0, new Date().getTime(), PAGE_SIZE, offset)
     const page: LinkItem[] = []
     for (let i = 0; i < messages.length; i++) {

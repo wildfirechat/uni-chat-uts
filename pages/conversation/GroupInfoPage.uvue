@@ -71,27 +71,9 @@ const memberCount = computed<number>((): number => {
     return info == null ? 0 : info.memberCount
 })
 
-onLoad((options: OnLoadOptions) => {
-    groupId.value = options['groupId'] ?? ''
-    from.value = options['from'] ?? ''
-    if (groupId.value == '') {
-        return
-    }
-    groupInfo.value = wfc.getGroupInfo(groupId.value, true)
-    refreshMembership()
-})
-
 const refreshMembership = () => {
     const ids = wfc.getGroupMemberIds(groupId.value, false)
     isMember.value = ids.indexOf(wfc.getUserId()) >= 0
-}
-
-const onPrimaryAction = () => {
-    if (isMember.value) {
-        enterConversation()
-    } else {
-        joinGroup()
-    }
 }
 
 const enterConversation = () => {
@@ -110,6 +92,24 @@ const joinGroup = () => {
         toastError(err)
     })
 }
+
+const onPrimaryAction = () => {
+    if (isMember.value) {
+        enterConversation()
+    } else {
+        joinGroup()
+    }
+}
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    from.value = options['from'] ?? ''
+    if (groupId.value == '') {
+        return
+    }
+    groupInfo.value = wfc.getGroupInfo(groupId.value, true)
+    refreshMembership()
+})
 </script>
 
 <style scoped>

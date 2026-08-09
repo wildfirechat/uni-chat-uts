@@ -80,15 +80,16 @@ const emit = defineEmits(['select', 'backToTop'])
 const c = computed<AppColors>((): AppColors => colors())
 
 const tags = computed<string[]>((): string[] => {
+    const categories = props.categories as string[]
     const list: string[] = []
-    if (props.categories.length == 0) {
+    if (categories.length == 0) {
         return list
     }
     if (props.showBackToTop) {
         list.push(BACK_TO_TOP_TAG)
     }
-    for (let i = 0; i < props.categories.length; i++) {
-        list.push(quickIndexTagOf(props.categories[i]))
+    for (let i = 0; i < categories.length; i++) {
+        list.push(quickIndexTagOf(categories[i]))
     }
     return list
 })
@@ -142,9 +143,10 @@ const notifySelect = (index: number) => {
         emit('backToTop')
         return
     }
+    const categories = props.categories as string[]
     const ci = props.showBackToTop ? index - 1 : index
-    if (ci >= 0 && ci < props.categories.length) {
-        emit('select', props.categories[ci])
+    if (ci >= 0 && ci < categories.length) {
+        emit('select', categories[ci])
     }
 }
 
@@ -193,12 +195,12 @@ const onTouchEnd = () => {
     touching.value = false
 }
 
-watch(() => props.categories, (_newValue, _oldValue) => {
+watch(() : string[] => props.categories, (_newValue: string[], _oldValue: string[]) => {
     selectedIndex.value = -1
     touching.value = false
 })
 
-watch(() => props.top, (_newValue, _oldValue) => {
+watch(() : number => props.top, (_newValue: number, _oldValue: number) => {
     measure()
 })
 

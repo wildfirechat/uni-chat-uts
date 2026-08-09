@@ -148,10 +148,12 @@ function reedSolomonComputeRemainder(data: number[], divisor: number[]): number[
 function utf8Bytes(str: string): number[] {
     const bytes: number[] = []
     for (let i = 0; i < str.length; i++) {
-        let code = str.charCodeAt(i)
-        // 高代理 + 低代理 合成一个码点
+        let code = str.charCodeAt(i) ?? 0
+        // 高代理 + 低代理 合成一个码点。charCodeAt 在 Android 上返回可空 Number，
+        // 判空后取默认值 0 才能参与后面的位运算/比较（否则 "Operator call is
+        // prohibited on a nullable receiver" 编译报错）。
         if (code >= 0xD800 && code <= 0xDBFF && i + 1 < str.length) {
-            const next = str.charCodeAt(i + 1)
+            const next = str.charCodeAt(i + 1) ?? 0
             if (next >= 0xDC00 && next <= 0xDFFF) {
                 code = 0x10000 + ((code - 0xD800) << 10) + (next - 0xDC00)
                 i++

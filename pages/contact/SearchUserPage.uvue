@@ -33,9 +33,9 @@ const searchUser = () => {
         return;
     }
     console.log('search user', keyword.value);
-    wfc.searchUser(keyword.value, SearchType.General, 0, (keyword: string, resultUsers: UserInfo[]) => {
-        console.log('searchUser success', keyword, resultUsers.length)
-        if (keyword == keyword.value) {
+    wfc.searchUser(keyword.value, SearchType.General, 0, (skeyword: string, resultUsers: UserInfo[]) => {
+        console.log('searchUser success', skeyword, resultUsers.length)
+        if (skeyword == keyword.value) {
             users.value = resultUsers;
         }
     }, (err: number) => {

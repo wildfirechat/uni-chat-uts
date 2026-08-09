@@ -65,7 +65,8 @@ const RENDER_BATCH_USER_COUNT = 220
 const renderUserCount = ref<number>(0)
 
 const hasMore = computed<boolean>((): boolean => {
-    return renderUserCount.value < props.users.length
+    const users = props.users as UserInfo[]
+    return renderUserCount.value < users.length
 })
 
 const displayNameOf = (user: UserInfo): string => {
@@ -82,12 +83,13 @@ const displayNameOf = (user: UserInfo): string => {
 }
 
 const visibleFlatItems = computed<FlatUserListItem[]>((): FlatUserListItem[] => {
+    const users = props.users as UserInfo[]
     const items: FlatUserListItem[] = []
-    const total = renderUserCount.value < props.users.length ? renderUserCount.value : props.users.length
+    const total = renderUserCount.value < users.length ? renderUserCount.value : users.length
     let lastCategory = ''
 
     for (let i = 0; i < total; i++) {
-        const user = props.users[i]
+        const user = users[i]
         const category = user._category
         if (props.showCategoryLabel && lastCategory != category) {
             lastCategory = category
@@ -109,23 +111,25 @@ const appendNextBatch = () => {
     if (!hasMore.value) {
         return
     }
+    const users = props.users as UserInfo[]
     const next = renderUserCount.value + RENDER_BATCH_USER_COUNT
-    renderUserCount.value = next < props.users.length ? next : props.users.length
+    renderUserCount.value = next < users.length ? next : users.length
 }
 
 const resetRenderWindow = () => {
-    if (props.users.length == 0) {
+    const users = props.users as UserInfo[]
+    if (users.length == 0) {
         renderUserCount.value = 0
         return
     }
-    renderUserCount.value = props.users.length < INITIAL_RENDER_USER_COUNT ? props.users.length : INITIAL_RENDER_USER_COUNT
+    renderUserCount.value = users.length < INITIAL_RENDER_USER_COUNT ? users.length : INITIAL_RENDER_USER_COUNT
 }
 
-watch(() => props.users, (_newValue, _oldValue) => {
+watch((): UserInfo[] => props.users, (_newValue: UserInfo[], _oldValue: UserInfo[]) => {
     resetRenderWindow()
 }, { immediate: true })
 
-watch(() => props.showCategoryLabel, (_newValue, _oldValue) => {
+watch((): boolean => props.showCategoryLabel, (_newValue: boolean, _oldValue: boolean) => {
     resetRenderWindow()
 })
 

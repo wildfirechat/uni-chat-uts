@@ -8,35 +8,35 @@
             <view class="remote-media-container">
                 <image class="avatar avatar-large" :src="participantUserInfo.portrait" />
                 <text class="desc" :style="{ fontSize: fontPx(15) }">{{ participantUserInfo.displayName }}</text>
-                <text class="desc" :style="{ fontSize: fontPx(15) }" v-if="callState === 1">等待对方接听</text>
-                <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 2">邀请你语音聊天</text>
-                <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 3">接听中...</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }" v-if="callState == 1">等待对方接听</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState == 2">邀请你语音聊天</text>
+                <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState == 3">接听中...</text>
             </view>
         </view>
 
         <!--video-->
         <view v-else class="content-container">
             <view class="remote-media-container">
-                <native-view v-if="callState === 4" class="video" @init="onRemoteVideoViewInit"
+                <native-view v-if="callState == 4" class="video" @init="onRemoteVideoViewInit"
                     @tap="switchVideoType"></native-view>
-                <view v-if="callState !== 4" class="remote-placeholder">
+                <view v-if="callState != 4" class="remote-placeholder">
                     <image class="avatar avatar-large" :src="participantUserInfo.portrait" />
                     <text class="desc" :style="{ fontSize: fontPx(15) }">{{ participantUserInfo.displayName }}</text>
-                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-if="callState === 1">等待对方接听</text>
-                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 2">邀请你视频聊天</text>
-                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState === 3">接听中...</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-if="callState == 1">等待对方接听</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState == 2">邀请你视频聊天</text>
+                    <text class="desc" :style="{ fontSize: fontPx(15) }" v-else-if="callState == 3">接听中...</text>
                 </view>
             </view>
-            <view class="local-media-container" :class="callState === 4 ? 'local-corner-connected' : 'local-corner'">
-                <native-view v-if="callState === 4 && !videoMuted" class="localVideo"
+            <view class="local-media-container" :class="callState == 4 ? 'local-corner-connected' : 'local-corner'">
+                <native-view v-if="callState == 4 && !videoMuted" class="localVideo"
                     @init="onLocalVideoViewInit"></native-view>
-                <image v-else class="avatar" :class="callState === 4 ? 'avatar-muted' : 'avatar-small'"
+                <image v-else class="avatar" :class="callState == 4 ? 'avatar-muted' : 'avatar-small'"
                     :src="selfUserInfo.portrait" />
             </view>
         </view>
 
         <!--incoming-->
-        <view v-if="callState === 2" class="action-container">
+        <view v-if="callState == 2" class="action-container">
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
@@ -48,7 +48,7 @@
         </view>
 
         <!--outgoing / connecting-->
-        <view v-if="callState === 1 || callState === 3" class="action-container">
+        <view v-if="callState == 1 || callState == 3" class="action-container">
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
@@ -56,7 +56,7 @@
         </view>
 
         <!--connected-->
-        <view v-if="callState === 4" class="action-container">
+        <view v-if="callState == 4" class="action-container">
             <view class="action">
                 <image v-if="!audioMuted" @tap="mute" class="action-img" src="/static/image/av/av_mute.png" />
                 <image v-else @tap="mute" class="action-img" src="/static/image/av/av_mute_hover.png" />
@@ -73,7 +73,7 @@
         </view>
 
         <view class="voip-title-container">
-            <text class="duration-text" :style="{ fontSize: fontPx(15) }" v-if="callState === 4">{{ duration }}</text>
+            <text class="duration-text" :style="{ fontSize: fontPx(15) }" v-if="callState == 4">{{ duration }}</text>
             <image @tap="minimize" class="minimize-img" src="/static/image/av/av_minimize.png" />
         </view>
     </view>
@@ -129,6 +129,41 @@ const duration = computed<string>((): string => {
     return minStr + ':' + secStr
 })
 
+const setupLocalVideoView = () => {
+    const callSession = session.value
+    const element = localVideoElement.value
+    if (callSession == null || element == null) {
+        return
+    }
+    avEngineKit.setLocalVideoView(callSession.callId, element)
+}
+
+const setupRemoteVideoView = () => {
+    const callSession = session.value
+    const element = remoteVideoElement.value
+    if (callSession == null || element == null) {
+        return
+    }
+    avEngineKit.setRemoteVideoView(callSession.callId, callSession.conversation.target, element)
+}
+
+const onVoipConnected = () => {
+    if (timer.value == 0) {
+        if (startTimestamp.value == 0) {
+            startTimestamp.value = new Date().getTime()
+        }
+        timer.value = setInterval((): void => {
+            currentTimestamp.value = new Date().getTime()
+        }, 1000)
+    }
+    if (!audioOnly.value) {
+        setTimeout((): void => {
+            setupLocalVideoView()
+            setupRemoteVideoView()
+        }, 100)
+    }
+}
+
 const setupSessionCallback = () => {
     const callback = new CallSessionCallback()
     callback.didChangeState = (state: number): void => {
@@ -182,24 +217,6 @@ const onRemoteVideoViewInit = (e: UniNativeViewInitEvent) => {
     setupRemoteVideoView()
 }
 
-const setupLocalVideoView = () => {
-    const callSession = session.value
-    const element = localVideoElement.value
-    if (callSession == null || element == null) {
-        return
-    }
-    avEngineKit.setLocalVideoView(callSession.callId, element)
-}
-
-const setupRemoteVideoView = () => {
-    const callSession = session.value
-    const element = remoteVideoElement.value
-    if (callSession == null || element == null) {
-        return
-    }
-    avEngineKit.setRemoteVideoView(callSession.callId, callSession.conversation.target, element)
-}
-
 const switchVideoType = () => {
     const callSession = session.value
     if (callSession == null) {
@@ -245,23 +262,6 @@ const mute = () => {
     }
     audioMuted.value = !audioMuted.value
     avEngineKit.muteAudio(callSession.callId, audioMuted.value)
-}
-
-const onVoipConnected = () => {
-    if (timer.value == 0) {
-        if (startTimestamp.value == 0) {
-            startTimestamp.value = new Date().getTime()
-        }
-        timer.value = setInterval((): void => {
-            currentTimestamp.value = new Date().getTime()
-        }, 1000)
-    }
-    if (!audioOnly.value) {
-        setTimeout((): void => {
-            setupLocalVideoView()
-            setupRemoteVideoView()
-        }, 100)
-    }
 }
 
 const minimize = () => {

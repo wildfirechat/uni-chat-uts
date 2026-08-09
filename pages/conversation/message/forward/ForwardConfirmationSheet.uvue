@@ -130,7 +130,7 @@ onUnmounted(() => {
 })
 
 // 每次弹出都是一次新的转发，留言不该留着上一次的
-watch(() => props.modelValue, (visible: boolean, _old: boolean) => {
+watch(() : boolean => props.modelValue, (visible: boolean, _old: boolean) => {
     if (visible) {
         comment.value = ''
     }
@@ -151,10 +151,11 @@ const portraitOf = (conversation: Conversation): string => {
 }
 
 const firstContentThumbnail = computed<string>((): string => {
-    if (props.messages.length == 0) {
+    const messages = props.messages as Message[]
+    if (messages.length == 0) {
         return ''
     }
-    const content = props.messages[0].messageContent
+    const content = messages[0].messageContent
     if (content instanceof ImageMessageContent) {
         return (content as ImageMessageContent).thumbnail
     }
@@ -165,10 +166,11 @@ const firstContentThumbnail = computed<string>((): string => {
 })
 
 const previewIsVideo = computed<boolean>((): boolean => {
-    if (props.messages.length == 0) {
+    const messages = props.messages as Message[]
+    if (messages.length == 0) {
         return false
     }
-    return props.messages[0].messageContent instanceof VideoMessageContent
+    return messages[0].messageContent instanceof VideoMessageContent
 })
 
 /** 缩略图优先用消息自带的 base64，没有时退回图片消息的远端地址 */
@@ -177,10 +179,11 @@ const previewThumbnail = computed<string>((): string => {
     if (thumbnail != '') {
         return 'data:image/jpeg;base64,' + thumbnail
     }
-    if (props.messages.length == 0) {
+    const messages = props.messages as Message[]
+    if (messages.length == 0) {
         return ''
     }
-    const content = props.messages[0].messageContent
+    const content = messages[0].messageContent
     if (content instanceof ImageMessageContent) {
         return (content as ImageMessageContent).remotePath
     }

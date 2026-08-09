@@ -1,6 +1,6 @@
 <template>
     <view class="poll-content-container" @tap="openDetail"
-        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <view class="head">
             <text class="icomoon poll-icon" :style="{ fontSize: fontPx(16), color: onBubble }">&#xf2b5;</text>
             <text class="poll-title" :style="{ fontSize: fontPx(15), color: onBubble }">{{ content.title }}</text>
@@ -43,34 +43,21 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const content = computed<PollMessageContent>((): PollMessageContent => {
-    return props.message.messageContent as PollMessageContent
+    const message = props.message as Message
+    return message.messageContent as PollMessageContent
 })
 
 const onBubble = computed<string>((): string => {
-    return props.message.direction == 0 ? colors().bubbleSentText : colors().bubbleReceivedText
+    const message = props.message as Message
+    return message.direction == 0 ? colors().bubbleSentText : colors().bubbleReceivedText
 })
 
 /** 次要信息：同一个前景色压到 70% 透明度，不另起色相 */
 const onBubbleWeak = computed<string>((): string => onBubble.value + 'B3')
-
-/** 票数 · 状态 · 剩余时间，合成一行 */
-const metaText = computed<string>((): string => {
-    const poll = content.value
-    const parts: string[] = [
-        poll.totalVotes + t('poll.votes'),
-        poll.isEnded() ? t('poll.status_ended') : t('poll.status_active')
-    ]
-    const remaining = remainingText()
-    if (remaining != '') {
-        parts.push(remaining)
-    }
-    return parts.join(' · ')
-})
-
-const actionText = computed<string>((): string => {
-    return content.value.isEnded() ? t('poll.view_result') : t('poll.join_action')
-})
 
 const remainingText = (): string => {
     const poll = content.value
@@ -96,6 +83,24 @@ const remainingText = (): string => {
     return t1('poll.minutes_left', '' + minutes)
 }
 
+/** 票数 · 状态 · 剩余时间，合成一行 */
+const metaText = computed<string>((): string => {
+    const poll = content.value
+    const parts: string[] = [
+        poll.totalVotes + t('poll.votes'),
+        poll.isEnded() ? t('poll.status_ended') : t('poll.status_active')
+    ]
+    const remaining = remainingText()
+    if (remaining != '') {
+        parts.push(remaining)
+    }
+    return parts.join(' · ')
+})
+
+const actionText = computed<string>((): string => {
+    return content.value.isEnded() ? t('poll.view_result') : t('poll.join_action')
+})
+
 const openDetail = () => {
     // 服务没配就点不动，和 flutter 的 `if (!PollService.isAvailable) return;` 一致
     if (!pollServerApi.isAvailable()) {
@@ -105,8 +110,9 @@ const openDetail = () => {
     if (isNaN(pollId) || pollId <= 0) {
         return
     }
+    const message = props.message as Message
     uni.navigateTo({
-        url: '/pages/poll/PollDetailPage?pollId=' + pollId + '&messageId=' + props.message.messageId,
+        url: '/pages/poll/PollDetailPage?pollId=' + pollId + '&messageId=' + message.messageId,
         fail: (err) => {
             console.log('nav to PollDetailPage err', err)
         }

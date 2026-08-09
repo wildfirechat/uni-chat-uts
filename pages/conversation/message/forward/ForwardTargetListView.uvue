@@ -202,7 +202,8 @@ const isItemSelected = (item: ForwardTargetItem): boolean => {
     if (conversation == null) {
         return false
     }
-    return props.selectedConversations.findIndex((conv: Conversation): boolean => conv.equal(conversation)) >= 0
+    const selectedConversations = props.selectedConversations as Conversation[]
+    return selectedConversations.findIndex((conv: Conversation): boolean => conv.equal(conversation)) >= 0
 }
 
 const onRowTap = (item: ForwardTargetItem) => {

@@ -124,6 +124,11 @@ const displayName = computed<string>((): string => {
     return friend.displayName != '' ? friend.displayName : friend.name;
 })
 
+const isFriend = computed<boolean>((): boolean => {
+    const friend = user.value
+    return friend != null && wfc.isMyFriend(friend.uid);
+})
+
 /** 有备注时单独一行「备注:xxx」，对齐 flutter 的 nameList */
 const aliasLine = computed<string>((): string => {
     const friend = user.value
@@ -136,11 +141,6 @@ const aliasLine = computed<string>((): string => {
 const wildfireIdLine = computed<string>((): string => {
     const friend = user.value
     return friend == null ? '' : t1('user.wildfire_id', friend.name)
-})
-
-const isFriend = computed<boolean>((): boolean => {
-    const friend = user.value
-    return friend != null && wfc.isMyFriend(friend.uid);
 })
 
 const isSelf = computed<boolean>((): boolean => {
@@ -174,21 +174,6 @@ const moreMenuItems = computed<PopupMenuItem[]>((): PopupMenuItem[] => {
         items.push(new PopupMenuItem(t('friend_request.add_friend'), 'add_friend', ''))
     }
     return items
-})
-
-onMounted(() => {
-    const friend = user.value
-    if (friend == null) {
-        return
-    }
-    wfc.getUserInfo(friend.uid, true);
-    isStarred.value = wfc.isFavUser(friend.uid)
-    isBlacklisted.value = wfc.isBlackListed(friend.uid)
-    loadOrganizations(friend.uid)
-})
-
-onUnload(() => {
-    store.setCurrentFriend(null);
 })
 
 /**
@@ -227,6 +212,31 @@ const loadOrganizations = (userId: string) => {
         })
 }
 
+const chat = () => {
+    const friend = user.value
+    if (friend == null) {
+        return
+    }
+    const conversation = new Conversation(ConversationType.Single, friend.uid, 0);
+    store.setCurrentConversation(conversation);
+    go2ConversationPage();
+}
+
+onMounted(() => {
+    const friend = user.value
+    if (friend == null) {
+        return
+    }
+    wfc.getUserInfo(friend.uid, true);
+    isStarred.value = wfc.isFavUser(friend.uid)
+    isBlacklisted.value = wfc.isBlackListed(friend.uid)
+    loadOrganizations(friend.uid)
+})
+
+onUnload(() => {
+    store.setCurrentFriend(null);
+})
+
 const openOrganization = (_org: Organization) => {
     // 组织架构页自己从根部门进，参数只用于将来定位；当前与 flutter 一样是整页打开
     uni.navigateTo({
@@ -245,24 +255,6 @@ const openMoreMenu = () => {
     showMoreMenu.value = true
 }
 
-const onPrimaryAction = () => {
-    if (isSelf.value || isFriend.value) {
-        chat()
-    } else {
-        openInviteFriend()
-    }
-}
-
-const chat = () => {
-    const friend = user.value
-    if (friend == null) {
-        return
-    }
-    const conversation = new Conversation(ConversationType.Single, friend.uid, 0);
-    store.setCurrentConversation(conversation);
-    go2ConversationPage();
-}
-
 const openInviteFriend = () => {
     const friend = user.value
     if (friend == null) {
@@ -276,29 +268,20 @@ const openInviteFriend = () => {
     } as NavigateToOptions)
 }
 
+const onPrimaryAction = () => {
+    if (isSelf.value || isFriend.value) {
+        chat()
+    } else {
+        openInviteFriend()
+    }
+}
+
 const onCallSheetSelect = (item: ActionSheetItem) => {
     const friend = user.value
     if (friend == null) {
         return
     }
     startSingleCall(friend.uid, item.tag == 'audio')
-}
-
-const onMoreMenuSelect = (item: PopupMenuItem) => {
-    switch (item.tag) {
-        case 'blacklist':
-            toggleBlacklist()
-            break
-        case 'star':
-            toggleStar()
-            break
-        case 'delete':
-            deleteFriend()
-            break
-        case 'add_friend':
-            openInviteFriend()
-            break
-    }
 }
 
 const toggleBlacklist = () => {
@@ -375,6 +358,24 @@ const deleteFriend = () => {
         })
     })
 }
+
+const onMoreMenuSelect = (item: PopupMenuItem) => {
+    switch (item.tag) {
+        case 'blacklist':
+            toggleBlacklist()
+            break
+        case 'star':
+            toggleStar()
+            break
+        case 'delete':
+            deleteFriend()
+            break
+        case 'add_friend':
+            openInviteFriend()
+            break
+    }
+}
+
 </script>
 
 <style scoped>

@@ -41,7 +41,7 @@ export function setLocale(locale: string): void {
 /**
  * 翻译，key 支持 'a.b' 形式的嵌套 key
  */
-export function t(key: string): string {
+export const t = (key: string): string => {
     const value = messages().getString(key)
     if (value == null) {
         return key
@@ -52,13 +52,13 @@ export function t(key: string): string {
 /**
  * 带 1 个 {0} 占位参数的翻译
  */
-export function t1(key: string, arg0: string): string {
+export const t1 = (key: string, arg0: string): string => {
     return t(key).replace('{0}', arg0)
 }
 
 /**
  * 带 2 个占位参数的翻译
  */
-export function t2(key: string, arg0: string, arg1: string): string {
+export const t2 = (key: string, arg0: string, arg1: string): string => {
     return t(key).replace('{0}', arg0).replace('{1}', arg1)
 }

@@ -38,7 +38,8 @@ const props = defineProps<{
 const emit = defineEmits(['longpress'])
 
 const content = computed<RichNotificationMessageContent>((): RichNotificationMessageContent => {
-    return props.message.messageContent as RichNotificationMessageContent
+    const message = props.message as Message
+    return message.messageContent as RichNotificationMessageContent
 })
 
 const onLongPress = (e: UniTouchEvent) => {

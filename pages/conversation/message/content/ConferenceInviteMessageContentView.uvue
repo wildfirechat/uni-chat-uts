@@ -1,10 +1,10 @@
 <template>
     <view class="conference-invite-message-container" @tap="showConferenceInfo"
-        :class="{ out: message.direction == 0 }" :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+        :class="{ out: isOut }" :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <view class="flex-row flex-align-center">
             <image class="avatar" :src="portrait" :style="{ backgroundColor: c.inputBg }" />
             <view class="flex-1">
-                <text class="single-line title" :style="{ fontSize: fontPx(16), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.title }} </text>
+                <text class="single-line title" :style="{ fontSize: fontPx(16), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.title }} </text>
                 <text class="single-line desc" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ content.desc }}</text>
             </view>
         </view>
@@ -31,12 +31,17 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const content = computed<ConferenceInviteMessageContent>((): ConferenceInviteMessageContent => {
-    return props.message.messageContent as ConferenceInviteMessageContent
+    const message = props.message as Message
+    return message.messageContent as ConferenceInviteMessageContent
 })
 
 const portrait = computed<string>((): string => {
-    const groupId = props.message.conversation.type == ConversationType.Group ? props.message.conversation.target : '';
+    const message = props.message as Message
+    const groupId = message.conversation.type == ConversationType.Group ? message.conversation.target : '';
     const userInfos = store.getUserInfos([content.value.host], groupId)
     return userInfos.length > 0 ? userInfos[0].portrait : '';
 })

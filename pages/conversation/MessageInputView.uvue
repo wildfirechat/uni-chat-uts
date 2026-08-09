@@ -142,7 +142,8 @@ const extList = computed<ExtItem[]>((): ExtItem[] => {
         new ExtItem('位置', 'location', ''),
         new ExtItem('名片', 'userCard', ''),
     ] as ExtItem[]
-    if (props.conversationInfo.conversation.type == ConversationType.Group && pollServerApi.isAvailable()) {
+    let converstionInfo = props.conversationInfo as ConversationInfo;
+    if (converstionInfo.conversation.type == ConversationType.Group && pollServerApi.isAvailable()) {
         items.push(new ExtItem(t('poll.poll'), 'poll', '\uf2b5', 'icomoon'))
     }
     return items
@@ -187,9 +188,40 @@ const quotedMessageDigest = computed<string>((): string => {
     return quotedMsg.messageContent.digest(quotedMsg)
 })
 
+const restoreDraft = () => {
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    const draft = Draft.getConversationDraftEx(conversationInfo);
+    store.quoteMessage(draft.quotedMessage);
+    if (text.value != '') {
+        console.log('inputting, ignore', draft.text)
+    } else {
+        text.value = draft.text;
+    }
+}
+
+const storeDraft = () => {
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    const quotedMsg = conversationState.quotedMessage;
+    const draftText = text.value.trim();
+    const quoteInfo = quotedMsg != null
+        ? QuoteInfo.init(quotedMsg.messageUid, quotedMsg.from, quotedMsg.messageContent.digest(quotedMsg))
+        : null;
+
+    if (draftText.length == 0) {
+        if (conversationInfo.draft != '') {
+            Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
+        }
+    } else {
+        if (draftText != conversationInfo.draft) {
+            Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
+        }
+    }
+}
+
 onMounted(() => {
-    if (props.conversationInfo.conversation.type == ConversationType.Group) {
-        groupMemberUserInfos.value = store.getGroupMemberUserInfos(props.conversationInfo.conversation.target, false, false);
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    if (conversationInfo.conversation.type == ConversationType.Group) {
+        groupMemberUserInfos.value = store.getGroupMemberUserInfos(conversationInfo.conversation.target, false, false);
     }
     restoreDraft();
 })
@@ -203,7 +235,8 @@ const TYPING_INTERVAL = 10 * 1000
 let lastTypingTime = 0
 
 const notifyTyping = (typingType: number) => {
-    const conversation = props.conversationInfo.conversation
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    const conversation = conversationInfo.conversation
     if (conversation.type != ConversationType.Single && conversation.type != ConversationType.Group) {
         return
     }
@@ -225,12 +258,13 @@ const onInput = (event: UniInputEvent) => {
     if (inserting) {
         notifyTyping(TypingMessageContent.TYPING_TEXT);
     }
-    if (props.conversationInfo.conversation.type == ConversationType.Group) {
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    if (conversationInfo.conversation.type == ConversationType.Group) {
         if (inserting && text.value.length > 0 && cursor > 0 && text.value.charAt(cursor - 1) == '@') {
             const atAll = new UserInfo()
             atAll.uid = '@all'
             atAll.displayName = '所有人'
-            const target = store.ensureConversationTarget(props.conversationInfo.conversation)
+            const target = store.ensureConversationTarget(conversationInfo.conversation)
             atAll.portrait = target != null ? target.portrait : ''
             atAll._displayName = '所有人'
 
@@ -267,7 +301,8 @@ const send = () => {
             textMessageContent.quoteInfo = quoteInfo;
             store.quoteMessage(null);
         }
-        if (props.conversationInfo.conversation.type == ConversationType.Group && mentions.value.length > 0) {
+        const conversationInfo = props.conversationInfo as ConversationInfo
+        if (conversationInfo.conversation.type == ConversationType.Group && mentions.value.length > 0) {
             // 匹配以@开始，后面跟着至少一个非空白字符，并且以空格或行尾结尾的字符串
             const regex = /@\S+(\s|$)/g;
             const matches = text.value.match(regex);
@@ -294,10 +329,10 @@ const send = () => {
             }
         }
 
-        wfc.sendConversationMessage(props.conversationInfo.conversation, textMessageContent);
+        wfc.sendConversationMessage(conversationInfo.conversation, textMessageContent);
         text.value = '';
         mentions.value = [];
-        Draft.setConversationDraft(props.conversationInfo.conversation, '', null);
+        Draft.setConversationDraft(conversationInfo.conversation, '', null);
     }
 }
 
@@ -347,6 +382,196 @@ const toggleExt = () => {
     showPtt.value = false;
 }
 
+/** 群投票入口：发起投票 / 我的投票，对齐 flutter `PollHomeScreen.show` */
+const openPoll = () => {
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    uni.navigateTo({
+        url: '/pages/poll/PollHomePage?groupId=' + conversationInfo.conversation.target,
+        fail: (err) => {
+            console.log('nav to PollHomePage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const showPickGroupMemberToVoipModal = (audioOnly: boolean) => {
+    const options = new PickUsersOptions()
+    options.users = groupMemberUserInfos.value
+    options.confirmTitle = '确定'
+    options.showCategoryLabel = false
+    options.successCB = (users: UserInfo[]): void => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        const conversationInfo = props.conversationInfo as ConversationInfo
+        const callSession = avEngineKit.startMultiCall(conversationInfo.conversation.target, ids, audioOnly)
+        // 不加延时的话，选人弹窗关闭动画和跳转会互相干扰
+        setTimeout((): void => {
+            if (callSession != null) {
+                navigateToPage('/pages/voip/Multi', callSession)
+            } else {
+                uni.showToast({
+                    title: '发起通话失败',
+                    icon: 'none',
+                } as ShowToastOptions)
+            }
+        }, 50)
+    }
+    pickUsers(options)
+}
+
+const voip = (audioOnly: boolean) => {
+    // 单聊那条链路（开关/权限/占线/跳页）与用户详情页共用，见 common/avcall.uts
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    if (conversationInfo.conversation.type == ConversationType.Single) {
+        startSingleCall(conversationInfo.conversation.target, audioOnly)
+        return
+    }
+    if (!Config.ENABLE_VOIP) {
+        toast(t('voip.not_supported'))
+        return
+    }
+    checkVoipPermissions(audioOnly).then((granted: boolean): void => {
+        if (!granted) {
+            return
+        }
+        const curSession = avEngineKit.currentCallSession()
+        if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
+            toast(t('voip.in_progress'))
+            return
+        }
+        if (conversationInfo.conversation.type == ConversationType.Group) {
+            showPickGroupMemberToVoipModal(audioOnly)
+        }
+    })
+}
+
+const confirmSendUserCard = (user: UserInfo) => {
+    const name = user._displayName != '' ? user._displayName : user.displayName
+    uni.showModal({
+        title: '发送名片',
+        content: '发送 ' + name + ' 的名片？',
+        success: (res) => {
+            if (!res.confirm) {
+                return
+            }
+            const cardMessageContent = new CardMessageContent(0, user.uid, user.displayName, user.portrait, wfc.getUserId())
+            cardMessageContent.name = user.name
+            const conversationInfo = props.conversationInfo as ConversationInfo
+            wfc.sendConversationMessage(conversationInfo.conversation, cardMessageContent)
+        }
+    } as ShowModalOptions)
+}
+
+// 名片：选联系人 → 二次确认 → 发送个人名片
+const pickUserCard = () => {
+    let users = contactState.favContactList.concat(contactState.friendList)
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    if (conversationInfo.conversation.type == ConversationType.Single) {
+        const target = conversationInfo.conversation.target
+        users = users.filter((u: UserInfo): boolean => u.uid != target)
+    }
+    if (users.length == 0) {
+        uni.showToast({
+            title: '没有可发送的联系人',
+            icon: 'none',
+        } as ShowToastOptions)
+        return
+    }
+    const options = new PickUserOptions()
+    options.users = users
+    options.showCategoryLabel = false
+    options.successCB = (user: UserInfo) => {
+        // 不加延时的话，选人页面关闭动画和弹窗会互相干扰
+        setTimeout((): void => {
+            confirmSendUserCard(user)
+        }, 50)
+    }
+    pickUser(options)
+}
+
+const takePhoto = () => {
+    notifyTyping(TypingMessageContent.TYPING_CAMERA);
+    uni.chooseImage({
+        count: 1,
+        sourceType: ['camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            const conversationInfo = props.conversationInfo as ConversationInfo
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                store.sendFile(conversationInfo.conversation, toLocalFilePath(e.tempFilePaths[i]));
+            }
+        },
+        fail: (err) => {
+            console.log('take photo fail', err)
+        }
+    } as ChooseImageOptions)
+}
+
+const chooseVideo = () => {
+    notifyTyping(TypingMessageContent.TYPING_CAMERA);
+    uni.chooseVideo({
+        sourceType: ['camera'],
+        success: (e) => {
+            console.log('choose video', e.tempFilePath);
+            const conversationInfo = props.conversationInfo as ConversationInfo
+            store.sendFile(conversationInfo.conversation, toLocalFilePath(e.tempFilePath));
+        },
+        fail: (err) => {
+            console.log('choose video fail', err)
+        }
+    } as ChooseVideoOptions)
+}
+
+const shoot = () => {
+    uni.showActionSheet({
+        itemList: ['拍照', '录像'],
+        success: (res) => {
+            if (res.tapIndex == 0) {
+                takePhoto()
+            } else {
+                chooseVideo()
+            }
+        },
+        fail: (err) => {
+            console.log('show shoot action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+const chooseImage = () => {
+    uni.chooseImage({
+        sourceType: ['album', 'camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            console.log('choose image', e.tempFilePaths.length);
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                const conversationInfo = props.conversationInfo as ConversationInfo
+                store.sendFile(conversationInfo.conversation, toLocalFilePath(e.tempFilePaths[i]));
+            }
+        },
+        fail: (err) => {
+            console.log('choose image fail', err)
+        }
+    } as ChooseImageOptions)
+}
+
+const chooseFile = () => {
+    notifyTyping(TypingMessageContent.TYPING_FILE);
+    wfc.chooseFile('all', (file: UTSJSONObject) => {
+        const path = toLocalFilePath(file.getString('path') ?? '');
+        if (path == '') {
+            return
+        }
+        const name = file.getString('name') ?? ''
+        const size = file.getNumber('size') ?? 0
+        const conversationInfo = props.conversationInfo as ConversationInfo
+        store.sendFile(conversationInfo.conversation, path, name, size);
+    }, (err: number) => {
+        console.error('choose file error', err);
+    });
+}
+
 const onClickExt = (ext: ExtItem) => {
     console.log('onClick ext', ext.tag);
     // 选择相册/拍摄/文件等会离开当前面板去挑选内容，提前收起，避免面板一直占据底部空间，
@@ -383,142 +608,6 @@ const onClickExt = (ext: ExtItem) => {
     }
 }
 
-/** 群投票入口：发起投票 / 我的投票，对齐 flutter `PollHomeScreen.show` */
-const openPoll = () => {
-    uni.navigateTo({
-        url: '/pages/poll/PollHomePage?groupId=' + props.conversationInfo.conversation.target,
-        fail: (err) => {
-            console.log('nav to PollHomePage err', err)
-        }
-    } as NavigateToOptions)
-}
-
-const voip = (audioOnly: boolean) => {
-    // 单聊那条链路（开关/权限/占线/跳页）与用户详情页共用，见 common/avcall.uts
-    if (props.conversationInfo.conversation.type == ConversationType.Single) {
-        startSingleCall(props.conversationInfo.conversation.target, audioOnly)
-        return
-    }
-    if (!Config.ENABLE_VOIP) {
-        toast(t('voip.not_supported'))
-        return
-    }
-    checkVoipPermissions(audioOnly).then((granted: boolean): void => {
-        if (!granted) {
-            return
-        }
-        const curSession = avEngineKit.currentCallSession()
-        if (curSession != null && curSession.state != CallState.STATUS_IDLE) {
-            toast(t('voip.in_progress'))
-            return
-        }
-        if (props.conversationInfo.conversation.type == ConversationType.Group) {
-            showPickGroupMemberToVoipModal(audioOnly)
-        }
-    })
-}
-
-const showPickGroupMemberToVoipModal = (audioOnly: boolean) => {
-    const options = new PickUsersOptions()
-    options.users = groupMemberUserInfos.value
-    options.confirmTitle = '确定'
-    options.showCategoryLabel = false
-    options.successCB = (users: UserInfo[]): void => {
-        const ids: string[] = []
-        for (let i = 0; i < users.length; i++) {
-            ids.push(users[i].uid)
-        }
-        const callSession = avEngineKit.startMultiCall(props.conversationInfo.conversation.target, ids, audioOnly)
-        // 不加延时的话，选人弹窗关闭动画和跳转会互相干扰
-        setTimeout((): void => {
-            if (callSession != null) {
-                navigateToPage('/pages/voip/Multi', callSession)
-            } else {
-                uni.showToast({
-                    title: '发起通话失败',
-                    icon: 'none',
-                } as ShowToastOptions)
-            }
-        }, 50)
-    }
-    pickUsers(options)
-}
-
-// 名片：选联系人 → 二次确认 → 发送个人名片
-const pickUserCard = () => {
-    let users = contactState.favContactList.concat(contactState.friendList)
-    if (props.conversationInfo.conversation.type == ConversationType.Single) {
-        const target = props.conversationInfo.conversation.target
-        users = users.filter((u: UserInfo): boolean => u.uid != target)
-    }
-    if (users.length == 0) {
-        uni.showToast({
-            title: '没有可发送的联系人',
-            icon: 'none',
-        } as ShowToastOptions)
-        return
-    }
-    const options = new PickUserOptions()
-    options.users = users
-    options.showCategoryLabel = false
-    options.successCB = (user: UserInfo) => {
-        // 不加延时的话，选人页面关闭动画和弹窗会互相干扰
-        setTimeout((): void => {
-            confirmSendUserCard(user)
-        }, 50)
-    }
-    pickUser(options)
-}
-
-const confirmSendUserCard = (user: UserInfo) => {
-    const name = user._displayName != '' ? user._displayName : user.displayName
-    uni.showModal({
-        title: '发送名片',
-        content: '发送 ' + name + ' 的名片？',
-        success: (res) => {
-            if (!res.confirm) {
-                return
-            }
-            const cardMessageContent = new CardMessageContent(0, user.uid, user.displayName, user.portrait, wfc.getUserId())
-            cardMessageContent.name = user.name
-            wfc.sendConversationMessage(props.conversationInfo.conversation, cardMessageContent)
-        }
-    } as ShowModalOptions)
-}
-
-const shoot = () => {
-    uni.showActionSheet({
-        itemList: ['拍照', '录像'],
-        success: (res) => {
-            if (res.tapIndex == 0) {
-                takePhoto()
-            } else {
-                chooseVideo()
-            }
-        },
-        fail: (err) => {
-            console.log('show shoot action sheet fail', err)
-        }
-    } as ShowActionSheetOptions)
-}
-
-const takePhoto = () => {
-    notifyTyping(TypingMessageContent.TYPING_CAMERA);
-    uni.chooseImage({
-        count: 1,
-        sourceType: ['camera'],
-        sizeType: ['original', 'compressed'],
-        success: (e) => {
-            for (let i = 0; i < e.tempFilePaths.length; i++) {
-                store.sendFile(props.conversationInfo.conversation, toLocalFilePath(e.tempFilePaths[i]));
-            }
-        },
-        fail: (err) => {
-            console.log('take photo fail', err)
-        }
-    } as ChooseImageOptions)
-}
-
 const onCategoryClick = (i: number) => {
     currentEmojiStickerIndex.value = i;
 }
@@ -529,52 +618,8 @@ const onClickEmoji = (emoji: string) => {
 
 const onClickSticker = (sticker: string) => {
     const stickerMsg = new StickerMessageContent('', sticker, 200, 200)
-    wfc.sendConversationMessage(props.conversationInfo.conversation, stickerMsg);
-}
-
-const chooseImage = () => {
-    uni.chooseImage({
-        sourceType: ['album', 'camera'],
-        sizeType: ['original', 'compressed'],
-        success: (e) => {
-            console.log('choose image', e.tempFilePaths.length);
-            for (let i = 0; i < e.tempFilePaths.length; i++) {
-                store.sendFile(props.conversationInfo.conversation, toLocalFilePath(e.tempFilePaths[i]));
-            }
-        },
-        fail: (err) => {
-            console.log('choose image fail', err)
-        }
-    } as ChooseImageOptions)
-}
-
-const chooseVideo = () => {
-    notifyTyping(TypingMessageContent.TYPING_CAMERA);
-    uni.chooseVideo({
-        sourceType: ['camera'],
-        success: (e) => {
-            console.log('choose video', e.tempFilePath);
-            store.sendFile(props.conversationInfo.conversation, toLocalFilePath(e.tempFilePath));
-        },
-        fail: (err) => {
-            console.log('choose video fail', err)
-        }
-    } as ChooseVideoOptions)
-}
-
-const chooseFile = () => {
-    notifyTyping(TypingMessageContent.TYPING_FILE);
-    wfc.chooseFile('all', (file: UTSJSONObject) => {
-        const path = toLocalFilePath(file.getString('path') ?? '');
-        if (path == '') {
-            return
-        }
-        const name = file.getString('name') ?? ''
-        const size = file.getNumber('size') ?? 0
-        store.sendFile(props.conversationInfo.conversation, path, name, size);
-    }, (err: number) => {
-        console.error('choose file error', err);
-    });
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    wfc.sendConversationMessage(conversationInfo.conversation, stickerMsg);
 }
 
 const onKeyboardHeightChange = (kbHeight: number, currentKbHeight: number) => {
@@ -587,35 +632,6 @@ const onKeyboardHeightChange = (kbHeight: number, currentKbHeight: number) => {
 
 const cancelQuote = () => {
     store.quoteMessage(null);
-}
-
-const restoreDraft = () => {
-    const draft = Draft.getConversationDraftEx(props.conversationInfo);
-    store.quoteMessage(draft.quotedMessage);
-    if (text.value != '') {
-        console.log('inputting, ignore', draft.text)
-    } else {
-        text.value = draft.text;
-    }
-}
-
-const storeDraft = () => {
-    const conversationInfo = props.conversationInfo
-    const quotedMsg = conversationState.quotedMessage;
-    const draftText = text.value.trim();
-    const quoteInfo = quotedMsg != null
-        ? QuoteInfo.init(quotedMsg.messageUid, quotedMsg.from, quotedMsg.messageContent.digest(quotedMsg))
-        : null;
-
-    if (draftText.length == 0) {
-        if (conversationInfo.draft != '') {
-            Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
-        }
-    } else {
-        if (draftText != conversationInfo.draft) {
-            Draft.setConversationDraft(conversationInfo.conversation, draftText, quoteInfo)
-        }
-    }
 }
 
 defineExpose({

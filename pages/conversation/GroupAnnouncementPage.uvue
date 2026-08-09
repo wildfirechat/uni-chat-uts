@@ -45,12 +45,6 @@ const draft = ref<string>('')
 const editing = ref<boolean>(false)
 const saving = ref<boolean>(false)
 
-onLoad((options: OnLoadOptions) => {
-    groupId.value = options['groupId'] ?? ''
-    canEdit.value = (options['canEdit'] ?? '0') == '1'
-    load()
-})
-
 const load = () => {
     if (groupId.value == '') {
         return
@@ -93,6 +87,12 @@ const save = () => {
             toast(t('group.announcement_update_fail'))
         })
 }
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+    canEdit.value = (options['canEdit'] ?? '0') == '1'
+    load()
+})
+
 </script>
 
 <style scoped>

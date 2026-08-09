@@ -1,8 +1,8 @@
 <template>
-    <view class="text-message-container" :class="{ out: message.direction == 0 }"
-        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+    <view class="text-message-container" :class="{ out: isOut }"
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <text class="text"
-            :style="{ fontSize: fontPx(16), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ message.messageContent.digest(message) }}</text>
+            :style="{ fontSize: fontPx(16), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ digest }}</text>
     </view>
 </template>
 
@@ -18,9 +18,17 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
-defineProps<{
+const props = defineProps<{
     message: Message
 }>()
+
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
+const digest = computed<string>((): string => {
+    const message = props.message as Message
+    return message.messageContent.digest(message)
+})
 </script>
 
 <style scoped>

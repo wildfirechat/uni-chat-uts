@@ -20,7 +20,8 @@ const props = defineProps<{
 }>()
 
 const stickerSrc = computed<string>((): string => {
-    const content = props.message.messageContent as StickerMessageContent
+    const message = props.message as Message
+    const content = message.messageContent as StickerMessageContent
     if (content.remotePath != '') {
         return content.remotePath
     }

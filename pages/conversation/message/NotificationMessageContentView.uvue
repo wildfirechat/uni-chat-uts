@@ -1,6 +1,6 @@
 <template>
     <view class="notification-container">
-        <text class="notification" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ message.messageContent.digest(message) }}</text>
+        <text class="notification" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ digest }}</text>
     </view>
 </template>
 
@@ -15,9 +15,15 @@ defineOptions({
 
 
 const c = computed<AppColors>((): AppColors => colors())
-defineProps<{
+const props = defineProps<{
     message: Message
 }>()
+
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const digest = computed<string>((): string => {
+    const message = props.message as Message
+    return message.messageContent.digest(message)
+})
 </script>
 
 <style scoped>

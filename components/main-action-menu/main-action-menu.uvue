@@ -59,63 +59,8 @@ onMounted(() => {
     maskHeight.value = sysInfo.screenHeight;
 })
 
-const go2CreateGroup = () => {
-    hide();
-    let users = contactState.favContactList.concat(contactState.friendList);
-    users = users.filter((u: UserInfo): boolean => {
-        return u.uid != Config.FILE_HELPER_ID
-    });
-    const options = new PickUsersOptions()
-    options.title = t('pick.start_chat')
-    options.users = users
-    options.successCB = (pickedUsers: UserInfo[]) => {
-        store.createConversation(pickedUsers, (conversation: Conversation) => {
-            // 不加延时的话，不能正常切换页面
-            setTimeout(() => {
-                go2ConversationPage();
-            }, 50)
-        }, (err: number) => {
-            console.log('createConversation error', err)
-        })
-    }
-    pickUsers(options);
-}
-
-const go2SearchFriend = () => {
-    hide();
-    uni.navigateTo({
-        url: '/pages/contact/SearchUserPage',
-        fail: (err) => {
-            console.log('nav to SearchUserPage err', err)
-        }
-    } as NavigateToOptions)
-}
-
-const go2ScanQrCode = () => {
-    hide();
-    uni.scanCode({
-        success: (res) => {
-            console.log('条码内容：' + res.result);
-            if (res.result != '') {
-                onScanQrCode(res.result)
-            }
-        },
-        fail: (err) => {
-            console.log('scan code err', err)
-        }
-    } as ScanCodeOptions);
-}
-
 // 点在菜单面板上不关闭菜单，只有菜单项自己会关闭
 const onMenuTap = () => {
-}
-
-const toggle = () => {
-    if (isActive.value) {
-        hide();
-    } else {
-        show();
-    }
 }
 
 const show = () => {
@@ -125,6 +70,14 @@ const show = () => {
 const hide = () => {
     if (isActive.value) {
         isActive.value = false
+    }
+}
+
+const toggle = () => {
+    if (isActive.value) {
+        hide();
+    } else {
+        show();
     }
 }
 
@@ -189,6 +142,53 @@ const onScanQrCode = (qrcode: string) => {
             toast(t1('qrcode.invalid', qrcode))
             break;
     }
+}
+
+const go2CreateGroup = () => {
+    hide();
+    let users = contactState.favContactList.concat(contactState.friendList);
+    users = users.filter((u: UserInfo): boolean => {
+        return u.uid != Config.FILE_HELPER_ID
+    });
+    const options = new PickUsersOptions()
+    options.title = t('pick.start_chat')
+    options.users = users
+    options.successCB = (pickedUsers: UserInfo[]) => {
+        store.createConversation(pickedUsers, (conversation: Conversation) => {
+            // 不加延时的话，不能正常切换页面
+            setTimeout(() => {
+                go2ConversationPage();
+            }, 50)
+        }, (err: number) => {
+            console.log('createConversation error', err)
+        })
+    }
+    pickUsers(options);
+}
+
+const go2SearchFriend = () => {
+    hide();
+    uni.navigateTo({
+        url: '/pages/contact/SearchUserPage',
+        fail: (err) => {
+            console.log('nav to SearchUserPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const go2ScanQrCode = () => {
+    hide();
+    uni.scanCode({
+        success: (res) => {
+            console.log('条码内容：' + res.result);
+            if (res.result != '') {
+                onScanQrCode(res.result)
+            }
+        },
+        fail: (err) => {
+            console.log('scan code err', err)
+        }
+    } as ScanCodeOptions);
 }
 
 defineExpose({

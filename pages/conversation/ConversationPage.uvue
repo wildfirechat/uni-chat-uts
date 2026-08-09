@@ -132,7 +132,7 @@ const closing = ref<boolean>(false)
 const closingConversationInfo = ref<ConversationInfo | null>(null)
 const closingMessageList = ref<Message[]>([] as Message[])
 
-const messageInputView = ref<MessageInputView | null>(null)
+const messageInputView = ref<ComponentPublicInstance | null>(null)
 
 const conversationInfo = computed<ConversationInfo | null>((): ConversationInfo | null => {
     return closing.value ? closingConversationInfo.value : conversationState.currentConversationInfo
@@ -232,6 +232,42 @@ const navTitle = computed<string>((): string => {
         : conversationTitle.value
 })
 
+// 同时只能播放一个语音，逻辑放在会话页统一控制
+const playVoice = (message: Message) => {
+    let ctx = innerAudioContext
+    if (ctx != null) {
+        ctx.stop();
+    }
+    const content = message.messageContent
+    if (!(content instanceof SoundMessageContent)) {
+        return
+    }
+    const voice = content as SoundMessageContent;
+    let mp3RemotePath = voice.remotePath
+    if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS != '') {
+        mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
+    }
+    ctx = uni.createInnerAudioContext();
+    innerAudioContext = ctx;
+    ctx.autoplay = false;
+    ctx.src = mp3RemotePath;
+    ctx.onPlay(() => {
+        voice._isPlaying = true;
+    });
+    ctx.onError((res) => {
+        console.log('play voice error', res)
+        voice._isPlaying = false;
+        store.playVoice(null)
+    });
+    ctx.onEnded(() => {
+        voice._isPlaying = false;
+        store.playVoice(null)
+    })
+    ctx.onCanplay(() => {
+        innerAudioContext?.play();
+    })
+}
+
 // 用于控制同时只能播放一个语音
 const currentVoiceMessage = computed<Message | null>((): Message | null => {
     const voice = conversationState.currentVoiceMessage;
@@ -277,81 +313,6 @@ const notifyKeyboardHeight = (currentHeight: number) => {
     const inputView = messageInputView.value
     if (inputView != null) {
         (inputView as ComponentPublicInstance).$callMethod('onKeyboardHeightChange', keyboardHeight.value, currentHeight);
-    }
-}
-
-onUnload(() => {
-    // 先冻结渲染，再清空 store，避免关闭动画期间页面变白
-    closingConversationInfo.value = conversationState.currentConversationInfo;
-    closingMessageList.value = conversationState.currentConversationMessageList;
-    closing.value = true;
-
-    if (highlightClearTimer != 0) {
-        clearTimeout(highlightClearTimer);
-        highlightClearTimer = 0;
-    }
-    if (keyboardHeightChangeId != 0) {
-        uni.offKeyboardHeightChange(keyboardHeightChangeId);
-        keyboardHeightChangeId = 0;
-    }
-    store.setCurrentConversationInfo(null);
-    eventBus.$off('openMessageContextMenu', onOpenMessageContextMenu)
-    eventBus.$off('reeditMessage', onReeditMessage)
-    eventBus.$off('locateMessage', onLocateMessageEvent)
-})
-
-onMounted(() => {
-    scrollToBottom();
-    const info = conversationState.currentConversationInfo
-    if (info != null) {
-        store.clearConversationUnreadStatus(info.conversation);
-    }
-
-    const savedKeyboardHeight = getItem('keyboardHeight');
-    if (savedKeyboardHeight != '') {
-        keyboardHeight.value = parseInt(savedKeyboardHeight);
-    }
-    // 表情/更多面板高度沿用记住的键盘高度，进页面时先同步一次
-    notifyKeyboardHeight(0);
-    keyboardHeightChangeId = uni.onKeyboardHeightChange((res) => {
-        if (keyboardHeight.value != res.height && res.height > 0) {
-            keyboardHeight.value = res.height;
-            setItem('keyboardHeight', '' + keyboardHeight.value)
-        }
-        // 键盘收起(height == 0)也要通知，输入框需要据此撤掉顶起用的 padding
-        notifyKeyboardHeight(res.height);
-        scrollToBottom();
-    });
-
-    eventBus.$on('openMessageContextMenu', onOpenMessageContextMenu);
-    eventBus.$on('reeditMessage', onReeditMessage);
-    eventBus.$on('locateMessage', onLocateMessageEvent);
-})
-
-// 从搜索结果等页面跳转过来时，定位到指定消息
-onShow(() => {
-    const messageId = store.takePendingLocateMessageId()
-    if (messageId != 0) {
-        setTimeout(() => {
-            store.locateMessage(messageId, onLocated)
-        }, 300)
-    }
-})
-
-const onLocateMessageEvent = (data: any | null) => {
-    if (data == null) {
-        return
-    }
-    const messageId = parseInt('' + data)
-    if (messageId > 0) {
-        store.locateMessage(messageId, onLocated)
-    }
-}
-
-const onOpenMessageContextMenu = (data: any | null) => {
-    if (data instanceof OpenMessageContextMenuEvent) {
-        const e = data as OpenMessageContextMenuEvent
-        showMessageContextMenu(e.event, e.message)
     }
 }
 
@@ -517,42 +478,6 @@ const multiSelect = (message: Message) => {
     store.toggleMessageMultiSelection(message);
 }
 
-// 同时只能播放一个语音，逻辑放在会话页统一控制
-const playVoice = (message: Message) => {
-    let ctx = innerAudioContext
-    if (ctx != null) {
-        ctx.stop();
-    }
-    const content = message.messageContent
-    if (!(content instanceof SoundMessageContent)) {
-        return
-    }
-    const voice = content as SoundMessageContent;
-    let mp3RemotePath = voice.remotePath
-    if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS != '') {
-        mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
-    }
-    ctx = uni.createInnerAudioContext();
-    innerAudioContext = ctx;
-    ctx.autoplay = false;
-    ctx.src = mp3RemotePath;
-    ctx.onPlay(() => {
-        voice._isPlaying = true;
-    });
-    ctx.onError((res) => {
-        console.log('play voice error', res)
-        voice._isPlaying = false;
-        store.playVoice(null)
-    });
-    ctx.onEnded(() => {
-        voice._isPlaying = false;
-        store.playVoice(null)
-    })
-    ctx.onCanplay(() => {
-        innerAudioContext?.play();
-    })
-}
-
 const onTouchStart = (e: UniTouchEvent) => {
     isScroll.value = false
     if (e.touches.length > 0) {
@@ -618,6 +543,23 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     showContextMenu.value = true;
 }
 
+// 没有 messageUid（还没发出去/发送失败）的消息在服务端不存在，只能删本地，同 flutter `_deleteRemoteMessage`
+const deleteRemoteMessage = (message: Message) => {
+    if (message.messageUid == '' || message.messageUid == '0') {
+        wfc.deleteMessage(message.messageId);
+        return
+    }
+    wfc.deleteRemoteMessageByUid(message.messageUid, () => {
+        console.log('delete remote message success')
+    }, (err: number) => {
+        console.log('delete remote message fail', err);
+        uni.showToast({
+            title: t1('message.delete_remote_fail', '' + err),
+            icon: 'none'
+        } as ShowToastOptions)
+    })
+}
+
 // 对齐 flutter `conversation_controller.dart` 的 `_showDeleteOptions`：菜单里只有一项「删除」，
 // 点了之后再让用户选删本地还是删远程。flutter 用的是 SimpleDialog，uni 侧用 showActionSheet
 // （项目里其它二选一的地方也是它，见 MessageInputView 的「拍照/录像」）。
@@ -636,23 +578,6 @@ const showDeleteOptions = (message: Message) => {
             console.log('show delete action sheet fail', err)
         }
     } as ShowActionSheetOptions)
-}
-
-// 没有 messageUid（还没发出去/发送失败）的消息在服务端不存在，只能删本地，同 flutter `_deleteRemoteMessage`
-const deleteRemoteMessage = (message: Message) => {
-    if (message.messageUid == '' || message.messageUid == '0') {
-        wfc.deleteMessage(message.messageId);
-        return
-    }
-    wfc.deleteRemoteMessageByUid(message.messageUid, () => {
-        console.log('delete remote message success')
-    }, (err: number) => {
-        console.log('delete remote message fail', err);
-        uni.showToast({
-            title: t1('message.delete_remote_fail', '' + err),
-            icon: 'none'
-        } as ShowToastOptions)
-    })
 }
 
 const onContextMenuItemSelect = (t: PopupMenuItem) => {
@@ -701,6 +626,13 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
     eventBus.$emit('contextMenuClosed', null)
 }
 
+const onOpenMessageContextMenu = (data: any | null) => {
+    if (data instanceof OpenMessageContextMenuEvent) {
+        const e = data as OpenMessageContextMenuEvent
+        showMessageContextMenu(e.event, e.message)
+    }
+}
+
 const hideUnreadLabel = () => {
     unreadLabelDismissed.value = true
 }
@@ -736,6 +668,16 @@ const locateFirstUnread = () => {
 const locateFirstUnreadMention = () => {
     hideUnreadLabel()
     store.locateFirstUnreadMentionMessage(unreadCount.value, onLocated)
+}
+
+const onLocateMessageEvent = (data: any | null) => {
+    if (data == null) {
+        return
+    }
+    const messageId = parseInt('' + data)
+    if (messageId > 0) {
+        store.locateMessage(messageId, onLocated)
+    }
 }
 
 const backToLatest = () => {
@@ -780,6 +722,65 @@ const onRestore = () => {
 const onAbort = () => {
     console.log("onAbort");
 }
+
+onUnload(() => {
+    // 先冻结渲染，再清空 store，避免关闭动画期间页面变白
+    closingConversationInfo.value = conversationState.currentConversationInfo;
+    closingMessageList.value = conversationState.currentConversationMessageList;
+    closing.value = true;
+
+    if (highlightClearTimer != 0) {
+        clearTimeout(highlightClearTimer);
+        highlightClearTimer = 0;
+    }
+    if (keyboardHeightChangeId != 0) {
+        uni.offKeyboardHeightChange(keyboardHeightChangeId);
+        keyboardHeightChangeId = 0;
+    }
+    store.setCurrentConversationInfo(null);
+    eventBus.$off('openMessageContextMenu', onOpenMessageContextMenu)
+    eventBus.$off('reeditMessage', onReeditMessage)
+    eventBus.$off('locateMessage', onLocateMessageEvent)
+})
+
+onMounted(() => {
+    scrollToBottom();
+    const info = conversationState.currentConversationInfo
+    if (info != null) {
+        store.clearConversationUnreadStatus(info.conversation);
+    }
+
+    const savedKeyboardHeight = getItem('keyboardHeight');
+    if (savedKeyboardHeight != '') {
+        keyboardHeight.value = parseInt(savedKeyboardHeight);
+    }
+    // 表情/更多面板高度沿用记住的键盘高度，进页面时先同步一次
+    notifyKeyboardHeight(0);
+    keyboardHeightChangeId = uni.onKeyboardHeightChange((res) => {
+        if (keyboardHeight.value != res.height && res.height > 0) {
+            keyboardHeight.value = res.height;
+            setItem('keyboardHeight', '' + keyboardHeight.value)
+        }
+        // 键盘收起(height == 0)也要通知，输入框需要据此撤掉顶起用的 padding
+        notifyKeyboardHeight(res.height);
+        scrollToBottom();
+    });
+
+    eventBus.$on('openMessageContextMenu', onOpenMessageContextMenu);
+    eventBus.$on('reeditMessage', onReeditMessage);
+    eventBus.$on('locateMessage', onLocateMessageEvent);
+})
+
+// 从搜索结果等页面跳转过来时，定位到指定消息
+onShow(() => {
+    const messageId = store.takePendingLocateMessageId()
+    if (messageId != 0) {
+        setTimeout(() => {
+            store.locateMessage(messageId, onLocated)
+        }, 300)
+    }
+})
+
 </script>
 
 <style scoped>

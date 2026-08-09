@@ -61,16 +61,16 @@ const sendCodeLabel = computed<string>((): string => {
     return countdown.value > 0 ? ('' + countdown.value + ' s') : t('setting.send_code')
 })
 
-onUnload(() => {
-    stopCountdown()
-})
-
 const stopCountdown = () => {
     if (timer != 0) {
         clearInterval(timer)
         timer = 0
     }
 }
+
+onUnload(() => {
+    stopCountdown()
+})
 
 const startCountdown = () => {
     stopCountdown()

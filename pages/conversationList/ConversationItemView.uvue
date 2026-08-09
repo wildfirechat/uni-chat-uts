@@ -1,6 +1,6 @@
 <template>
     <view class="conversation-item-container"
-        :style="{ backgroundColor: conversationInfo.top > 0 ? c.cellTop : c.surface }">
+        :style="{ backgroundColor: isTop ? c.cellTop : c.surface }">
         <!-- 按下态挂在这层而不是外面那层：外层有自己的底色（置顶是 cellTop），
              而 hover-class 的半透明值是替换 background-color、透出**父节点**的底色，
              挂在有底色的那层上会把置顶色按没了。左内边距也一并挪到这层，
@@ -8,13 +8,13 @@
         <view class="conversation-item" :hover-class="pressedClass" hover-stay-time="80">
             <view class="header">
                 <image class="avatar" :src="portrait" mode="aspectFill" :style="{ backgroundColor: c.inputBg }" />
-                <text v-if="unread > 0" class="badge" :class="{ silent: conversationInfo.isSilent }"
+                <text v-if="unread > 0" class="badge" :class="{ silent: isSilent }"
                     :style="{ color: c.onAccent, backgroundColor: c.badge }">{{ unread > 99 ? '99' : '' + unread }}</text>
             </view>
             <view class="content-container">
                 <view class="title-time-container">
                     <text class="title single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ conversationTitle }}</text>
-                    <text class="time" :class="fs10" :style="{ color: c.textSecondary }">{{ conversationInfo._timeStr }}</text>
+                    <text class="time" :class="fs10" :style="{ color: c.textSecondary }">{{ timeStr }}</text>
                 </view>
                 <view class="content">
                     <text class="draft single-line" :class="fs13" v-if="shouldShowDraft" :style="{ color: c.textPrimary }"><text
@@ -22,7 +22,7 @@
                     <text v-if="unreadMention > 0" class="mention" :class="fs13" :style="{ color: c.danger }">[有人@我]</text>
                     <text v-if="!shouldShowDraft" class="last-message-desc single-line" :class="fs13"
                         :style="{ color: c.textTertiary }">{{ lastMessageContent }}</text>
-                    <text v-if="conversationInfo.isSilent" class="icomoon silent-icon"
+                    <text v-if="isSilent" class="icomoon silent-icon"
                         :style="{ color: c.textTertiary }">&#xf39a;</text>
                 </view>
             </view>
@@ -69,11 +69,17 @@ const props = defineProps<{
     conversationInfo: ConversationInfo
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isTop = computed<boolean>((): boolean => (props.conversationInfo as ConversationInfo).top > 0)
+const isSilent = computed<boolean>((): boolean => (props.conversationInfo as ConversationInfo).isSilent)
+const timeStr = computed<string>((): string => (props.conversationInfo as ConversationInfo)._timeStr)
+
 // target（头像/名称）在展示时才按需解析：本地没有还会发远程拉取，
 // 会话很多（2000+ 群）时不能在加载会话列表时批量做，见 store._loadConversationList。
 // store 内部按 conversation._target 缓存，重复调用是廉价的。
 const conversationTarget = computed<ConversationTarget | null>((): ConversationTarget | null => {
-    return store.ensureConversationTarget(props.conversationInfo.conversation);
+    let conversationInfo = props.conversationInfo as ConversationInfo
+    return store.ensureConversationTarget(conversationInfo.conversation);
 })
 
 const portrait = computed<string>((): string => {
@@ -83,7 +89,7 @@ const portrait = computed<string>((): string => {
 })
 
 const conversationTitle = computed<string>((): string => {
-    const info = props.conversationInfo;
+    const info = props.conversationInfo as ConversationInfo;
     const target = conversationTarget.value
     if (target == null) {
         return ''
@@ -96,19 +102,20 @@ const conversationTitle = computed<string>((): string => {
 })
 
 const shouldShowDraft = computed<boolean>((): boolean => {
+    let conversationInfo = props.conversationInfo as ConversationInfo
     const currentConversationInfo = conversationState.currentConversationInfo
-    if (currentConversationInfo != null && currentConversationInfo.conversation.equal(props.conversationInfo.conversation)) {
+    if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversationInfo.conversation)) {
         return false;
     }
-    if (props.conversationInfo.unreadCount.unreadMention + props.conversationInfo.unreadCount.unreadMentionAll > 0) {
+    if (conversationInfo.unreadCount.unreadMention + conversationInfo.unreadCount.unreadMentionAll > 0) {
         return false;
     }
-    const draft = Draft.getConversationDraftEx(props.conversationInfo);
+    const draft = Draft.getConversationDraftEx(conversationInfo);
     return draft.text.trim() != '' || draft.quotedMessage != null;
 })
 
 const draft = computed<string>((): string => {
-    const draft = Draft.getConversationDraftEx(props.conversationInfo);
+    const draft = Draft.getConversationDraftEx(props.conversationInfo as ConversationInfo);
     let draftText = draft.text;
     draftText = draftText.replace(/<img [:a-zA-Z0-9_+; ,\-=\/."]+>/g, '[图片]')
     draftText = draftText.replace(/&nbsp;/g, ' ');
@@ -120,7 +127,7 @@ const draft = computed<string>((): string => {
 })
 
 const lastMessageContent = computed<string>((): string => {
-    const conversationInfo = props.conversationInfo;
+    const conversationInfo = props.conversationInfo as ConversationInfo;
     const lastMessage = conversationInfo.lastMessage
     if (lastMessage != null) {
         let senderName = '';
@@ -144,12 +151,14 @@ const lastMessageContent = computed<string>((): string => {
 })
 
 const unread = computed<number>((): number => {
-    const unreadCount = props.conversationInfo.unreadCount;
+    let conversationInfo = props.conversationInfo as ConversationInfo
+    const unreadCount = conversationInfo.unreadCount;
     return unreadCount.unread + unreadCount.unreadMention + unreadCount.unreadMentionAll;
 })
 
 const unreadMention = computed<number>((): number => {
-    const unreadCount = props.conversationInfo.unreadCount;
+    let conversationInfo = props.conversationInfo as ConversationInfo
+    const unreadCount = conversationInfo.unreadCount;
     return unreadCount.unreadMention + unreadCount.unreadMentionAll;
 })
 </script>

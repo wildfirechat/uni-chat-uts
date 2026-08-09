@@ -2,7 +2,7 @@
     <view class="container">
         <view class="message-time-container"
             :style="{ backgroundColor: isMessageChecked ? c.cellSelected : 'transparent' }">
-            <text v-if="message._showTime" class="time" :style="{ fontSize: fontPx(10), color: c.textTertiary }">{{ message._timeStr }}</text>
+            <text v-if="showTime" class="time" :style="{ fontSize: fontPx(10), color: c.textTertiary }">{{ timeStr }}</text>
             <view class="message-avatar-content-container">
                 <view class="avatar-container">
                     <round-checkbox v-if="enableMessageMultiSelection" class="checkbox" :checked="isMessageChecked" />
@@ -50,10 +50,15 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const showTime = computed<boolean>((): boolean => (props.message as Message)._showTime)
+const timeStr = computed<string>((): string => (props.message as Message)._timeStr)
+
 const quotedMessage = ref<Message | null>(null)
 
 const onClickUserPortrait = () => {
-    const from = props.message._from
+    const message = props.message as Message
+    const from = message._from
     if (from != null) {
         store.setCurrentFriend(from);
         uni.navigateTo({
@@ -66,11 +71,12 @@ const onClickUserPortrait = () => {
 }
 
 const openMessageContextMenu = (event: UniTouchEvent) => {
-    eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, props.message))
+    eventBus.$emit('openMessageContextMenu', new OpenMessageContextMenuEvent(event, props.message as Message))
 }
 
 onMounted(() => {
-    const content = props.message.messageContent
+    const message = props.message as Message
+    const content = message.messageContent
     if (content instanceof TextMessageContent) {
         const quoteInfo = (content as TextMessageContent).quoteInfo
         if (quoteInfo != null) {
@@ -96,17 +102,20 @@ const enableMessageMultiSelection = computed<boolean>((): boolean => {
 })
 
 const fromPortrait = computed<string>((): string => {
-    const from = props.message._from
+    const message = props.message as Message
+    const from = message._from
     return from != null ? from.portrait : Config.DEFAULT_PORTRAIT_URL
 })
 
 const fromDisplayName = computed<string>((): string => {
-    const from = props.message._from
+    const message = props.message as Message
+    const from = message._from
     return from != null ? from._displayName : ''
 })
 
 const isMessageChecked = computed<boolean>((): boolean => {
-    return pickState.messages.findIndex((m: Message): boolean => m.messageId == props.message.messageId) >= 0;
+    const message = props.message as Message
+    return pickState.messages.findIndex((m: Message): boolean => m.messageId == message.messageId) >= 0;
 })
 </script>
 

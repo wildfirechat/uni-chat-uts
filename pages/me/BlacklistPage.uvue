@@ -63,18 +63,6 @@ const portraitOf = (user: UserInfo): string => {
     return user.portrait != '' ? user.portrait : Config.DEFAULT_PORTRAIT_URL
 }
 
-const confirmRemove = (user: UserInfo) => {
-    uni.showModal({
-        title: t('setting.blacklist_remove'),
-        content: t('setting.blacklist_remove_confirm'),
-        success: (res) => {
-            if (res.confirm) {
-                remove(user)
-            }
-        }
-    } as ShowModalOptions)
-}
-
 const remove = (user: UserInfo) => {
     wfc.setBlackList(user.uid, false, () => {
         load()
@@ -88,6 +76,18 @@ const remove = (user: UserInfo) => {
             icon: 'none'
         } as ShowToastOptions)
     })
+}
+
+const confirmRemove = (user: UserInfo) => {
+    uni.showModal({
+        title: t('setting.blacklist_remove'),
+        content: t('setting.blacklist_remove_confirm'),
+        success: (res) => {
+            if (res.confirm) {
+                remove(user)
+            }
+        }
+    } as ShowModalOptions)
 }
 </script>
 

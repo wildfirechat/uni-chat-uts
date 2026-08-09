@@ -1,6 +1,6 @@
 <template>
     <view class="notification-container">
-        <text class="notification" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ message.messageContent.digest(message) }}</text>
+        <text class="notification" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ digest }}</text>
         <text v-if="reeditable" class="reedit" :style="{ fontSize: fontPx(14), color: c.accent }" @tap="reedit">重新编辑</text>
     </view>
 </template>
@@ -25,21 +25,29 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const digest = computed<string>((): string => {
+    const message = props.message as Message
+    return message.messageContent.digest(message)
+})
+
 const reeditable = computed<boolean>((): boolean => {
+    const message = props.message as Message
     const delta = wfc.getServerDeltaTime();
     const now = new Date().getTime();
-    const content = props.message.messageContent
+    const content = message.messageContent
     if (!(content instanceof RecallMessageNotification)) {
         return false
     }
     const recallMessageContent = content as RecallMessageNotification;
     return recallMessageContent.originalContentType == MessageContentType.Text
         && recallMessageContent.fromSelf
-        && now - (props.message.timestamp - delta) < Config.RECALL_REEDIT_TIME_LIMIT * 1000;
+        && now - (message.timestamp - delta) < Config.RECALL_REEDIT_TIME_LIMIT * 1000;
 })
 
 const reedit = () => {
-    const content = props.message.messageContent
+    const message = props.message as Message
+    const content = message.messageContent
     if (content instanceof RecallMessageNotification) {
         // 通过 eventBus 通知会话页把原文本填回输入框
         eventBus.$emit('reeditMessage', (content as RecallMessageNotification).originalSearchableContent)

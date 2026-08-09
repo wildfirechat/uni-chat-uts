@@ -32,7 +32,8 @@ const props = defineProps<{
 const emit = defineEmits(['longpress'])
 
 const content = computed<ArticlesMessageContent>((): ArticlesMessageContent => {
-    return props.message.messageContent as ArticlesMessageContent
+    const message = props.message as Message
+    return message.messageContent as ArticlesMessageContent
 })
 
 const onLongPress = (e: UniTouchEvent) => {

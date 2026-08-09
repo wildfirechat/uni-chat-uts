@@ -98,14 +98,16 @@ const actionCellCount = computed<number>((): number => {
 const maxCellCount = computed<number>((): number => COLUMN_COUNT * props.showLines)
 
 const hasMore = computed<boolean>((): boolean => {
-    return props.users.length + actionCellCount.value > maxCellCount.value
+    const users = props.users as UserInfo[]
+    return users.length + actionCellCount.value > maxCellCount.value
 })
 
 const visibleUsers = computed<UserInfo[]>((): UserInfo[] => {
+    const users = props.users as UserInfo[]
     if (!hasMore.value || expanded.value) {
-        return props.users
+        return users
     }
-    return props.users.slice(0, maxCellCount.value - actionCellCount.value)
+    return users.slice(0, maxCellCount.value - actionCellCount.value)
 })
 
 const moreLabel = computed<string>((): string => {

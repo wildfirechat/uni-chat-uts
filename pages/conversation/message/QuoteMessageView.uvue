@@ -45,28 +45,32 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits(['cancelQuoteMessage'])
 
 const isMediaQuoted = computed<boolean>((): boolean => {
-    const type = props.quotedMessage.messageContent.type
+    const quotedMessage = props.quotedMessage as Message
+    const type = quotedMessage.messageContent.type
     return type == MessageContentType.Image || type == MessageContentType.Video || type == MessageContentType.Sticker
 })
 
 const quotedFromName = computed<string>((): string => {
-    const from = props.quotedMessage._from
+    const quotedMessage = props.quotedMessage as Message
+    const from = quotedMessage._from
     return (from != null ? from._displayName : '') + ':'
 })
 
 const quotedMessageStr = computed<string>((): string => {
+    const quotedMessage = props.quotedMessage as Message
     let str = '';
-    const from = props.quotedMessage._from
+    const from = quotedMessage._from
     str = (from != null ? from._displayName : '') + ':';
-    str += props.quotedMessage.messageContent.digest(props.quotedMessage);
-    if (MessageContentType.RecallMessage_Notification == props.quotedMessage.messageContent.type) {
+    str += quotedMessage.messageContent.digest(quotedMessage);
+    if (MessageContentType.RecallMessage_Notification == quotedMessage.messageContent.type) {
         str = "引用内容已撤回"
     }
     return str;
 })
 
 const mediaSrc = computed<string>((): string => {
-    const msgCnt = props.quotedMessage.messageContent;
+    const quotedMessage = props.quotedMessage as Message
+    const msgCnt = quotedMessage.messageContent;
     let thumbnail = ''
     let remotePath = ''
     if (msgCnt instanceof ImageMessageContent) {
@@ -86,17 +90,18 @@ const cancelQuoteMessage = () => {
 }
 
 const onMessageClick = () => {
-    switch (props.quotedMessage.messageContent.type) {
+    const quotedMessage = props.quotedMessage as Message
+    switch (quotedMessage.messageContent.type) {
         case MessageContentType.Video:
         case MessageContentType.Image:
-            store.previewMessage(props.quotedMessage, false);
+            store.previewMessage(quotedMessage, false);
             break;
         case MessageContentType.RecallMessage_Notification:
             break;
         default:
             // 定位到被引用的原消息
-            if (props.quotedMessage.messageId > 0) {
-                eventBus.$emit('locateMessage', props.quotedMessage.messageId)
+            if (quotedMessage.messageId > 0) {
+                eventBus.$emit('locateMessage', quotedMessage.messageId)
             }
             break
     }

@@ -1,19 +1,19 @@
 <template>
     <view class="audio-message-wrapper">
         <view class="audio-message-container"
-            :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }" @tap="playVoice">
-            <text v-if="message.direction == 0" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
-            <view class="volume-container" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">
+            :style="{ width: containerWidth + 'px', backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }" @tap="playVoice">
+            <text v-if="isOut" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
+            <view class="volume-container" :style="{ color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">
                 <text v-if="!isPlaying" class="icomoon volume-icon">&#xf3ba;</text>
                 <text v-if="isPlaying" class="icomoon volume-icon">&#xf210;</text>
             </view>
-            <text v-if="message.direction == 1" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
+            <text v-if="!isOut" class="duration" :style="{ fontSize: fontPx(14) }">{{ duration }}"</text>
         </view>
         <!-- 语音转文字结果贴在气泡下面，与 flutter voice_cell_builder 一致 -->
         <view v-if="speechText != '' || inProgress" class="speech-container"
-            :style="{ width: containerWidth + 'px', backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+            :style="{ width: containerWidth + 'px', backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
             <text class="speech-text"
-                :style="{ fontSize: fontPx(14), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ inProgress ? t('asr.converting') : speechText }}</text>
+                :style="{ fontSize: fontPx(14), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ inProgress ? t('asr.converting') : speechText }}</text>
         </view>
     </view>
 </template>
@@ -37,8 +37,12 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const content = computed<SoundMessageContent>((): SoundMessageContent => {
-    return props.message.messageContent as SoundMessageContent
+    const message = props.message as Message
+    return message.messageContent as SoundMessageContent
 })
 
 const isPlaying = computed<boolean>((): boolean => {
@@ -74,7 +78,7 @@ const playVoice = () => {
     const playing = !content.value._isPlaying
     content.value._isPlaying = playing
     if (playing) {
-        store.playVoice(props.message)
+        store.playVoice(props.message as Message)
     } else {
         store.playVoice(null)
     }

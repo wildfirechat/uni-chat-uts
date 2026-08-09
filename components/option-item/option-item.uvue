@@ -65,7 +65,8 @@ const c = computed<AppColors>((): AppColors => colors())
 // desc 可能是用户输入的多行文本（群公告最典型）。行内只有一行，换行符会让第一行之后的内容
 // 全部消失 —— 首行恰好是空行时整个 desc 看起来就是空的。压成空格后至少首屏内容可见。
 const descText = computed<string>((): string => {
-    return props.desc.split('\r\n').join(' ').split('\n').join(' ')
+    const desc = props.desc as string
+    return desc.split('\r\n').join(' ').split('\n').join(' ')
 })
 
 /**

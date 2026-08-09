@@ -119,22 +119,6 @@ const updatePortrait = () => {
     portraitSheetVisible.value = true
 }
 
-const onPortraitSheetSelect = (tag: string) => {
-    uni.chooseImage({
-        count: 1,
-        sourceType: tag == 'camera' ? ['camera'] : ['album'],
-        sizeType: ['original', 'compressed'],
-        success: (e) => {
-            for (let i = 0; i < e.tempFilePaths.length; i++) {
-                uploadPortrait(toLocalFilePath(e.tempFilePaths[i]))
-            }
-        },
-        fail: (err) => {
-            console.log('choose image fail', err)
-        }
-    } as ChooseImageOptions);
-}
-
 const uploadPortrait = (filePath: string) => {
     wfc.uploadMediaFile(filePath, MessageContentMediaType.Portrait, (remoteUrl: string) => {
         wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_Portrait, remoteUrl)], () => {
@@ -161,6 +145,22 @@ const uploadPortrait = (filePath: string) => {
         } as ShowToastOptions);
     }, (_current: number, _total: number) => {
     });
+}
+
+const onPortraitSheetSelect = (tag: string) => {
+    uni.chooseImage({
+        count: 1,
+        sourceType: tag == 'camera' ? ['camera'] : ['album'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                uploadPortrait(toLocalFilePath(e.tempFilePaths[i]))
+            }
+        },
+        fail: (err) => {
+            console.log('choose image fail', err)
+        }
+    } as ChooseImageOptions);
 }
 </script>
 

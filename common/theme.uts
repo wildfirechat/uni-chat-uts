@@ -201,7 +201,7 @@ const _osDark = ref<boolean>(false)
 /**
  * 当前是否深色。读它会建立响应式依赖，请在 computed / 模板里读。
  */
-export function isDark(): boolean {
+export const isDark = (): boolean => {
     const mode = _mode.value
     if (mode == THEME_MODE_DARK) {
         return true

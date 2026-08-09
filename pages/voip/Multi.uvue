@@ -3,7 +3,7 @@
         <view class="content-container">
             <!--self-->
             <view class="participant-container" :class="manyParticipants ? 'participant-small' : 'participant-large'">
-                <view v-if="audioOnly || callState !== 4 || selfVideoMuted"
+                <view v-if="audioOnly || callState != 4 || selfVideoMuted"
                     class="participant-item" :class="manyParticipants ? 'participant-small' : 'participant-large'">
                     <image class="avatar" :class="manyParticipants ? 'participant-small' : 'participant-large'"
                         :src="selfUserInfo.portrait" />
@@ -17,7 +17,7 @@
             <!--participants-->
             <view v-for="p in participants" :key="p.userId" class="participant-container"
                 :class="manyParticipants ? 'participant-small' : 'participant-large'">
-                <view v-if="audioOnly || callState !== 4 || p.videoMuted || p.state !== 4"
+                <view v-if="audioOnly || callState != 4 || p.videoMuted || p.state != 4"
                     class="participant-item" :class="manyParticipants ? 'participant-small' : 'participant-large'">
                     <image class="avatar" :class="manyParticipants ? 'participant-small' : 'participant-large'"
                         :src="userInfoOf(p.userId).portrait" />
@@ -30,7 +30,7 @@
         </view>
 
         <!--incoming-->
-        <view v-if="callState === 2" class="action-container">
+        <view v-if="callState == 2" class="action-container">
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
@@ -42,7 +42,7 @@
         </view>
 
         <!--outgoing / connecting-->
-        <view v-if="callState === 1 || callState === 3" class="action-container">
+        <view v-if="callState == 1 || callState == 3" class="action-container">
             <view class="action">
                 <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
@@ -50,7 +50,7 @@
         </view>
 
         <!--connected-->
-        <view v-if="callState === 4" class="duration-action-container">
+        <view v-if="callState == 4" class="duration-action-container">
             <text class="duration-text" :style="{ fontSize: fontPx(15) }">{{ duration }}</text>
             <view class="actions">
                 <view class="action">
@@ -77,9 +77,9 @@
         </view>
 
         <view class="voip-title-container">
-            <text class="duration-text" :style="{ fontSize: fontPx(15) }" v-if="callState === 4">{{ duration }}</text>
+            <text class="duration-text" :style="{ fontSize: fontPx(15) }" v-if="callState == 4">{{ duration }}</text>
             <image @tap="minimize" class="minimize-img" src="/static/image/av/av_minimize.png" />
-            <image v-if="callState === 4" @tap="invite" class="invite-img" src="/static/image/av/add.png" />
+            <image v-if="callState == 4" @tap="invite" class="invite-img" src="/static/image/av/add.png" />
         </view>
     </view>
 </template>

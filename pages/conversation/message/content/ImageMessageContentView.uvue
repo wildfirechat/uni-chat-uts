@@ -28,7 +28,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits(['previewCompositeMessage'])
 
 const content = computed<ImageMessageContent>((): ImageMessageContent => {
-    return props.message.messageContent as ImageMessageContent
+    const message = props.message as Message
+    return message.messageContent as ImageMessageContent
 })
 
 const imageWidth = computed<number>((): number => {
@@ -66,8 +67,9 @@ const imageSrc = computed<string>((): string => {
 })
 
 const preview = () => {
+    const message = props.message as Message
     if (props.isInCompositeView) {
-        emit('previewCompositeMessage', props.message.messageUid);
+        emit('previewCompositeMessage', message.messageUid);
         return
     }
     // 会话内的图片消息串成一组，支持左右滑动切换
@@ -83,7 +85,8 @@ const preview = () => {
             }
         }
     }
-    let current = urls.indexOf(currentUrl)
+    // 必须显式标 number：indexOf 在 android 上返回 Int，不标类型后面赋 urls.length - 1（Number）会类型不匹配
+    let current: number = urls.indexOf(currentUrl)
     if (current < 0) {
         urls.push(currentUrl)
         current = urls.length - 1

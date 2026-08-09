@@ -48,14 +48,6 @@ const emptyTip = computed<string>((): string => {
     return currentTab.value == 0 ? '全部已读' : '暂无人已读'
 })
 
-onLoad((_options: OnLoadOptions) => {
-    const pageOptions = takePageOptions()
-    if (pageOptions == null || !(pageOptions instanceof Message)) {
-        return
-    }
-    loadReceipt(pageOptions as Message)
-})
-
 const loadReceipt = (message: Message) => {
     const groupId = message.conversation.target
     const members = store.getGroupMemberUserInfos(groupId, true)
@@ -81,6 +73,14 @@ const loadReceipt = (message: Message) => {
     readUsers.value = read
     unreadUsers.value = unread
 }
+
+onLoad((_options: OnLoadOptions) => {
+    const pageOptions = takePageOptions()
+    if (pageOptions == null || !(pageOptions instanceof Message)) {
+        return
+    }
+    loadReceipt(pageOptions as Message)
+})
 
 const switchTab = (tab: number) => {
     currentTab.value = tab

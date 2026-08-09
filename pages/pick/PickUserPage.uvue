@@ -117,17 +117,6 @@ const listTop = computed<number>((): number => {
     return statusBarHeight.value + NAV_BAR_HEIGHT + entry + SEARCH_BAR_HEIGHT
 })
 
-/**
- * 已选头像条的宽度。窗口宽减去搜索图标、内边距和留给输入框的最小宽度，
- * 不给定宽的话头像条会把输入框挤没。
- */
-const pickedStripWidth = computed<number>((): number => {
-    const winWidth = uni.getSystemInfoSync().windowWidth
-    const avail = winWidth - 140
-    const want = checkedUsers.value.length * 34
-    return want < avail ? want : avail
-})
-
 /** 回调只给「新选中的」，预先勾上的（已在群里那些）不算 */
 const checkedUsers = computed<UserInfo[]>((): UserInfo[] => {
     const picked = pickState.users;
@@ -137,6 +126,19 @@ const checkedUsers = computed<UserInfo[]>((): UserInfo[] => {
     return picked.filter((u: UserInfo): boolean => {
         return initialCheckedUsers.value.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) == -1
     })
+})
+
+/**
+ * 已选头像条的宽度。窗口宽减去搜索图标、内边距和留给输入框的最小宽度，
+ * 不给定宽的话头像条会把输入框挤没。
+ *
+ * 必须排在 [checkedUsers] 后面：android 上 setup 里的 const 落成顺序执行的 val，引用不到后面声明的。
+ */
+const pickedStripWidth = computed<number>((): number => {
+    const winWidth = uni.getSystemInfoSync().windowWidth
+    const avail = winWidth - 140
+    const want = checkedUsers.value.length * 34
+    return want < avail ? want : avail
 })
 
 /**
@@ -217,15 +219,15 @@ onMounted(() => {
     statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight
 })
 
+const isUserUncheckable = (user: UserInfo): boolean => {
+    return uncheckableUsers.value.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
+}
+
 const unpick = (user: UserInfo) => {
     if (isUserUncheckable(user)) {
         return;
     }
     store.pickOrUnpickUser(user);
-}
-
-const isUserUncheckable = (user: UserInfo): boolean => {
-    return uncheckableUsers.value.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
 }
 
 const onMaxExceeded = () => {

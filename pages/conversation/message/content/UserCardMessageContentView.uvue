@@ -1,8 +1,8 @@
 <template>
-    <view @tap="userInfo" class="user-card-content-container" :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+    <view @tap="userInfo" class="user-card-content-container" :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <view class="portrait-name-container" :style="{ borderBottomColor: c.hairlineSoft }">
             <image class="portrait" :src="content.portrait" />
-            <text class="display-name" :style="{ fontSize: fontPx(15), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.displayName }}</text>
+            <text class="display-name" :style="{ fontSize: fontPx(15), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.displayName }}</text>
         </view>
         <text class="desc single-line" :style="{ fontSize: fontPx(13), color: c.textTertiary }">个人名片</text>
     </view>
@@ -27,8 +27,12 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const content = computed<CardMessageContent>((): CardMessageContent => {
-    return props.message.messageContent as CardMessageContent
+    const message = props.message as Message
+    return message.messageContent as CardMessageContent
 })
 
 const userInfo = () => {

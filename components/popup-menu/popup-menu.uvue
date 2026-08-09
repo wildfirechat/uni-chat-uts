@@ -103,7 +103,8 @@ const itemWidth = computed<number>((): number => {
 })
 
 const menuHeight = computed<number>((): number => {
-    const count = props.items.length
+    const items = props.items as PopupMenuItem[]
+    const count = items.length
     if (count == 0) {
         return 0
     }

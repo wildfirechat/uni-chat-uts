@@ -9,19 +9,6 @@ import { colors, AppColors } from "../common/theme.uts";
 
 const c = computed<AppColors>((): AppColors => colors())
 
-onLoad(() => {
-    const userId = getItem('userId');
-    const token = getItem('token')
-    if (token != '') {
-        wfc.connect(userId, token);
-        go2ConversationList();
-    } else {
-        uni.redirectTo({
-            url: '/pages/login/LoginPage',
-        } as RedirectToOptions)
-    }
-})
-
 const go2ConversationList = () => {
     uni.switchTab({
         url: '/pages/conversationList/ConversationListPage',
@@ -36,6 +23,19 @@ const go2ConversationList = () => {
         }
     } as SwitchTabOptions);
 }
+
+onLoad(() => {
+    const userId = getItem('userId');
+    const token = getItem('token')
+    if (token != '') {
+        wfc.connect(userId, token);
+        go2ConversationList();
+    } else {
+        uni.redirectTo({
+            url: '/pages/login/LoginPage',
+        } as RedirectToOptions)
+    }
+})
 </script>
 
 <style scoped>

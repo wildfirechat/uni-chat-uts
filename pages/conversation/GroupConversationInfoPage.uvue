@@ -187,6 +187,16 @@ const onMembersUpdate = (_args: Array<any | null>) => {
     reloadGroup()
 }
 
+const loadAnnouncement = () => {
+    appServerApi.getGroupAnnouncement(groupId.value)
+        .then((result): void => {
+            announcement.value = result?.getString('text') ?? ''
+        })
+        .catch((err): void => {
+            console.log('getGroupAnnouncement error', err)
+        })
+}
+
 onLoad((_options: OnLoadOptions) => {
     const pageOptions = takePageOptions()
     if (pageOptions == null || !(pageOptions instanceof ConversationInfo)) {
@@ -221,16 +231,6 @@ onBeforeUnmount(() => {
     wfc.eventEmitter.off(EventType.GroupMembersUpdate, onMembersUpdate)
     wfc.eventEmitter.off(EventType.GroupInfosUpdate, onGroupUpdate)
 })
-
-const loadAnnouncement = () => {
-    appServerApi.getGroupAnnouncement(groupId.value)
-        .then((result): void => {
-            announcement.value = result?.getString('text') ?? ''
-        })
-        .catch((err): void => {
-            console.log('getGroupAnnouncement error', err)
-        })
-}
 
 const openUserDetail = (user: UserInfo) => {
     store.setCurrentFriend(user)
@@ -452,6 +452,12 @@ const transferGroup = () => {
     pickUser(options)
 }
 
+const backToConversationList = () => {
+    uni.switchTab({
+        url: '/pages/conversationList/ConversationListPage',
+    } as SwitchTabOptions)
+}
+
 const confirmQuitGroup = () => {
     showConfirmDialog(t('conversation.quit_group'), t('group.quit_confirm'), true, () => {
         store.quitGroup(groupId.value)
@@ -464,12 +470,6 @@ const confirmDismissGroup = () => {
         store.dismissGroup(groupId.value)
         backToConversationList()
     })
-}
-
-const backToConversationList = () => {
-    uni.switchTab({
-        url: '/pages/conversationList/ConversationListPage',
-    } as SwitchTabOptions)
 }
 </script>
 

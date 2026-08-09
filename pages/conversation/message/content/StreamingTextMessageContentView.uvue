@@ -1,8 +1,8 @@
 <template>
-    <view class="text-message-container" :class="{ out: message.direction == 0 }"
-        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+    <view class="text-message-container" :class="{ out: isOut }"
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <text class="text"
-            :style="{ fontSize: fontPx(16), lineHeight: fontPx(25), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
+            :style="{ fontSize: fontPx(16), lineHeight: fontPx(25), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
     </view>
 </template>
 
@@ -22,9 +22,13 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const textContent = computed<string>((): string => {
-    let text = props.message.messageContent.digest(props.message);
-    if (props.message.messageContent.type == MessageContentType.Streaming_Text_Generating) {
+    const message = props.message as Message
+    let text = message.messageContent.digest(message);
+    if (message.messageContent.type == MessageContentType.Streaming_Text_Generating) {
         text += ' ...';
     }
     return text;

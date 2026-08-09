@@ -66,15 +66,18 @@ export default class RejectJoinGroupNotification extends GroupNotificationConten
             this.rejectReasons = [];
             const mi = obj.getJSON('mi');
             if (mi != null) {
-                // mi 的 key 是用户 id，是动态的，只能整体转成 Map 再遍历。
-                // 两点限制：UTSJSONObject.keys() 在 iOS 的 uni-app x 上不支持；
-                // UTS 的 Map 只有 forEach，没有 keys() / size，所以这里只能用 forEach。
+                // mi 的 key 是用户 id，是动态的，只能整体拿到 key 列表再遍历。
+                // 两条路都走不通：toMap() 在 android 上落成 kotlin Map，forEach 只收
+                // (entry) 一个参数；实例方法 mi.forEach 在 android 上又只回调 key。
+                // 静态的 UTSJSONObject.keys(obj) 是三端签名一致的那个，用它。
                 const members: string[] = [];
                 const reasons: number[] = [];
-                mi.toMap().forEach((_value: any, key: string) => {
+                const keys = UTSJSONObject.keys(mi);
+                for (let i = 0; i < keys.length; i++) {
+                    const key = keys[i] as string;
                     members.push(key);
                     reasons.push(mi.getNumber(key) ?? 0);
-                });
+                }
                 this.rejectedMembers = members;
                 this.rejectReasons = reasons;
             }

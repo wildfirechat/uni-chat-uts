@@ -114,7 +114,7 @@ const load = () => {
         return
     }
     loading.value = true
-    const messages = store.getMessagesInTypesAndTimes(props.conversation,
+    const messages = store.getMessagesInTypesAndTimes(props.conversation as Conversation,
         [MessageContentType.Image, MessageContentType.Video], 0, new Date().getTime(), PAGE_SIZE, offset)
     const page: MediaItem[] = []
     for (let i = 0; i < messages.length; i++) {
@@ -151,7 +151,8 @@ const preview = (item: MediaItem) => {
             urls.push(list[i].remoteUrl)
         }
     }
-    let current = urls.indexOf(item.remoteUrl)
+    // 必须显式标 number：indexOf 在 android 上返回 Int，不标类型后面赋 urls.length - 1（Number）会类型不匹配
+    let current: number = urls.indexOf(item.remoteUrl)
     if (current < 0) {
         urls.push(item.remoteUrl)
         current = urls.length - 1

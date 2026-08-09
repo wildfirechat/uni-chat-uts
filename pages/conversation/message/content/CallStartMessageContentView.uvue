@@ -1,8 +1,8 @@
 <template>
-    <view class="call-start-message-container" :class="{ out: message.direction == 0 }"
-        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
-        <text class="icomoon call-icon" :style="{ color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">&#xf2d2;</text>
-        <text class="text" :style="{ fontSize: fontPx(16), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
+    <view class="call-start-message-container" :class="{ out: isOut }"
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
+        <text class="icomoon call-icon" :style="{ color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">&#xf2d2;</text>
+        <text class="text" :style="{ fontSize: fontPx(16), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ textContent }}</text>
     </view>
 </template>
 
@@ -23,8 +23,12 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const textContent = computed<string>((): string => {
-    const voip = props.message.messageContent as CallStartMessageContent;
+    const message = props.message as Message
+    const voip = message.messageContent as CallStartMessageContent;
     let desc: string
     if (voip.status == 0) {
         desc = '未接听';

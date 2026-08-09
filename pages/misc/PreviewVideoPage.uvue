@@ -25,13 +25,6 @@ const url = ref<string>('')
 // 从会话消息列表里反查对应的视频消息，用于转发/保存
 const message = ref<Message | null>(null)
 
-onLoad((options: OnLoadOptions) => {
-    const urlValue = options['url'] ?? ''
-    console.log('onLoad option url', decodeURIComponent(urlValue));
-    url.value = decodeURIComponent(urlValue) ?? '';
-    message.value = findVideoMessage(url.value)
-})
-
 const findVideoMessage = (remotePath: string): Message | null => {
     if (remotePath == '') {
         return null
@@ -45,6 +38,13 @@ const findVideoMessage = (remotePath: string): Message | null => {
     }
     return null
 }
+
+onLoad((options: OnLoadOptions) => {
+    const urlValue = options['url'] ?? ''
+    console.log('onLoad option url', decodeURIComponent(urlValue));
+    url.value = decodeURIComponent(urlValue) ?? '';
+    message.value = findVideoMessage(url.value)
+})
 
 const saveToAlbum = () => {
     const msg = message.value

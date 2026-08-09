@@ -52,18 +52,21 @@ const emit = defineEmits(['actionTap'])
 const c = computed<AppColors>((): AppColors => colors())
 
 const portrait = computed<string>((): string => {
-    const u = props.user
-    if (u == null || u.portrait == '') {
+    if(props.user == null) {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    const u = props.user as UserInfo
+    if ( u.portrait == '') {
         return Config.DEFAULT_PORTRAIT_URL
     }
     return u.portrait
 })
 
 const name = computed<string>((): string => {
-    const u = props.user
-    if (u == null) {
+    if(props.user == null) {
         return ''
     }
+    const u = props.user as UserInfo
     if (u._displayName != '') {
         return u._displayName
     }

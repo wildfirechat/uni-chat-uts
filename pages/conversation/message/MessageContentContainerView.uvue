@@ -1,21 +1,21 @@
 <template>
     <!-- 如果不添加一个层级的话，直接子 view 上的 @tap 不生效 -->
     <view @longpress="onLongPress">
-        <TextMessageContentView :message="message" v-if="message.messageContent.type == 1" />
+        <TextMessageContentView :message="message" v-if="contentType == 1" />
         <StreamingTextMessageContentView :message="message"
-            v-else-if="message.messageContent.type == 14 || message.messageContent.type == 15" />
-        <AudioMessageContentView :message="message" v-else-if="message.messageContent.type == 2" />
-        <ImageMessageContentView :message="message" v-else-if="message.messageContent.type == 3" />
-        <FileMessageContentView :message="message" v-else-if="message.messageContent.type == 5" />
-        <VideoMessageContentView :message="message" v-else-if="message.messageContent.type == 6" />
-        <StickerMessageContentView :message="message" v-else-if="message.messageContent.type == 7" />
-        <LinkMessageContentView :message="message" v-else-if="message.messageContent.type == 8" />
-        <CompositeMessageContentView :message="message" v-else-if="message.messageContent.type == 11" />
-        <CallStartMessageContentView :message="message" v-else-if="message.messageContent.type == 400" />
-        <ConferenceInviteMessageContentView :message="message" v-else-if="message.messageContent.type == 408" />
-        <UserCardMessageContentView :message="message" v-else-if="message.messageContent.type == 10" />
-        <PollMessageContentView :message="message" v-else-if="message.messageContent.type == 18" />
-        <TestCustomMessageContentView :message="message" v-else-if="message.messageContent.type == 1001" />
+            v-else-if="contentType == 14 || contentType == 15" />
+        <AudioMessageContentView :message="message" v-else-if="contentType == 2" />
+        <ImageMessageContentView :message="message" v-else-if="contentType == 3" />
+        <FileMessageContentView :message="message" v-else-if="contentType == 5" />
+        <VideoMessageContentView :message="message" v-else-if="contentType == 6" />
+        <StickerMessageContentView :message="message" v-else-if="contentType == 7" />
+        <LinkMessageContentView :message="message" v-else-if="contentType == 8" />
+        <CompositeMessageContentView :message="message" v-else-if="contentType == 11" />
+        <CallStartMessageContentView :message="message" v-else-if="contentType == 400" />
+        <ConferenceInviteMessageContentView :message="message" v-else-if="contentType == 408" />
+        <UserCardMessageContentView :message="message" v-else-if="contentType == 10" />
+        <PollMessageContentView :message="message" v-else-if="contentType == 18" />
+        <TestCustomMessageContentView :message="message" v-else-if="contentType == 1001" />
         <!-- 更多自定义消息，注意 v-else-if -->
         <UnknownMessageContentView :message="message" v-else />
     </view>
@@ -44,9 +44,12 @@ defineOptions({
     name: "MessageContentContainerView"
 })
 
-defineProps<{
+const props = defineProps<{
     message: Message
 }>()
+
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const contentType = computed<number>((): number => (props.message as Message).messageContent.type)
 
 const emit = defineEmits(['longpress'])
 

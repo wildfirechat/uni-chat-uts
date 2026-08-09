@@ -48,17 +48,19 @@ onShow(() => {
     }
 })
 
-const bindPhoneInput = (e: UniInputEvent) => {
-    phone.value = e.detail.value;
-}
-
-const bindCodeInput = (e: UniInputEvent) => {
-    code.value = e.detail.value;
-}
-
-const bindLoginTap = () => {
-    console.log(phone.value);
-    login(phone.value, code.value);
+const go2ConversationList = () => {
+    uni.switchTab({
+        url: '/pages/conversationList/ConversationListPage',
+        success: (_) => {
+            console.log('to conversation list success');
+        },
+        fail: (e) => {
+            console.log('to conversation list error', e);
+        },
+        complete: (_) => {
+            console.log('switch tab complete')
+        }
+    } as SwitchTabOptions);
 }
 
 const login = (phone: string, code: string) => {
@@ -83,11 +85,6 @@ const login = (phone: string, code: string) => {
         });
 }
 
-const bindAuthCodeTap = () => {
-    console.log(phone.value);
-    authCode(phone.value);
-}
-
 const authCode = (phone: string) => {
     appServerApi.requestAuthCode(phone)
         .then((result) => {
@@ -104,19 +101,22 @@ const authCode = (phone: string) => {
         })
 }
 
-const go2ConversationList = () => {
-    uni.switchTab({
-        url: '/pages/conversationList/ConversationListPage',
-        success: (_) => {
-            console.log('to conversation list success');
-        },
-        fail: (e) => {
-            console.log('to conversation list error', e);
-        },
-        complete: (_) => {
-            console.log('switch tab complete')
-        }
-    } as SwitchTabOptions);
+const bindPhoneInput = (e: UniInputEvent) => {
+    phone.value = e.detail.value;
+}
+
+const bindCodeInput = (e: UniInputEvent) => {
+    code.value = e.detail.value;
+}
+
+const bindLoginTap = () => {
+    console.log(phone.value);
+    login(phone.value, code.value);
+}
+
+const bindAuthCodeTap = () => {
+    console.log(phone.value);
+    authCode(phone.value);
 }
 </script>
 <style>

@@ -11,9 +11,9 @@ import GroupNotificationContent from './groupNotification.uts';
 export default class QuitGroupNotification extends GroupNotificationContent {
     operator = '';
 
-    constructor(operator: string) {
+    constructor(op: string) {
         super(MessageContentType.QuitGroup_Notification);
-        this.operator = operator;
+        this.operator = op;
     }
 
     override formatNotification(message: any | null): string {

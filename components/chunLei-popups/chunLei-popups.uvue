@@ -50,8 +50,9 @@ const emit = defineEmits(['update:modelValue', 'tapPopup'])
 
 const popupsTop = computed<number>((): number => {
     const winHeight = uni.getSystemInfoSync().windowHeight
+    const popData = props.popData as PopupMenuItem[]
     // 预估菜单高度
-    const menuHeight = props.direction == 'column' ? props.popData.length * 44 : 44
+    const menuHeight = props.direction == 'column' ? popData.length * 44 : 44
     let top = props.y
     if (top + menuHeight > winHeight - 20) {
         top = winHeight - menuHeight - 20
@@ -61,7 +62,8 @@ const popupsTop = computed<number>((): number => {
 
 const popupsLeft = computed<number>((): number => {
     const winWidth = uni.getSystemInfoSync().windowWidth
-    const menuWidth = props.direction == 'column' ? 120 : props.popData.length * 80
+    const popData = props.popData as PopupMenuItem[]
+    const menuWidth = props.direction == 'column' ? 120 : popData.length * 80
     let left = props.x
     if (left + menuWidth > winWidth - 10) {
         left = winWidth - menuWidth - 10

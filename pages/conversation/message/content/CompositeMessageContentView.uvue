@@ -1,7 +1,7 @@
 <template>
-    <view class="composite-message-container" @tap="showCompositePage" :class="{ out: message.direction == 0 }"
-        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
-        <text class="title" :style="{ fontSize: fontPx(15), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
+    <view class="composite-message-container" @tap="showCompositePage" :class="{ out: isOut }"
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
+        <text class="title" :style="{ fontSize: fontPx(15), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ title }}</text>
         <text class="content" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ content }}</text>
         <text class="desc" :style="{ fontSize: fontPx(14), color: c.textTertiary, borderTopColor: c.hairlineSoft }">{{ recordsText }}</text>
     </view>
@@ -27,16 +27,21 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const recordsText = computed<string>((): string => {
     return t('message.records')
 })
 
 const title = computed<string>((): string => {
-    return (props.message.messageContent as CompositeMessageContent).title;
+    const message = props.message as Message
+    return (message.messageContent as CompositeMessageContent).title;
 })
 
 const content = computed<string>((): string => {
-    const compositeMessageContent = props.message.messageContent as CompositeMessageContent;
+    const message = props.message as Message
+    const compositeMessageContent = message.messageContent as CompositeMessageContent;
     const messages = compositeMessageContent.messages;
     let str = '';
     if (messages.length == 0) {

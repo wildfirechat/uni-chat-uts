@@ -29,11 +29,13 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits(['previewCompositeMessage'])
 
 const content = computed<VideoMessageContent>((): VideoMessageContent => {
-    return props.message.messageContent as VideoMessageContent
+    const message = props.message as Message
+    return message.messageContent as VideoMessageContent
 })
 
 const thumbnailUri = computed<string>((): string => {
-    if (props.message.status == MessageStatus.Sending) {
+    const message = props.message as Message
+    if (message.status == MessageStatus.Sending) {
         return Config.DEFAULT_VIDEO_POSTER;
     } else if (content.value.thumbnail != '') {
         return 'data:image/jpeg;base64,' + content.value.thumbnail;
@@ -42,8 +44,9 @@ const thumbnailUri = computed<string>((): string => {
 })
 
 const preview = () => {
+    const message = props.message as Message
     if (props.isInCompositeView) {
-        emit('previewCompositeMessage', props.message.messageUid);
+        emit('previewCompositeMessage', message.messageUid);
     } else {
         uni.navigateTo({
             url: `/pages/misc/PreviewVideoPage?url=${encodeURIComponent(content.value.remotePath)}`,

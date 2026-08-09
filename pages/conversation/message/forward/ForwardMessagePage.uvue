@@ -209,25 +209,6 @@ const toggleMultiSelect = () => {
     }
 }
 
-/** 多选态勾选后清空搜索，回到完整列表（与 flutter 一致） */
-const onTargetTap = (conversation: Conversation) => {
-    if (isMultiSelect.value) {
-        store.pickOrUnpickConversation(conversation)
-        if (searchText.value != '') {
-            searchText.value = ''
-        }
-    } else {
-        showConfirmationSheet([conversation])
-    }
-}
-
-const onSendTap = () => {
-    if (!hasSelection.value) {
-        return
-    }
-    showConfirmationSheet(pickState.conversations.slice(0))
-}
-
 const showConfirmationSheet = (targets: Conversation[]) => {
     sheetTargets.value = targets
     sheetVisible.value = true
@@ -239,16 +220,33 @@ const onConfirmForward = (comment: string) => {
     uni.navigateBack({} as NavigateBackOptions)
 }
 
-/** 建群走微信的做法：选完成员建群，回到本页，再由确认弹窗完成转发 */
-const onCreateGroupTap = () => {
-    const options = new PickUsersOptions()
-    options.title = t('forward.create_group_chat')
-    options.confirmTitle = t('common.confirm')
-    options.maxSelected = MAX_GROUP_MEMBERS
-    options.successCB = (users: UserInfo[]) => {
-        onMembersPicked(users)
+/** 群名按「创建者,成员1,成员2…」拼接，超长时收尾成「xxx等」，对齐 flutter `_buildGroupName` */
+const buildGroupName = (members: UserInfo[]): string => {
+    const selfUserInfo = contactState.selfUserInfo
+    let groupName = selfUserInfo != null ? selfUserInfo.displayName : ''
+    for (let i = 0; i < members.length; i++) {
+        const name = members[i].displayName
+        if (name == '') {
+            continue
+        }
+        if ((groupName + ',' + name).length > MAX_GROUP_NAME_LENGTH) {
+            return t1('forward.group_name_etc', groupName)
+        }
+        groupName = groupName + ',' + name
     }
-    pickUsers(options)
+    return groupName
+}
+
+/** 多选态勾选后清空搜索，回到完整列表（与 flutter 一致） */
+const onTargetTap = (conversation: Conversation) => {
+    if (isMultiSelect.value) {
+        store.pickOrUnpickConversation(conversation)
+        if (searchText.value != '') {
+            searchText.value = ''
+        }
+    } else {
+        showConfirmationSheet([conversation])
+    }
 }
 
 const onMembersPicked = (users: UserInfo[]) => {
@@ -277,21 +275,23 @@ const onMembersPicked = (users: UserInfo[]) => {
         })
 }
 
-/** 群名按「创建者,成员1,成员2…」拼接，超长时收尾成「xxx等」，对齐 flutter `_buildGroupName` */
-const buildGroupName = (members: UserInfo[]): string => {
-    const selfUserInfo = contactState.selfUserInfo
-    let groupName = selfUserInfo != null ? selfUserInfo.displayName : ''
-    for (let i = 0; i < members.length; i++) {
-        const name = members[i].displayName
-        if (name == '') {
-            continue
-        }
-        if ((groupName + ',' + name).length > MAX_GROUP_NAME_LENGTH) {
-            return t1('forward.group_name_etc', groupName)
-        }
-        groupName = groupName + ',' + name
+/** 建群走微信的做法：选完成员建群，回到本页，再由确认弹窗完成转发 */
+const onCreateGroupTap = () => {
+    const options = new PickUsersOptions()
+    options.title = t('forward.create_group_chat')
+    options.confirmTitle = t('common.confirm')
+    options.maxSelected = MAX_GROUP_MEMBERS
+    options.successCB = (users: UserInfo[]) => {
+        onMembersPicked(users)
     }
-    return groupName
+    pickUsers(options)
+}
+
+const onSendTap = () => {
+    if (!hasSelection.value) {
+        return
+    }
+    showConfirmationSheet(pickState.conversations.slice(0))
 }
 </script>
 

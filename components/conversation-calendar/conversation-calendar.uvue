@@ -109,7 +109,7 @@ const buildMonth = (year: number, month: number): MonthSection => {
     // 本月消息数：从月初 00:00:00 到下月初前一秒，单位秒
     const startSeconds = Math.floor(new Date(year, month - 1, 1).getTime() / 1000)
     const endSeconds = Math.floor(new Date(year, month, 1).getTime() / 1000) - 1
-    const counts = store.getMessageCountByDay(props.conversation, startSeconds, endSeconds)
+    const counts = store.getMessageCountByDay(props.conversation as Conversation, startSeconds, endSeconds)
 
     const today = new Date()
     const todayKey = today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate())
@@ -177,7 +177,7 @@ const onDayTap = (day: DayCell) => {
     }
     const startTime = new Date(day.year, day.month - 1, day.dayOfMonth, 0, 0, 0).getTime()
     const endTime = new Date(day.year, day.month - 1, day.dayOfMonth, 23, 59, 59).getTime() + 999
-    const messages = store.getMessagesInTypesAndTimes(props.conversation, [] as number[], startTime, endTime, 1, 0)
+    const messages = store.getMessagesInTypesAndTimes(props.conversation as Conversation, [] as number[], startTime, endTime, 1, 0)
     if (messages.length > 0) {
         emit('daySelected', messages[0])
     }

@@ -197,6 +197,30 @@ const chipBg = computed<string>((): string => {
     return (p != null && p!.hasVoted) ? colors().successSoft : colors().accentSoft
 })
 
+/** 与列表页同一套剩余时间文案 */
+const remainingText = (p: Poll): string => {
+    if (p.isEnded()) {
+        return ''
+    }
+    if (p.endTime <= 0) {
+        return t('poll.no_end_time')
+    }
+    const remaining = p.endTime - new Date().getTime()
+    if (remaining <= 0) {
+        return ''
+    }
+    const minutes = Math.floor(remaining / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+    if (days > 0) {
+        return t1('poll.days_left', '' + days)
+    }
+    if (hours > 0) {
+        return t1('poll.hours_left', '' + hours)
+    }
+    return t1('poll.minutes_left', '' + minutes)
+}
+
 /** 页脚一行灰字：实名/匿名 · N人参与 · 剩余时间 · 状态 */
 const metaText = computed<string>((): string => {
     const p = poll.value
@@ -253,41 +277,6 @@ const showBottomBar = computed<boolean>((): boolean => {
     return poll.value != null && (primaryLabel.value != '' || canExport.value)
 })
 
-onLoad((options: OnLoadOptions) => {
-    pollId.value = parseInt(options['pollId'] ?? '0')
-    messageId.value = parseInt(options['messageId'] ?? '0')
-    fromList.value = (options['fromList'] ?? '') == '1'
-    fetchDetail()
-})
-
-const fetchDetail = () => {
-    if (!pollServerApi.isAvailable()) {
-        loading.value = false
-        toast(t('poll.service_not_configured'))
-        return
-    }
-    loading.value = true
-    pollServerApi.getPoll(pollId.value)
-        .then((result: Poll): void => {
-            loading.value = false
-            poll.value = result
-            // 只有投票模式才回填已选项：管理模式下勾选框根本不显示
-            if (!(fromList.value && result.isCreator)) {
-                const ids: number[] = []
-                for (let i = 0; i < result.myOptionIds.length; i++) {
-                    ids.push(result.myOptionIds[i])
-                }
-                selectedOptionIds.value = ids
-            }
-            updateLocalMessage(result)
-        })
-        .catch((err: any | null): void => {
-            loading.value = false
-            console.log('get poll fail', err)
-            toast(t('poll.load_failed'))
-        })
-}
-
 /**
  * 服务端状态比消息里的快照新时，回写本地消息，气泡上的票数/状态才不会一直是旧的。
  * 对齐 flutter 的 `_updateLocalMessageIfNeeded`。
@@ -323,6 +312,41 @@ const updateLocalMessage = (result: Poll) => {
         wfc.updateMessageContent(messageId.value, pollContent)
     }
 }
+
+const fetchDetail = () => {
+    if (!pollServerApi.isAvailable()) {
+        loading.value = false
+        toast(t('poll.service_not_configured'))
+        return
+    }
+    loading.value = true
+    pollServerApi.getPoll(pollId.value)
+        .then((result: Poll): void => {
+            loading.value = false
+            poll.value = result
+            // 只有投票模式才回填已选项：管理模式下勾选框根本不显示
+            if (!(fromList.value && result.isCreator)) {
+                const ids: number[] = []
+                for (let i = 0; i < result.myOptionIds.length; i++) {
+                    ids.push(result.myOptionIds[i])
+                }
+                selectedOptionIds.value = ids
+            }
+            updateLocalMessage(result)
+        })
+        .catch((err: any | null): void => {
+            loading.value = false
+            console.log('get poll fail', err)
+            toast(t('poll.load_failed'))
+        })
+}
+
+onLoad((options: OnLoadOptions) => {
+    pollId.value = parseInt(options['pollId'] ?? '0')
+    messageId.value = parseInt(options['messageId'] ?? '0')
+    fromList.value = (options['fromList'] ?? '') == '1'
+    fetchDetail()
+})
 
 const isSelected = (option: PollOption): boolean => {
     return selectedOptionIds.value.indexOf(option.optionId) >= 0
@@ -386,18 +410,6 @@ const onOptionTap = (option: PollOption) => {
     selectedOptionIds.value = next
 }
 
-const onPrimaryTap = () => {
-    if (isManagerMode.value) {
-        if (primaryDanger.value) {
-            deletePoll()
-        } else {
-            closePoll()
-        }
-        return
-    }
-    submitVote()
-}
-
 const submitVote = () => {
     if (!canVote.value) {
         return
@@ -447,6 +459,18 @@ const deletePoll = () => {
                 toast(t('poll.delete_failed'))
             })
     })
+}
+
+const onPrimaryTap = () => {
+    if (isManagerMode.value) {
+        if (primaryDanger.value) {
+            deletePoll()
+        } else {
+            closePoll()
+        }
+        return
+    }
+    submitVote()
 }
 
 /** CSV 字段转义：含逗号/引号/换行时整体加引号，内部引号翻倍 */
@@ -519,30 +543,6 @@ const exportDetails = () => {
             console.log('export poll fail', err)
             toast(t('poll.export_failed'))
         })
-}
-
-/** 与列表页同一套剩余时间文案 */
-const remainingText = (p: Poll): string => {
-    if (p.isEnded()) {
-        return ''
-    }
-    if (p.endTime <= 0) {
-        return t('poll.no_end_time')
-    }
-    const remaining = p.endTime - new Date().getTime()
-    if (remaining <= 0) {
-        return ''
-    }
-    const minutes = Math.floor(remaining / 60000)
-    const hours = Math.floor(minutes / 60)
-    const days = Math.floor(hours / 24)
-    if (days > 0) {
-        return t1('poll.days_left', '' + days)
-    }
-    if (hours > 0) {
-        return t1('poll.hours_left', '' + hours)
-    }
-    return t1('poll.minutes_left', '' + minutes)
 }
 </script>
 

@@ -265,7 +265,7 @@ const resetVisibleSections = () => {
     visibleCountsBySection.value = visibleCounts
 }
 
-watch(contactSections, (_newValue, _oldValue) => {
+watch(contactSections, (_newValue : ContactSection[], _oldValue: ContactSection[]) => {
     resetVisibleSections()
     activeSectionIndex.value = 0
     scrollIntoViewId.value = ''

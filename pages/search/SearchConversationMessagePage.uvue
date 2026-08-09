@@ -271,6 +271,19 @@ const onKeywordInput = (e: UniInputEvent) => {
     }, 300)
 }
 
+const saveHistory = (word: string) => {
+    const trimmed = word.trim()
+    if (trimmed == '') {
+        return
+    }
+    let list = [trimmed].concat(history.value.filter((w: string): boolean => w != trimmed))
+    if (list.length > HISTORY_MAX) {
+        list = list.slice(0, HISTORY_MAX)
+    }
+    history.value = list
+    setItem(HISTORY_KEY, list.join('\n'))
+}
+
 const onKeywordConfirm = () => {
     saveHistory(keyword.value)
 }
@@ -349,19 +362,6 @@ const loadHistory = () => {
         return
     }
     history.value = saved.split('\n').filter((word: string): boolean => word != '')
-}
-
-const saveHistory = (word: string) => {
-    const trimmed = word.trim()
-    if (trimmed == '') {
-        return
-    }
-    let list = [trimmed].concat(history.value.filter((w: string): boolean => w != trimmed))
-    if (list.length > HISTORY_MAX) {
-        list = list.slice(0, HISTORY_MAX)
-    }
-    history.value = list
-    setItem(HISTORY_KEY, list.join('\n'))
 }
 
 const clearHistory = () => {

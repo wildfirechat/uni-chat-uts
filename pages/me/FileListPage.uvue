@@ -95,19 +95,6 @@ const sheetItems = computed<ActionSheetItem[]>((): ActionSheetItem[] => {
     ]
 })
 
-onLoad(() => {
-    const loaded = takeFileListOptions()
-    if (loaded != null) {
-        options = loaded
-    }
-    if (options.title != '') {
-        uni.setNavigationBarTitle({
-            title: options.title
-        } as SetNavigationBarTitleOptions)
-    }
-    load()
-})
-
 const onSuccess = (records: FileRecord[]) => {
     loading.value = false
     files.value = files.value.concat(records)
@@ -157,6 +144,19 @@ const reload = () => {
 const loadMore = () => {
     load()
 }
+
+onLoad(() => {
+    const loaded = takeFileListOptions()
+    if (loaded != null) {
+        options = loaded
+    }
+    if (options.title != '') {
+        uni.setNavigationBarTitle({
+            title: options.title
+        } as SetNavigationBarTitleOptions)
+    }
+    load()
+})
 
 let searchTimer = 0
 
@@ -213,18 +213,6 @@ const onSheetSelect = (tag: string) => {
     }
 }
 
-const confirmDelete = (file: FileRecord) => {
-    uni.showModal({
-        title: t('common.delete'),
-        content: t('file_record.delete_confirm'),
-        success: (res) => {
-            if (res.confirm) {
-                doDelete(file)
-            }
-        }
-    } as ShowModalOptions)
-}
-
 const doDelete = (file: FileRecord) => {
     wfc.deleteFileRecord(file.messageUid, () => {
         files.value = files.value.filter((f: FileRecord): boolean => f.messageUid != file.messageUid)
@@ -238,6 +226,18 @@ const doDelete = (file: FileRecord) => {
             icon: 'none'
         } as ShowToastOptions)
     })
+}
+
+const confirmDelete = (file: FileRecord) => {
+    uni.showModal({
+        title: t('common.delete'),
+        content: t('file_record.delete_confirm'),
+        success: (res) => {
+            if (res.confirm) {
+                doDelete(file)
+            }
+        }
+    } as ShowModalOptions)
 }
 </script>
 

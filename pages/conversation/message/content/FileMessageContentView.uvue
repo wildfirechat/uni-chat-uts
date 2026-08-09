@@ -1,9 +1,9 @@
 <template>
-    <view class="file-message-container" @tap="clickFile" :class="{ out: message.direction == 0 }"
-        :style="{ backgroundColor: message.direction == 0 ? c.bubbleSent : c.bubbleReceived }">
+    <view class="file-message-container" @tap="clickFile" :class="{ out: isOut }"
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
         <image class="file-icon" :src="fileIcon" />
         <view class="flex-column flex-align-start file-info">
-            <text class="file-name" :style="{ fontSize: fontPx(14), color: message.direction == 0 ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.name }}</text>
+            <text class="file-name" :style="{ fontSize: fontPx(14), color: isOut ? c.bubbleSentText : c.bubbleReceivedText }">{{ content.name }}</text>
             <text class="file-size single-line" :style="{ fontSize: fontPx(13), color: c.textSecondary }">{{ size }}</text>
         </view>
     </view>
@@ -27,8 +27,12 @@ const props = defineProps<{
     message: Message
 }>()
 
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
 const content = computed<FileMessageContent>((): FileMessageContent => {
-    return props.message.messageContent as FileMessageContent
+    const message = props.message as Message
+    return message.messageContent as FileMessageContent
 })
 
 const size = computed<string>((): string => {

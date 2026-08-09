@@ -39,13 +39,25 @@ const longPressClientY = ref<number>(0)
 
 onBeforeUnmount(() => {
     if (isTalking.value) {
-        pttClient.releaseTalking(props.conversationInfo.conversation)
+        let conversationInfo = props.conversationInfo as ConversationInfo
+        pttClient.releaseTalking(conversationInfo.conversation)
     }
     if (recordTimer.value != 0) {
         clearInterval(recordTimer.value)
         recordTimer.value = 0
     }
 })
+
+const resetState = () => {
+    if (recordTimer.value != 0) {
+        clearInterval(recordTimer.value)
+        recordTimer.value = 0
+    }
+    isTalking.value = false
+    popupToggle.value = false
+    text.value = '按住对讲'
+    title.value = ' '
+}
 
 const handleLongPress = (e: UniTouchEvent) => {
     // 权限弹窗会打断长按手势，所以未授权时只申请权限，让用户授权后重新按住
@@ -90,7 +102,8 @@ const handleLongPress = (e: UniTouchEvent) => {
             icon: 'none',
         } as ShowToastOptions)
     }
-    pttClient.requestTalk(props.conversationInfo.conversation, 0, callback)
+    let conversationInfo = props.conversationInfo as ConversationInfo
+    pttClient.requestTalk(conversationInfo.conversation, 0, callback)
 }
 
 // 对讲不支持上划取消，保留手势回调仅为和 AudioInputView 交互习惯保持一致
@@ -102,20 +115,10 @@ const handleTouchMove = (_e: UniTouchEvent) => {
 
 const handleTouchEnd = () => {
     if (isTalking.value) {
-        pttClient.releaseTalking(props.conversationInfo.conversation)
+        let conversationInfo = props.conversationInfo as ConversationInfo
+        pttClient.releaseTalking(conversationInfo.conversation)
     }
     resetState()
-}
-
-const resetState = () => {
-    if (recordTimer.value != 0) {
-        clearInterval(recordTimer.value)
-        recordTimer.value = 0
-    }
-    isTalking.value = false
-    popupToggle.value = false
-    text.value = '按住对讲'
-    title.value = ' '
 }
 </script>
 

@@ -55,7 +55,8 @@ onMounted(() => {
             } else {
                 const filePath = toLocalFilePath(res.tempFilePath);
                 const soundMessageContent = new SoundMessageContent(filePath, '', recordTime.value)
-                wfc.sendConversationMessage(props.conversationInfo.conversation, soundMessageContent);
+                let conversationInfo = props.conversationInfo as ConversationInfo
+                wfc.sendConversationMessage(conversationInfo.conversation, soundMessageContent);
             }
         }
         popupToggle.value = false;

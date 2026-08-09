@@ -90,6 +90,15 @@ const displayNameOf = (user: UserInfo): string => {
     return '用户'
 }
 
+const isUserUncheckable = (user: UserInfo): boolean => {
+    const uncheckableUsers = props.uncheckableUsers as UserInfo[]
+    return uncheckableUsers.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
+}
+
+const isUserChecked = (user: UserInfo): boolean => {
+    return store.isUserPicked(user);
+}
+
 const clickUserItem = (user: UserInfo) => {
     if (isUserUncheckable(user)) {
         return;
@@ -102,14 +111,6 @@ const clickUserItem = (user: UserInfo) => {
     store.pickOrUnpickUser(user)
 }
 
-const isUserUncheckable = (user: UserInfo): boolean => {
-    return props.uncheckableUsers.findIndex((u: UserInfo): boolean => u.uid == user.uid) >= 0;
-}
-
-const isUserChecked = (user: UserInfo): boolean => {
-    return store.isUserPicked(user);
-}
-
 const INITIAL_RENDER_USER_COUNT = 180
 const RENDER_BATCH_USER_COUNT = 220
 // 索引条跳到某分类时，连带把那一段往后多渲染一批，免得跳过去只有一个标签行
@@ -118,16 +119,18 @@ const QUICK_INDEX_PRELOAD_COUNT = 120
 const renderUserCount = ref<number>(0)
 
 const hasMore = computed<boolean>((): boolean => {
-    return renderUserCount.value < props.users.length
+    const users = props.users as UserInfo[]
+    return renderUserCount.value < users.length
 })
 
 const visibleFlatItems = computed<FlatUserListItem[]>((): FlatUserListItem[] => {
+    const users = props.users as UserInfo[]
     const items: FlatUserListItem[] = []
-    const total = renderUserCount.value < props.users.length ? renderUserCount.value : props.users.length
+    const total = renderUserCount.value < users.length ? renderUserCount.value : users.length
     let lastCategory = ''
 
     for (let i = 0; i < total; i++) {
-        const user = props.users[i]
+        const user = users[i]
         const category = user._category
         if (props.showCategoryLabel && lastCategory != category) {
             lastCategory = category
@@ -152,23 +155,25 @@ const appendNextBatch = () => {
     if (!hasMore.value) {
         return
     }
+    const users = props.users as UserInfo[]
     const next = renderUserCount.value + RENDER_BATCH_USER_COUNT
-    renderUserCount.value = next < props.users.length ? next : props.users.length
+    renderUserCount.value = next < users.length ? next : users.length
 }
 
 const resetRenderWindow = () => {
-    if (props.users.length == 0) {
+    const users = props.users as UserInfo[]
+    if (users.length == 0) {
         renderUserCount.value = 0
         return
     }
-    renderUserCount.value = props.users.length < INITIAL_RENDER_USER_COUNT ? props.users.length : INITIAL_RENDER_USER_COUNT
+    renderUserCount.value = users.length < INITIAL_RENDER_USER_COUNT ? users.length : INITIAL_RENDER_USER_COUNT
 }
 
-watch(() => props.users, (_newValue, _oldValue) => {
+watch((): UserInfo[] => props.users, (_newValue: UserInfo[], _oldValue: UserInfo[]) => {
     resetRenderWindow()
 }, { immediate: true })
 
-watch(() => props.showCategoryLabel, (_newValue, _oldValue) => {
+watch((): boolean => props.showCategoryLabel, (_newValue: boolean, _oldValue: boolean) => {
     resetRenderWindow()
 })
 
@@ -178,9 +183,10 @@ watch(() => props.showCategoryLabel, (_newValue, _oldValue) => {
  * 索引条跳转前先调它，同 ContactListPage 的 QUICK_INDEX_PRELOAD_COUNT 处理。
  */
 const ensureCategoryRendered = (category: string) => {
+    const users = props.users as UserInfo[]
     let firstIndex = -1
-    for (let i = 0; i < props.users.length; i++) {
-        if (props.users[i]._category == category) {
+    for (let i = 0; i < users.length; i++) {
+        if (users[i]._category == category) {
             firstIndex = i
             break
         }
@@ -189,7 +195,7 @@ const ensureCategoryRendered = (category: string) => {
         return
     }
     const need = firstIndex + QUICK_INDEX_PRELOAD_COUNT
-    const target = need < props.users.length ? need : props.users.length
+    const target = need < users.length ? need : users.length
     if (target > renderUserCount.value) {
         renderUserCount.value = target
     }
@@ -200,8 +206,10 @@ defineExpose({
 })
 
 onMounted(() => {
-    if (props.initialCheckedUsers.length > 0) {
-        const oriCUs = props.users.filter((u: UserInfo): boolean => props.initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) > -1);
+    const users = props.users as UserInfo[]
+    const initialCheckedUsers = props.initialCheckedUsers as UserInfo[]
+    if (initialCheckedUsers.length > 0) {
+        const oriCUs = users.filter((u: UserInfo): boolean => initialCheckedUsers.findIndex((iu: UserInfo): boolean => iu.uid == u.uid) > -1);
         for (let i = 0; i < oriCUs.length; i++) {
             store.pickOrUnpickUser(oriCUs[i])
         }

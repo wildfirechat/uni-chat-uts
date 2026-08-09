@@ -124,22 +124,22 @@ export function scale(base: number, cap: number): number {
 }
 
 /** 同 [scale]，返回 `'20px'` 形式，可直接塞进 `:style`。 */
-export function px(base: number, cap: number): string {
+export const px = (base: number, cap: number): string => {
     return scale(base, cap) + 'px'
 }
 
 /** 文字尺寸：不封顶，完整跟随档位。 */
-export function fontPx(base: number): string {
+export const fontPx = (base: number): string => {
     return scale(base, TEXT_CAP) + 'px'
 }
 
 /** 图形尺寸（头像、图标）：按 [ICON_CAP] 封顶。 */
-export function iconPx(base: number): string {
+export const iconPx = (base: number): string => {
     return px(base, ICON_CAP)
 }
 
 /** 行高、列表项高度：按 [ROW_CAP] 封顶。 */
-export function rowPx(base: number): string {
+export const rowPx = (base: number): string => {
     return px(base, ROW_CAP)
 }
 

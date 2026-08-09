@@ -202,18 +202,25 @@ watch(pathList, (newPath: Organization[], _oldPath: Organization[]) => {
     }, 50)
 })
 
-onLoad((options: OnLoadOptions) => {
-    selectMode.value = options['selectMode'] == '1'
-    if (selectMode.value) {
-        const pickOptions = currentPickOrganizationUsersOptions()
-        if (pickOptions != null) {
-            maxSelected.value = pickOptions.maxSelected
-            selectedIds.value = pickOptions.initialSelectedUserIds.slice(0)
-            disabledIds.value = pickOptions.disabledUserIds.slice(0)
-        }
-    }
-    reload()
-})
+const loadOrganization = (org: Organization) => {
+    loading.value = true
+    organizationServerApi.getOrganizationExInfo(org.id)
+        .then((ex: OrganizationEx | null): void => {
+            loading.value = false
+            if (ex == null) {
+                subOrganizations.value = [] as Organization[]
+                employees.value = [] as Employee[]
+                return
+            }
+            subOrganizations.value = ex.subOrganizations
+            employees.value = ex.employees
+        })
+        .catch((err): void => {
+            loading.value = false
+            console.log('getOrganizationEx error', err)
+            errorMessage.value = t('organization.department_load_fail')
+        })
+}
 
 /**
  * 进页面先拉根部门。组织服务的 authToken 是登录后由 ConversationListPage 换的，
@@ -258,25 +265,19 @@ const reload = () => {
         })
 }
 
-const loadOrganization = (org: Organization) => {
-    loading.value = true
-    organizationServerApi.getOrganizationExInfo(org.id)
-        .then((ex: OrganizationEx | null): void => {
-            loading.value = false
-            if (ex == null) {
-                subOrganizations.value = [] as Organization[]
-                employees.value = [] as Employee[]
-                return
-            }
-            subOrganizations.value = ex.subOrganizations
-            employees.value = ex.employees
-        })
-        .catch((err): void => {
-            loading.value = false
-            console.log('getOrganizationEx error', err)
-            errorMessage.value = t('organization.department_load_fail')
-        })
-}
+
+onLoad((options: OnLoadOptions) => {
+    selectMode.value = options['selectMode'] == '1'
+    if (selectMode.value) {
+        const pickOptions = currentPickOrganizationUsersOptions()
+        if (pickOptions != null) {
+            maxSelected.value = pickOptions.maxSelected
+            selectedIds.value = pickOptions.initialSelectedUserIds.slice(0)
+            disabledIds.value = pickOptions.disabledUserIds.slice(0)
+        }
+    }
+    reload()
+})
 
 const enterOrganization = (org: Organization) => {
     const path = pathList.value.slice(0)

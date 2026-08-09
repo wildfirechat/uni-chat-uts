@@ -154,6 +154,14 @@ const onThemeSelect = (tag: string) => {
     setThemeMode(tag)
 }
 
+const logout = () => {
+    wfc.disconnect(true, false)
+    clear()
+    uni.reLaunch({
+        url: '/pages/login/LoginPage'
+    } as ReLaunchOptions)
+}
+
 const onLogoutSelect = (tag: string) => {
     if (tag == 'destroy') {
         open('/pages/me/DestroyAccountPage')
@@ -168,14 +176,6 @@ const onLogoutSelect = (tag: string) => {
             }
         }
     } as ShowModalOptions)
-}
-
-const logout = () => {
-    wfc.disconnect(true, false)
-    clear()
-    uni.reLaunch({
-        url: '/pages/login/LoginPage'
-    } as ReLaunchOptions)
 }
 
 </script>
