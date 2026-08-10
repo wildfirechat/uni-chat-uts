@@ -65,6 +65,9 @@ import MuteVideoMessageContent from '../av/messages/muteVideoMessageContent.uts'
 import MultiCallOngoingMessageContent from '../av/messages/multiCallOngoingMessageContent.uts';
 import JoinCallRequestMessageContent from '../av/messages/joinCallRequestMessageContent.uts';
 import ConferenceInviteMessageContent from '../av/messages/conferenceInviteMessageContent.uts';
+import ConferenceChangeModeContent from '../av/messages/conferenceChangeModeContent.uts';
+import ConferenceKickoffMemberMessageContent from '../av/messages/conferenceKickoffMemberMessageContent.uts';
+import ConferenceCommandMessageContent from '../av/messages/conferenceCommandMessageContent.uts';
 import VoipStubMessageContent from '../av/messages/voipStubMessageContent.uts';
 import PttSoundMessageContent from '../ptt/pttSoundMessageContent.uts';
 import PollMessageContent from "../messages/pollMessageContent.uts";
@@ -187,8 +190,8 @@ export default class MessageConfig {
         new MessageContentRegistry('callAddParticipant', PersistFlag.Persist, MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT, (): MessageContent => new AddParticipantsMessageContent()),
         new MessageContentRegistry('callMuteVideo', PersistFlag.No_Persist, MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO, (): MessageContent => new MuteVideoMessageContent()),
         new MessageContentRegistry('conferenceInvite', PersistFlag.Persist_And_Count, MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE, (): MessageContent => new ConferenceInviteMessageContent()),
-        new MessageContentRegistry('conferenceChangeMode', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE)),
-        new MessageContentRegistry('conferenceKickoffMember', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER)),
+        new MessageContentRegistry('conferenceChangeMode', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE, (): MessageContent => new ConferenceChangeModeContent()),
+        new MessageContentRegistry('conferenceKickoffMember', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER, (): MessageContent => new ConferenceKickoffMemberMessageContent()),
         new MessageContentRegistry('multiCallOngoing', PersistFlag.Transparent, MessageContentType.VOIP_Multi_Call_Ongoing, (): MessageContent => new MultiCallOngoingMessageContent()),
         new MessageContentRegistry('joinCallRequest', PersistFlag.Transparent, MessageContentType.VOIP_Join_Call_Request, (): MessageContent => new JoinCallRequestMessageContent()),
         new MessageContentRegistry('markUnreadMessage', PersistFlag.No_Persist, MessageContentType.Mark_Unread_Sync, (): MessageContent => new MarkUnreadMessageContent()),
@@ -201,7 +204,7 @@ export default class MessageConfig {
         new MessageContentRegistry('channelMenuEventMessageContent', PersistFlag.Transparent, MessageContentType.Channel_Menu_Event, (): MessageContent => new ChannelMenuEventMessageContent()),
         new MessageContentRegistry('enterChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Enter_Channel_Chat, (): MessageContent => new EnterChannelChatMessageContent()),
         new MessageContentRegistry('leaveChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Leave_Channel_Chat, (): MessageContent => new LeaveChannelChatMessageContent()),
-        new MessageContentRegistry('conferenceCommandMessageContent', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND, (): MessageContent => new VoipStubMessageContent(MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND)),
+        new MessageContentRegistry('conferenceCommandMessageContent', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND, (): MessageContent => new ConferenceCommandMessageContent()),
         new MessageContentRegistry('pollMessageContent', PersistFlag.Persist_And_Count, MessageContentType.Poll, (): MessageContent => new PollMessageContent()),
     ];
 }

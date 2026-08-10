@@ -1,0 +1,205 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar title="会议" :show-back="true" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="entry-row">
+                <view class="entry" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass"
+                    @tap="joinConference">
+                    <text class="icomoon entry-icon" :style="{ color: c.accent, fontSize: iconPx(24) }">&#xf216;</text>
+                    <text class="entry-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">加入会议</text>
+                </view>
+                <view class="entry" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass"
+                    @tap="createConference">
+                    <text class="icomoon entry-icon" :style="{ color: c.accent, fontSize: iconPx(24) }">&#xf4cd;</text>
+                    <text class="entry-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">发起会议</text>
+                </view>
+                <view class="entry" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass"
+                    @tap="orderConference">
+                    <text class="icomoon entry-icon" :style="{ color: c.warning, fontSize: iconPx(24) }">&#xf117;</text>
+                    <text class="entry-title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">预定会议</text>
+                </view>
+            </view>
+
+            <text class="section-label" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">即将开始</text>
+            <view class="section">
+                <form-card :radius="8">
+                    <option-item v-for="(info, i) in favConferenceInfos" :key="info.conferenceId"
+                        :title="info.conferenceTitle" :desc="favConferenceDesc(info)"
+                        :show-bottom-divider="i < favConferenceInfos.length - 1"
+                        @tap="showConferenceInfo(info)" />
+                    <view v-if="favConferenceInfos.length == 0" class="empty">
+                        <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_SM) }">没有即将开始的会议</text>
+                    </view>
+                </form-card>
+            </view>
+
+            <text class="section-label" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">历史记录</text>
+            <view class="section">
+                <form-card :radius="8">
+                    <option-item v-for="(info, i) in historyConferenceInfos" :key="info.conferenceId"
+                        :title="info.conferenceTitle" :desc="historyConferenceDesc(info)"
+                        :show-bottom-divider="i < historyConferenceInfos.length - 1"
+                        @tap="showConferenceInfo(info)" />
+                    <view v-if="historyConferenceInfos.length == 0" class="empty">
+                        <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_SM) }">没有历史会议</text>
+                    </view>
+                </form-card>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会议入口页，迁移自 pages/voip/conference/ConferencePortalPage.vue。
+ * 原版是左右分栏的桌面布局，这里按本项目移动端的分组卡片风格重排。
+ *
+ * 「即将开始」来自 app server 的收藏会议列表，「历史记录」是本地存的最近 10 场
+ * （由 ConferencePage 退出时写入，见 conferenceManager.addHistory）。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import conferenceApi from "@/api/conferenceApi.uts";
+import conferenceManager from "./conferenceManager.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import { getUserDisplayName } from "@/wfc/client/userBrief.uts";
+import { navigateToPage } from "@/common/nav.uts";
+import { colors, AppColors, isDark } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_BASE, FONT_SM, FONT_XS } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "ConferencePortalPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => isDark() ? 'entry-pressed-dark' : 'entry-pressed-light')
+
+const favConferenceInfos = ref<ConferenceInfo[]>([] as ConferenceInfo[])
+const historyConferenceInfos = ref<ConferenceInfo[]>([] as ConferenceInfo[])
+
+const loadFavConferences = () => {
+    conferenceApi.getFavConferences()
+        .then((infos: ConferenceInfo[]): void => {
+            favConferenceInfos.value = infos
+        })
+        .catch((err: any | null): void => {
+            console.log('getFavConferences error', err)
+        })
+}
+
+onShow(() => {
+    loadFavConferences()
+    historyConferenceInfos.value = conferenceManager.getHistoryConference()
+})
+
+const joinConference = () => {
+    navigateToPage('/pages/voip/conference/JoinConferencePage', null)
+}
+
+const createConference = () => {
+    navigateToPage('/pages/voip/conference/CreateConferencePage', null)
+}
+
+const orderConference = () => {
+    navigateToPage('/pages/voip/conference/OrderConferencePage', null)
+}
+
+const showConferenceInfo = (info: ConferenceInfo) => {
+    navigateToPage('/pages/voip/conference/ConferenceInfoPage', info)
+}
+
+const favConferenceDesc = (info: ConferenceInfo): string => {
+    const start = info.startTime * 1000
+    const end = info.endTime * 1000
+    const now = new Date().getTime()
+    if (now < start) {
+        return '会议尚未开始'
+    } else if (now < end) {
+        return '会议已开始，请尽快加入'
+    }
+    return '会议已结束'
+}
+
+const formatDuration = (second: number): string => {
+    let desc = ''
+    if (second > 3600) {
+        desc = Math.floor(second / 3600) + 'H'
+    }
+    if (second > 60) {
+        desc += Math.floor((second % 3600) / 60) + 'M'
+    }
+    desc += (second % 60) + 'S'
+    return desc
+}
+
+const historyConferenceDesc = (info: ConferenceInfo): string => {
+    const duration = formatDuration(info.endTime - info.startTime)
+    const ownerName = getUserDisplayName(info.owner)
+    const date = new Date(info.startTime * 1000)
+    const dateStr = date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate()
+    return '时间：' + dateStr + ' 发起人：' + ownerName + ' 时长：' + duration
+}
+</script>
+
+<style scoped>
+.page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    flex: 1;
+}
+
+.entry-row {
+    display: flex;
+    flex-direction: row;
+    padding: 12px 12px 0 12px;
+}
+
+.entry {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    border-radius: 8px;
+    padding: 14px;
+    margin: 0 4px;
+}
+
+/* hover-class 只认静态类名，明暗两个按下态只能各写一份 */
+.entry-pressed-light {
+    background-color: #E6E6E6;
+}
+
+.entry-pressed-dark {
+    background-color: #3A3A3C;
+}
+
+.entry-icon {
+    padding-bottom: 10px;
+}
+
+.entry-title {
+    /* 标题跟图标同一列 */
+}
+
+.section-label {
+    padding: 16px 20px 6px 20px;
+}
+
+.section {
+    padding: 0 12px;
+}
+
+.empty {
+    padding: 14px 16px;
+}
+
+.tail {
+    height: 24px;
+}
+</style>

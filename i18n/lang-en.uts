@@ -251,6 +251,7 @@ export default {
     },
     "discovery": {
         "chatroom": "Chatroom",
+        "conference": "Conference",
         "robot": "Robot",
         "channel": "Channel",
         "dev_guide": "Developer Guide"

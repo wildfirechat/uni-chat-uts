@@ -251,6 +251,7 @@ export default {
     },
     "discovery": {
         "chatroom": "聊天室",
+        "conference": "会议",
         "robot": "机器人",
         "channel": "频道",
         "dev_guide": "开发手册"

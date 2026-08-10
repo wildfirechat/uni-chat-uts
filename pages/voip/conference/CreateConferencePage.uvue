@@ -1,0 +1,226 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar title="发起会议" :show-back="true" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="section">
+                <form-card :radius="8">
+                    <form-text-row :value="title" placeholder="会议标题" :maxlength="60" :show-bottom-divider="false"
+                        @input="onTitleInput" />
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-item title="开始时间" desc="现在" :show-right-arrow="false" />
+                    <picker mode="selector" :range="durationLabels" :value="durationIndex" @change="onDurationChange">
+                        <option-item title="会议时长" :desc="durationLabels[durationIndex]" :show-bottom-divider="false" />
+                    </picker>
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-switch-item title="参与者开麦克风、摄像头入会" :value="notAudience" @change="onNotAudienceChange" />
+                    <option-switch-item title="允许参与者自主开启" :value="allowTurnOnMic" :disabled="notAudience"
+                        @change="onAllowTurnOnMicChange" />
+                    <option-switch-item title="大规模会议" :value="advance" @change="onAdvanceChange" />
+                    <option-switch-item title="启用密码" :value="enablePassword" :show-bottom-divider="enablePassword"
+                        @change="onEnablePasswordChange" />
+                    <form-text-row v-if="enablePassword" :value="password" placeholder="请输入会议密码" :maxlength="6"
+                        :show-bottom-divider="false" @input="onPasswordInput" />
+                </form-card>
+            </view>
+            <text class="hint" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">
+                大规模会议适用于参会人数超过 50 人的场景，开启后参与者默认以观众身份入会
+            </text>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-button-item title="创建会议" tone="accent" @tap="createConference" />
+                    <option-button-item title="创建并进入会议" tone="accent" :show-bottom-divider="false"
+                        @tap="createAndJoinConference" />
+                </form-card>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 发起会议，迁移自 CreateConferencePage.vue。
+ *
+ * 与原版的差异：原版让用户填一个「结束时间」的 datetime-local，移动端上很难填，
+ * 这里改成选「会议时长」（结束时间 = 现在 + 时长），语义一样、少一次日期输入。
+ * 需要精确起止时间的场景走「预定会议」（OrderConferencePage）。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import conferenceApi from "@/api/conferenceApi.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import { navigateToPage } from "@/common/nav.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_XS } from "@/common/layoutScale.uts";
+import { toast } from "@/common/prompt.uts";
+import { ConferenceJoinOptions } from "./conferenceJoinOptions.uts";
+
+defineOptions({
+    name: "CreateConferencePage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const durationLabels: string[] = ['1 小时', '2 小时', '4 小时', '8 小时', '24 小时']
+const durationHours: number[] = [1, 2, 4, 8, 24]
+
+const title = ref<string>('')
+const durationIndex = ref<number>(0)
+const notAudience = ref<boolean>(true)
+const allowTurnOnMic = ref<boolean>(true)
+const advance = ref<boolean>(false)
+const enablePassword = ref<boolean>(false)
+const password = ref<string>('')
+const creating = ref<boolean>(false)
+
+const onTitleInput = (v: string) => {
+    title.value = v
+}
+
+const onPasswordInput = (v: string) => {
+    password.value = v
+}
+
+const onDurationChange = (e: UniPickerChangeEvent) => {
+    durationIndex.value = e.detail.value as number
+}
+
+const onNotAudienceChange = (value: boolean) => {
+    notAudience.value = value
+}
+
+const onAllowTurnOnMicChange = (value: boolean) => {
+    allowTurnOnMic.value = value
+}
+
+const onAdvanceChange = (value: boolean) => {
+    advance.value = value
+    // 超级会议参会人多，默认不让所有人都开麦，和原实现的 watch 一致
+    if (value) {
+        notAudience.value = false
+    }
+}
+
+const onEnablePasswordChange = (value: boolean) => {
+    enablePassword.value = value
+    if (!value) {
+        password.value = ''
+    }
+}
+
+/** 建会议：本地拼好 ConferenceInfo，conferenceId 由服务端分配 */
+const doCreateConference = (): Promise<ConferenceInfo> => {
+    const info = new ConferenceInfo()
+    info.conferenceTitle = title.value.trim()
+    info.password = enablePassword.value ? password.value.trim() : ''
+    // pin 是入会时校验用的短码，和原实现一样在客户端随机生成
+    info.pin = '' + Math.ceil((1 + Math.random() * 100000) / 10)
+    info.owner = wfc.getUserId()
+    const now = new Date().getTime()
+    info.startTime = Math.ceil(now / 1000)
+    info.endTime = Math.ceil((now + durationHours[durationIndex.value] * 3600000) / 1000)
+    info.audience = !notAudience.value
+    info.allowSwitchMode = allowTurnOnMic.value
+    info.advance = advance.value
+
+    return conferenceApi.createConference(info).then((conferenceId: string): ConferenceInfo => {
+        info.conferenceId = conferenceId
+        return info
+    })
+}
+
+const checkInput = (): boolean => {
+    if (creating.value) {
+        return false
+    }
+    if (title.value.trim() == '') {
+        toast('请输入会议标题')
+        return false
+    }
+    return true
+}
+
+const createConference = () => {
+    if (!checkInput()) {
+        return
+    }
+    creating.value = true
+    doCreateConference()
+        .then((_info: ConferenceInfo): void => {
+            creating.value = false
+            toast('创建会议成功')
+            uni.navigateBack({
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+        })
+        .catch((err: any | null): void => {
+            creating.value = false
+            console.log('createConference error', err)
+            toast('创建会议失败')
+        })
+}
+
+const createAndJoinConference = () => {
+    if (!checkInput()) {
+        return
+    }
+    checkVoipPermissions(false).then((granted: boolean): void => {
+        if (!granted) {
+            return
+        }
+        creating.value = true
+        doCreateConference()
+            .then((info: ConferenceInfo): void => {
+                creating.value = false
+                const options = new ConferenceJoinOptions()
+                options.conferenceInfo = info
+                options.muteAudio = false
+                options.muteVideo = false
+                navigateToPage('/pages/voip/conference/ConferencePage', options)
+            })
+            .catch((err: any | null): void => {
+                creating.value = false
+                console.log('createConference error', err)
+                toast('创建会议失败')
+            })
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    flex: 1;
+}
+
+.section {
+    padding: 12px 12px 0 12px;
+}
+
+.hint {
+    padding: 8px 20px 0 20px;
+}
+
+.tail {
+    height: 24px;
+}
+</style>

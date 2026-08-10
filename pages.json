@@ -409,6 +409,56 @@
                 "navigationStyle": "custom",
                 "disableScroll": true
             }
+        },
+        {
+            "path": "pages/voip/conference/ConferencePortalPage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom"
+            }
+        },
+        {
+            "path": "pages/voip/conference/JoinConferencePage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom"
+            }
+        },
+        {
+            "path": "pages/voip/conference/CreateConferencePage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom"
+            }
+        },
+        {
+            "path": "pages/voip/conference/OrderConferencePage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom"
+            }
+        },
+        {
+            "path": "pages/voip/conference/ConferenceInfoPage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom"
+            }
+        },
+        {
+            "path": "pages/voip/conference/ConferenceManagePage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom"
+            }
+        },
+        {
+            "path": "pages/voip/conference/ConferencePage",
+            "style": {
+                "navigationBarTitleText": "",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
         }
     ],
     // @ 开头的值引用 theme.json 里的同名变量，随亮/暗主题切换。

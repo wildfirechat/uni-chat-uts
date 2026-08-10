@@ -1,0 +1,96 @@
+import { AppServerApi } from "./appServerApi.uts";
+import ConferenceInfo from "../wfc/av/model/conferenceInfo.uts";
+
+/**
+ * 会议相关的 app server 接口。
+ * 对齐迁移前的 api/conferenceApi.js，只是把 result 的解析从「随便什么 json」收敛成了具体类型 ——
+ * 这几个接口的 result 有字符串（会议 id）、数组（收藏列表）、布尔（是否收藏），
+ * 所以都走 _postForBody 自己取，而不是 _post。
+ *
+ * 注意：这些接口只在部署了会议服务（专业版 im-server + janus）的服务端上可用，
+ * 客户端还要求音视频 SDK 是会议版（avEngineKit.isSupportConference()）。
+ */
+class ConferenceApi extends AppServerApi {
+
+    /** 获取自己的个人会议 id（每个用户一个固定的会议号） */
+    getMyPrivateConferenceId(): Promise<string> {
+        return this._postForBody('/conference/get_my_id', {} as UTSJSONObject)
+            .then((body: UTSJSONObject | null): string => body == null ? '' : (body!.getString('result') ?? ''))
+    }
+
+    /** 创建会议，resolve 的是服务端分配的 conferenceId */
+    createConference(conferenceInfo: ConferenceInfo): Promise<string> {
+        return this._postForBody('/conference/create', conferenceInfo.toJsonObject())
+            .then((body: UTSJSONObject | null): string => body == null ? '' : (body!.getString('result') ?? ''))
+    }
+
+    /** 查询会议信息，password 为空表示会议没有密码 */
+    queryConferenceInfo(conferenceId: string, password: string): Promise<ConferenceInfo | null> {
+        const data = { conferenceId: conferenceId } as UTSJSONObject
+        if (password != '') {
+            data['password'] = password
+        }
+        return this._post('/conference/info', data)
+            .then((result: UTSJSONObject | null): ConferenceInfo | null => ConferenceInfo.fromJsonObject(result))
+    }
+
+    /** 销毁会议，仅主持人有效 */
+    destroyConference(conferenceId: string): Promise<UTSJSONObject | null> {
+        return this._post('/conference/destroy/' + conferenceId, {} as UTSJSONObject)
+    }
+
+    favConference(conferenceId: string): Promise<UTSJSONObject | null> {
+        return this._post('/conference/fav/' + conferenceId, {} as UTSJSONObject)
+    }
+
+    unfavConference(conferenceId: string): Promise<UTSJSONObject | null> {
+        return this._post('/conference/unfav/' + conferenceId, {} as UTSJSONObject)
+    }
+
+    isFavConference(conferenceId: string): Promise<boolean> {
+        return this._postForBody('/conference/is_fav/' + conferenceId, {} as UTSJSONObject)
+            .then((body: UTSJSONObject | null): boolean => body == null ? false : (body!.getBoolean('result') ?? false))
+    }
+
+    /** 我收藏的（即将开始的）会议列表 */
+    getFavConferences(): Promise<ConferenceInfo[]> {
+        return this._postForBody('/conference/fav_conferences', {} as UTSJSONObject)
+            .then((body: UTSJSONObject | null): ConferenceInfo[] => {
+                const list: ConferenceInfo[] = []
+                if (body == null) {
+                    return list
+                }
+                const arr = body!.getArray('result')
+                if (arr == null) {
+                    return list
+                }
+                for (let i = 0; i < arr.length; i++) {
+                    const item = arr[i]
+                    if (item instanceof UTSJSONObject) {
+                        const info = ConferenceInfo.fromJsonObject(item as UTSJSONObject)
+                        if (info != null) {
+                            list.push(info!)
+                        }
+                    }
+                }
+                return list
+            })
+    }
+
+    updateConference(conferenceInfo: ConferenceInfo): Promise<UTSJSONObject | null> {
+        return this._post('/conference/put_info', conferenceInfo.toJsonObject())
+    }
+
+    /** 开启/关闭服务端录制 */
+    recordConference(conferenceId: string, record: boolean): Promise<UTSJSONObject | null> {
+        return this._post('/conference/recording/' + conferenceId, { recording: record } as UTSJSONObject)
+    }
+
+    /** 设置焦点用户，userId 传空字符串表示取消 */
+    setConferenceFocusUserId(conferenceId: string, userId: string): Promise<UTSJSONObject | null> {
+        return this._post('/conference/focus/' + conferenceId, { userId: userId } as UTSJSONObject)
+    }
+}
+
+const conferenceApi = new ConferenceApi();
+export default conferenceApi;

@@ -195,9 +195,21 @@ export class AppServerApi {
     }
 
     /**
-     * 通用 post，resolve 的是 response.data.result
+     * 通用 post，resolve 的是 response.data.result（对象）。
+     * result 不是对象（字符串 / 数组 / 布尔，比如会议相关的几个接口）时用 {@link _postForBody}，
+     * 自己按类型从响应体里取 —— 直接把 result 当 `any` 传出去，在 Kotlin/Swift 侧强转很容易崩。
      */
     _post(path: string, data: UTSJSONObject): Promise<UTSJSONObject | null> {
+        return this._postForBody(path, data).then((body: UTSJSONObject | null): UTSJSONObject | null => {
+            return body == null ? null : body!.getJSON('result')
+        })
+    }
+
+    /**
+     * 通用 post，校验完业务 code 之后把**整个响应体**交给调用方，
+     * 由调用方用 getString/getArray/getBoolean 按 result 的实际类型取值。
+     */
+    _postForBody(path: string, data: UTSJSONObject): Promise<UTSJSONObject | null> {
         return new Promise<UTSJSONObject | null>((resolve, reject) => {
             const url = Config.APP_SERVER + path;
             console.log('_post', url);
@@ -218,7 +230,7 @@ export class AppServerApi {
                         }
                         const code = body.getNumber('code') ?? -1
                         if (code == 0) {
-                            resolve(body.getJSON('result'));
+                            resolve(body);
                         } else {
                             reject(new AppServerError(code, body.getString('message') ?? ''))
                         }

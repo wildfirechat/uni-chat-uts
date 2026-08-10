@@ -14,11 +14,17 @@ export default class CallSession {
     audioOnly = false;
     endReason = 0;
     conference = false;
+    // 自己当前是不是观众（仅会议有效）
     audience = false;
+    // 新加入者默认是不是观众（仅会议有效）
+    defaultAudience = false;
     advanced = false;
     audioMuted = false;
     videoMuted = false;
     multiCall = false;
+    // 以下仅会议有效
+    pin = '';
+    host = '';
 
     static fromJsonObject(obj: UTSJSONObject | null): CallSession | null {
         if (obj == null) {
@@ -42,10 +48,13 @@ export default class CallSession {
         s.endReason = obj.getNumber('endReason') ?? 0;
         s.conference = obj.getBoolean('conference') ?? false;
         s.audience = obj.getBoolean('audience') ?? false;
+        s.defaultAudience = obj.getBoolean('defaultAudience') ?? false;
         s.advanced = obj.getBoolean('advanced') ?? false;
         s.audioMuted = obj.getBoolean('audioMuted') ?? false;
         s.videoMuted = obj.getBoolean('videoMuted') ?? false;
         s.multiCall = obj.getBoolean('multiCall') ?? false;
+        s.pin = obj.getString('pin') ?? '';
+        s.host = obj.getString('host') ?? '';
         return s;
     }
 

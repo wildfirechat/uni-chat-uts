@@ -1,0 +1,247 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar title="会议详情" :show-back="true" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="section">
+                <form-card :radius="8">
+                    <option-item title="会议主题" :desc="conferenceInfo.conferenceTitle" :show-right-arrow="false" />
+                    <option-item title="发起人" :desc="ownerName" :show-right-arrow="false" />
+                    <option-item title="会议号" :desc="conferenceInfo.conferenceId" :show-right-arrow="false"
+                        :show-bottom-divider="false" />
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-item title="开始时间" :desc="startTimeDesc" :show-right-arrow="false" />
+                    <option-item title="结束时间" :desc="endTimeDesc" :show-right-arrow="false"
+                        :show-bottom-divider="false" />
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-switch-item title="开启麦克风" :value="enableAudio" :disabled="forceAudience"
+                        @change="onEnableAudioChange" />
+                    <option-switch-item title="开启摄像头" :value="enableVideo" :disabled="forceAudience"
+                        :show-bottom-divider="false" @change="onEnableVideoChange" />
+                </form-card>
+            </view>
+            <text v-if="forceAudience" class="hint" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">
+                主持人设置了以观众身份入会，入会后可向主持人申请发言
+            </text>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-button-item v-if="notStarted" :title="faved ? '已收藏' : '尚未开始，收藏会议'" tone="accent"
+                        :show-bottom-divider="canDestroy" @tap="favConference" />
+                    <option-button-item v-else-if="!ended" title="加入会议" tone="accent"
+                        :show-bottom-divider="canDestroy" @tap="joinConference" />
+                    <option-button-item v-else title="会议已结束" tone="accent" :show-bottom-divider="canDestroy" />
+                    <option-button-item v-if="canDestroy" title="销毁会议" tone="danger" :show-bottom-divider="false"
+                        @tap="destroyConference" />
+                </form-card>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会议详情 / 入会确认页，迁移自 ConferenceInfoPage.vue。
+ *
+ * 入参既可能是完整的 ConferenceInfo（从入口页/加入页带过来），也可能只有会议 id
+ * （会议邀请消息点进来），后者会再查一次接口。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import conferenceApi from "@/api/conferenceApi.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
+import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import { getUserDisplayName } from "@/wfc/client/userBrief.uts";
+import { takePageOptions } from "@/common/nav.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_XS } from "@/common/layoutScale.uts";
+import { toast, showConfirmDialog } from "@/common/prompt.uts";
+import { ConferenceJoinOptions, setPendingConferenceJoinOptions } from "./conferenceJoinOptions.uts";
+
+defineOptions({
+    name: "ConferenceInfoPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const conferenceInfo = ref<ConferenceInfo>(new ConferenceInfo())
+const ownerName = ref<string>('')
+const enableAudio = ref<boolean>(true)
+const enableVideo = ref<boolean>(true)
+const faved = ref<boolean>(false)
+
+function applyInfo(info: ConferenceInfo): void {
+    conferenceInfo.value = info
+    ownerName.value = getUserDisplayName(info.owner)
+    // 主持人限制了入会身份时，麦克风/摄像头一律关着进
+    if (isForceAudience(info)) {
+        enableAudio.value = false
+        enableVideo.value = false
+    }
+}
+
+/**
+ * 是否被强制以观众身份入会：会议要求默认观众、且不允许自主开麦，自己又不是主持人。
+ * 与原版 ConferenceInfoPage 的 audience 计算式一致。
+ */
+function isForceAudience(info: ConferenceInfo): boolean {
+    if (info.owner == wfc.getUserId()) {
+        return false
+    }
+    return info.audience && !info.allowSwitchMode
+}
+
+onLoad((options: OnLoadOptions) => {
+    const pageOptions = takePageOptions()
+    if (pageOptions != null && pageOptions instanceof ConferenceInfo) {
+        applyInfo(pageOptions as ConferenceInfo)
+        return
+    }
+    // 会议邀请消息点进来时只带了会议 id 和 pin
+    const conferenceId = options['conferenceId'] ?? ''
+    const password = options['password'] ?? ''
+    if (conferenceId == '') {
+        toast('会议不存在')
+        uni.navigateBack({ fail: (err) => { console.log('nav back err', err) } } as NavigateBackOptions)
+        return
+    }
+    conferenceApi.queryConferenceInfo(conferenceId, password)
+        .then((info: ConferenceInfo | null): void => {
+            if (info == null) {
+                toast('获取会议信息失败')
+                uni.navigateBack({ fail: (err) => { console.log('nav back err', err) } } as NavigateBackOptions)
+                return
+            }
+            applyInfo(info!)
+        })
+        .catch((err: any | null): void => {
+            console.log('queryConferenceInfo error', err)
+            toast('获取会议信息失败')
+            uni.navigateBack({ fail: (e) => { console.log('nav back err', e) } } as NavigateBackOptions)
+        })
+})
+
+const forceAudience = computed<boolean>((): boolean => isForceAudience(conferenceInfo.value))
+
+const notStarted = computed<boolean>((): boolean => {
+    return new Date().getTime() < conferenceInfo.value.startTime * 1000
+})
+
+const ended = computed<boolean>((): boolean => {
+    const end = conferenceInfo.value.endTime
+    return end > 0 && new Date().getTime() > end * 1000
+})
+
+const canDestroy = computed<boolean>((): boolean => {
+    return conferenceInfo.value.owner == wfc.getUserId()
+})
+
+function formatTime(seconds: number): string {
+    if (seconds <= 0) {
+        return '-'
+    }
+    const d = new Date(seconds * 1000)
+    const pad = (n: number): string => n < 10 ? '0' + n : '' + n
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' '
+        + pad(d.getHours()) + ':' + pad(d.getMinutes())
+}
+
+const startTimeDesc = computed<string>((): string => formatTime(conferenceInfo.value.startTime))
+const endTimeDesc = computed<string>((): string => formatTime(conferenceInfo.value.endTime))
+
+const onEnableAudioChange = (value: boolean) => {
+    enableAudio.value = value
+}
+
+const onEnableVideoChange = (value: boolean) => {
+    enableVideo.value = value
+}
+
+const favConference = () => {
+    if (faved.value) {
+        return
+    }
+    conferenceApi.favConference(conferenceInfo.value.conferenceId)
+        .then((_r: UTSJSONObject | null): void => {
+            faved.value = true
+            toast('已收藏')
+        })
+        .catch((err: any | null): void => {
+            console.log('favConference error', err)
+            toast('收藏失败')
+        })
+}
+
+const destroyConference = () => {
+    showConfirmDialog('销毁会议', '确认销毁该会议？', true, (): void => {
+        conferenceApi.destroyConference(conferenceInfo.value.conferenceId)
+            .then((_r: UTSJSONObject | null): void => {
+                toast('已销毁')
+                uni.navigateBack({ fail: (err) => { console.log('nav back err', err) } } as NavigateBackOptions)
+            })
+            .catch((err: any | null): void => {
+                console.log('destroyConference error', err)
+                toast('销毁失败')
+            })
+    })
+}
+
+const joinConference = () => {
+    if (!avEngineKit.isSupportConference()) {
+        toast('当前音视频 SDK 不支持会议')
+        return
+    }
+    checkVoipPermissions(false).then((granted: boolean): void => {
+        if (!granted) {
+            return
+        }
+        const options = new ConferenceJoinOptions()
+        options.conferenceInfo = conferenceInfo.value
+        options.muteAudio = !enableAudio.value
+        options.muteVideo = !enableVideo.value
+        // 用 redirectTo：入会后再返回详情页没有意义，和原实现一致
+        setPendingConferenceJoinOptions(options)
+        uni.redirectTo({
+            url: '/pages/voip/conference/ConferencePage',
+            fail: (err) => {
+                console.log('nav to ConferencePage err', err)
+            }
+        } as RedirectToOptions)
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    flex: 1;
+}
+
+.section {
+    padding: 12px 12px 0 12px;
+}
+
+.hint {
+    padding: 8px 20px 0 20px;
+}
+
+.tail {
+    height: 24px;
+}
+</style>

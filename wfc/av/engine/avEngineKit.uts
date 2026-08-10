@@ -36,7 +36,7 @@ function argBoolean(args: Array<any | null>, i: number): boolean {
     return args[i] as boolean
 }
 
-const VOIP_ROUTES = ['pages/voip/Single', 'pages/voip/Multi']
+const VOIP_ROUTES = ['pages/voip/Single', 'pages/voip/Multi', 'pages/voip/conference/ConferencePage']
 
 function isOnVoipPage(): boolean {
     const pages = getCurrentPages()
@@ -92,8 +92,20 @@ class AVEngineKit {
         this.sessionCallback = cb
     }
 
+    /** 是否支持多人音视频通话 */
     isSupportMultiCall(): boolean {
         return native.isSupportMultiCall()
+    }
+
+    /**
+     * 是否支持音视频会议。
+     * 音视频 SDK 分「多人版」和「高级版（会议版）」两个包，通过替换
+     * uni_modules/wfc-av-client/utssdk/app-android/libs/avenginekit.aar（鸿蒙是同目录 app-harmony
+     * 下的 avenginekit.har，iOS 是 app-ios/Frameworks/WFAVEngineKit.xcframework）切换，
+     * 两个包对外接口一致，但会议相关接口在多人版上不可用。所有会议入口都必须先判断这个方法。
+     */
+    isSupportConference(): boolean {
+        return native.isSupportConference()
     }
 
     setVideoProfile(profile: number, swapWidthHeight: boolean = false): void {
@@ -115,6 +127,66 @@ class AVEngineKit {
             console.error('startMultiCall 失败：原生 startCall 返回 null')
         }
         return CallSession.fromJsonStr(str)
+    }
+
+    /**
+     * 发起会议（仅会议版 SDK 有效）
+     * @param callId 会议 id
+     * @param audioOnly true 音频会议，false 视频会议
+     * @param pin 入会 pin 码
+     * @param host 主持人用户 id
+     * @param title 会议标题
+     * @param desc 会议描述
+     * @param audience 其他人加入会议时是否默认为观众
+     * @param advance 是否为高级（超级）会议
+     * @param record 是否开启服务端录制
+     * @param callExtra 通话附加信息，会议的所有参与者都能看到
+     */
+    startConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, record: boolean = false, callExtra: string = ''): CallSession | null {
+        if (!this.isSupportConference()) {
+            console.error('startConference 失败：当前音视频 SDK 不是会议版')
+            return null
+        }
+        const str = native.startConference(callId, audioOnly, pin, host, title, desc, audience, advance, record, callExtra)
+        if (str == null) {
+            console.error('startConference 失败：原生返回 null')
+        }
+        return CallSession.fromJsonStr(str)
+    }
+
+    /**
+     * 加入会议（仅会议版 SDK 有效）
+     * @param muteAudio 是否静音入会
+     * @param muteVideo 是否关闭摄像头入会
+     */
+    joinConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, muteAudio: boolean, muteVideo: boolean, callExtra: string = ''): CallSession | null {
+        if (!this.isSupportConference()) {
+            console.error('joinConference 失败：当前音视频 SDK 不是会议版')
+            return null
+        }
+        const str = native.joinConference(callId, audioOnly, pin, host, title, desc, audience, advance, muteAudio, muteVideo, callExtra)
+        if (str == null) {
+            console.error('joinConference 失败：原生返回 null')
+        }
+        return CallSession.fromJsonStr(str)
+    }
+
+    /**
+     * 离开会议
+     * @param destroyRoom 是否同时销毁会议，仅主持人有效
+     */
+    leaveConference(callId: string, destroyRoom: boolean = false): void {
+        native.leaveConference(callId, destroyRoom)
+    }
+
+    /** 当前是否允许切换观众/互动者身份 */
+    canSwitchAudience(callId: string): boolean {
+        return native.canSwitchAudience(callId)
+    }
+
+    /** 切换观众/互动者身份，仅会议有效 */
+    switchAudience(callId: string, audience: boolean): boolean {
+        return native.switchAudience(callId, audience)
     }
 
     currentCallSession(): CallSession | null {
@@ -195,8 +267,12 @@ class AVEngineKit {
         return native.checkOverlayPermission()
     }
 
-    minimize(callId: string): void {
-        native.minimize(callId)
+    /**
+     * 最小化
+     * @param focusVideoUser 视频通话/会议时有效，表示悬浮窗显示哪个用户的视频流
+     */
+    minimize(callId: string, focusVideoUser: string = ''): void {
+        native.minimize(callId, focusVideoUser)
     }
 
     setLocalVideoView(callId: string, element: UniNativeViewElement): void {
@@ -239,11 +315,36 @@ class AVEngineKit {
     }
 
     private _navigateToCallPage(session: CallSession): void {
-        const url = session.conversation.type == ConversationType.Group ? '/pages/voip/Multi' : '/pages/voip/Single'
+        let url = '/pages/voip/Single'
+        if (session.conference) {
+            url = '/pages/voip/conference/ConferencePage'
+        } else if (session.conversation.type == ConversationType.Group) {
+            url = '/pages/voip/Multi'
+        }
         navigateToPage(url, session)
     }
 
+    /**
+     * 通话进行中但页面被关掉（最小化后从悬浮窗点回来、或异常退出）时，重新打开对应的通话页面。
+     * 对齐旧版 avengineKit.js 的 _resumeVoipPage。
+     */
+    resumeVoipPage(): void {
+        if (isOnVoipPage()) {
+            return
+        }
+        const session = this.currentCallSession()
+        if (session == null || session.state == 0 /* CallState.STATUS_IDLE */) {
+            return
+        }
+        this._navigateToCallPage(session)
+    }
+
     private _handleCallSessionEvent(event: string, args: Array<any | null>): void {
+        // 点悬浮窗回到通话页面：此时页面已销毁、sessionCallback 为 null，必须在下面的判空之前处理
+        if (event == 'resumeVoipPage') {
+            this.resumeVoipPage()
+            return
+        }
         const cb = this.sessionCallback
         if (cb == null) {
             return

@@ -1,0 +1,961 @@
+<template>
+    <view class="conference-page" v-if="session != null">
+        <!-- 有人开着摄像头就走宫格视频布局，全员关摄像头时退化成头像墙 -->
+        <view class="content-container">
+            <view v-for="p in currentPageParticipants" :key="p.key" class="tile"
+                :class="tileSizeClass" @tap="onTileTap(p)">
+                <native-view v-if="videoMode && p.hasVideo" class="tile-video" :class="tileSizeClass"
+                    @init="onVideoViewInit($event as UniNativeViewInitEvent, p)"></native-view>
+                <view v-else class="tile-avatar-container" :class="tileSizeClass">
+                    <image class="tile-avatar" :src="p.userInfo.portrait" />
+                </view>
+                <text class="tile-name" :style="{ fontSize: fontPx(FONT_SM) }">{{ tileName(p) }}</text>
+                <text v-if="p.audience || p.audioMuted" class="tile-mic icomoon"
+                    :style="{ fontSize: iconPx(14) }">&#xf45f;</text>
+            </view>
+        </view>
+
+        <!-- 音频模式下顶部显示正在讲话的人 -->
+        <view v-if="!videoMode" class="speaking-bar">
+            <text class="speaking-text" :style="{ fontSize: fontPx(FONT_SM) }">正在讲话：{{ speakingUserName }}</text>
+        </view>
+
+        <!-- 宫格翻页。箭头容器用 top/bottom 撑满画面区再垂直居中，不用百分比定位 -->
+        <view v-if="gridPageCount > 1 && currentGridPageIndex > 0" class="arrow-container arrow-container-left"
+            @tap="prePage">
+            <text class="page-arrow icomoon" :style="{ fontSize: iconPx(32) }">&#xf3d2;</text>
+        </view>
+        <view v-if="gridPageCount > 1 && currentGridPageIndex < gridPageCount - 1"
+            class="arrow-container arrow-container-right" @tap="nextPage">
+            <text class="page-arrow icomoon" :style="{ fontSize: iconPx(32) }">&#xf3d3;</text>
+        </view>
+
+        <!-- 顶部：时长 + 最小化 -->
+        <view class="title-container">
+            <text class="duration-text" :style="{ fontSize: fontPx(FONT_LG) }">{{ duration }}</text>
+            <image class="minimize-img" src="/static/image/av/av_minimize.png" @tap="minimize" />
+        </view>
+
+        <!-- 底部操作栏 -->
+        <view class="action-container">
+            <view class="action" @tap="onMuteAudioTap">
+                <image class="action-img"
+                    :src="audioEnabled ? '/static/image/av/av_conference_audio.png' : '/static/image/av/av_conference_audio_mute.png'" />
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">静音</text>
+            </view>
+            <view class="action" @tap="onMuteVideoTap">
+                <image class="action-img"
+                    :src="videoEnabled ? '/static/image/av/av_conference_video.png' : '/static/image/av/av_conference_video_mute.png'" />
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">视频</text>
+            </view>
+            <view class="action" @tap="chat">
+                <text class="action-icon icomoon" :style="{ fontSize: iconPx(34) }">&#xf3fa;</text>
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">聊天</text>
+            </view>
+            <view v-if="!isOwner" class="action" @tap="handUp">
+                <image class="action-img"
+                    :src="handUpped ? '/static/image/av/av_conference_handup_hover.png' : '/static/image/av/av_conference_handup.png'" />
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">举手</text>
+            </view>
+            <view class="action" @tap="manage">
+                <image class="action-img" src="/static/image/av/av_conference_members.png" />
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">管理</text>
+            </view>
+            <view class="action" @tap="hangup">
+                <image class="action-img" src="/static/image/av/av_conference_end_call.png" />
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">结束</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会议中页面，迁移自 pages/voip/conference/ConferencePage.nvue。
+ *
+ * 与原版的差异：
+ * - 原版有「宫格 / 演讲者」两套布局 + 布局选择浮层，移动端小屏上演讲者视图价值不大，
+ *   这里只保留宫格（超过一页时左右箭头翻页），焦点用户排在第一格。
+ * - 屏幕共享在 Android/iOS 的 uts 插件里还没接（原版这段代码也是注释掉的），这里不提供入口，
+ *   但参与者里如果有别人的共享流，画面会正常显示（screenSharing 的那条 profile 照常渲染）。
+ * - 原版用 uni-popup 做确认框，这里统一用 common/prompt.uts 的 showConfirmDialog。
+ *
+ * 三种进入方式：
+ * 1. 创建/详情页入会：带 ConferenceJoinOptions，本页负责调 joinConference；
+ * 2. 详情页 redirectTo：参数走 conferenceJoinOptions.uts 里的暂存；
+ * 3. 通话中恢复页面（avEngineKit.resumeVoipPage）：带的是 CallSession，直接接管当前会话。
+ */
+import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
+import CallSession from "@/wfc/av/engine/callSession.uts";
+import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
+import CallState from "@/wfc/av/engine/callState.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import conferenceManager from "./conferenceManager.uts";
+import { ConferenceParticipant, loadConferenceParticipants, participantOfProfile } from "./conferenceParticipant.uts";
+import { ConferenceJoinOptions, takePendingConferenceJoinOptions } from "./conferenceJoinOptions.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import store from "@/store.uts";
+import { takePageOptions } from "@/common/nav.uts";
+import { fontPx, iconPx, FONT_XS, FONT_SM, FONT_LG } from "@/common/layoutScale.uts";
+import { toast, showConfirmDialog } from "@/common/prompt.uts";
+
+defineOptions({
+    name: "ConferencePage"
+})
+
+/** 一页最多几格，和原实现一致 */
+const PARTICIPANT_COUNT_PER_PAGE = 9
+
+const session = ref<CallSession | null>(null as CallSession | null)
+const callState = ref<number>(0)
+const participants = ref<ConferenceParticipant[]>([] as ConferenceParticipant[])
+const startTimestamp = ref<number>(0)
+const currentTimestamp = ref<number>(0)
+const timer = ref<number>(0)
+const currentGridPageIndex = ref<number>(0)
+// conferenceManager 是普通单例，它内部状态变了要靠这个计数触发页面重算
+const managerRevision = ref<number>(0)
+const videoElements = ref<Map<string, UniNativeViewElement>>(new Map<string, UniNativeViewElement>())
+
+const conferenceInfo = computed<ConferenceInfo>((): ConferenceInfo => {
+    // 读一下 managerRevision，保证 conferenceManager 更新后这里跟着重算
+    const _ = managerRevision.value
+    const info = conferenceManager.conferenceInfo
+    return info == null ? new ConferenceInfo() : info!
+})
+
+const isOwner = computed<boolean>((): boolean => {
+    const _ = managerRevision.value
+    return conferenceManager.isOwner()
+})
+
+const handUpped = computed<boolean>((): boolean => {
+    const _ = managerRevision.value
+    return conferenceManager.isHandUp
+})
+
+const audioEnabled = computed<boolean>((): boolean => {
+    const s = session.value
+    return s != null && !s!.audience && !s!.audioMuted
+})
+
+const videoEnabled = computed<boolean>((): boolean => {
+    const s = session.value
+    return s != null && !s!.audience && !s!.videoMuted
+})
+
+/** 只要有一个人在推视频，就用视频宫格；全员关摄像头时退化成头像墙 */
+const videoMode = computed<boolean>((): boolean => {
+    const list = participants.value
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].hasVideo) {
+            return true
+        }
+    }
+    return false
+})
+
+/** 主持人锁定的焦点用户，优先排在第一格 */
+function focusKeyOf(list: ConferenceParticipant[]): string {
+    const focus = conferenceInfo.value.focus
+    if (focus == '') {
+        return ''
+    }
+    // 同一个人有共享流时优先显示共享流
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].userId == focus && list[i].screenSharing) {
+            return list[i].key
+        }
+    }
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].userId == focus) {
+            return list[i].key
+        }
+    }
+    return ''
+}
+
+/**
+ * 排序规则对齐原实现：焦点用户 > 共享屏幕 > 开着摄像头 > 互动者 > 观众，同级按 userId。
+ */
+const sortedParticipants = computed<ConferenceParticipant[]>((): ConferenceParticipant[] => {
+    const list = participants.value.slice(0)
+    const focusKey = focusKeyOf(list)
+    list.sort((o1: ConferenceParticipant, o2: ConferenceParticipant): number => {
+        if (focusKey != '') {
+            if (o1.key == focusKey) {
+                return -1
+            }
+            if (o2.key == focusKey) {
+                return 1
+            }
+        }
+        if (o1.audience != o2.audience) {
+            return o1.audience ? 1 : -1
+        }
+        if (!o1.audience) {
+            if (o1.screenSharing != o2.screenSharing) {
+                return o1.screenSharing ? -1 : 1
+            }
+            if (o1.videoMuted != o2.videoMuted) {
+                return o1.videoMuted ? 1 : -1
+            }
+        }
+        return o1.userId < o2.userId ? -1 : (o1.userId > o2.userId ? 1 : 0)
+    })
+    return list
+})
+
+const gridPageCount = computed<number>((): number => {
+    const count = participants.value.length
+    return count == 0 ? 1 : Math.ceil(count / PARTICIPANT_COUNT_PER_PAGE)
+})
+
+const currentPageParticipants = computed<ConferenceParticipant[]>((): ConferenceParticipant[] => {
+    const list = sortedParticipants.value
+    let pageIndex = currentGridPageIndex.value
+    if (pageIndex >= gridPageCount.value) {
+        pageIndex = 0
+    }
+    const start = pageIndex * PARTICIPANT_COUNT_PER_PAGE
+    let end = start + PARTICIPANT_COUNT_PER_PAGE
+    if (end > list.length) {
+        end = list.length
+    }
+    if (start >= end) {
+        return [] as ConferenceParticipant[]
+    }
+    return list.slice(start, end)
+})
+
+const tileSizeClass = computed<string>((): string => {
+    return currentPageParticipants.value.length > 4 ? 'tile-small' : 'tile-large'
+})
+
+const speakingUserName = computed<string>((): string => {
+    const list = participants.value
+    let maxVolume = 0
+    let name = ''
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].volume > maxVolume) {
+            maxVolume = list[i].volume
+            name = list[i].displayName
+        }
+    }
+    return name
+})
+
+const duration = computed<string>((): string => {
+    if (currentTimestamp.value <= 0) {
+        return '00:00'
+    }
+    const elapsed = Math.floor((currentTimestamp.value - startTimestamp.value) / 1000)
+    const hour = Math.floor(elapsed / 3600)
+    const min = Math.floor((elapsed % 3600) / 60)
+    const sec = elapsed % 60
+    const pad = (n: number): string => n < 10 ? '0' + n : '' + n
+    return (hour > 0 ? (pad(hour) + ':') : '') + pad(min) + ':' + pad(sec)
+})
+
+const tileName = (p: ConferenceParticipant): string => {
+    let name = p.self ? '我' : p.displayName
+    if (p.screenSharing) {
+        name += '（共享）'
+    } else if (p.host) {
+        name += '（主持人）'
+    }
+    return name
+}
+
+// ------------------------------------------------------------------
+// 视频画面
+// ------------------------------------------------------------------
+
+const setupVideoViews = () => {
+    const s = session.value
+    if (s == null || !videoMode.value) {
+        return
+    }
+    nextTick((): void => {
+        const callSession = session.value
+        if (callSession == null) {
+            return
+        }
+        currentPageParticipants.value.forEach((p: ConferenceParticipant): void => {
+            if (!p.hasVideo) {
+                return
+            }
+            const element = videoElements.value.get(p.key)
+            if (element == null) {
+                return
+            }
+            if (p.self && !p.screenSharing) {
+                avEngineKit.setLocalVideoView(callSession.callId, element!)
+            } else {
+                avEngineKit.setRemoteVideoView(callSession.callId, p.userId, element!, p.screenSharing)
+            }
+        })
+    })
+}
+
+const onVideoViewInit = (e: UniNativeViewInitEvent, p: ConferenceParticipant) => {
+    videoElements.value.set(p.key, e.detail.element)
+    setupVideoViews()
+}
+
+const onTileTap = (p: ConferenceParticipant) => {
+    // 点自己的画面没意义；点别人则本地把他当焦点（只影响本端排序）
+    if (p.self) {
+        return
+    }
+    conferenceManager.localFocusUser = p.userId
+}
+
+// ------------------------------------------------------------------
+// 参与者
+// ------------------------------------------------------------------
+
+const reloadParticipants = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    participants.value = loadConferenceParticipants(s!.callId, s!.host)
+    setupVideoViews()
+}
+
+const refreshSelfSessionState = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    const my = avEngineKit.getMyProfile(s!.callId)
+    if (my != null) {
+        s!.audience = my!.audience
+        s!.audioMuted = my!.audioMuted
+        s!.videoMuted = my!.videoMuted
+        // CallSession 是普通对象，改字段不会触发重算，整体换一个引用
+        session.value = s
+    }
+}
+
+// ------------------------------------------------------------------
+// 音视频开关
+// ------------------------------------------------------------------
+
+/**
+ * 开/关麦克风。会议里「观众」= 既不发音也不发视频，所以两个开关都关掉时要切成观众，
+ * 任一个打开时要切回互动者，逻辑与原实现的 enableAudio/enableVideo 一致。
+ */
+const enableAudio = (enable: boolean) => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    avEngineKit.muteAudio(s!.callId, !enable)
+    if (enable) {
+        if (s!.audience) {
+            avEngineKit.switchAudience(s!.callId, false)
+        }
+    } else if (s!.videoMuted && !s!.audience) {
+        avEngineKit.switchAudience(s!.callId, true)
+    }
+    refreshSelfSessionState()
+}
+
+const enableVideo = (enable: boolean) => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    avEngineKit.muteVideo(s!.callId, !enable)
+    if (enable) {
+        if (s!.audience) {
+            avEngineKit.switchAudience(s!.callId, false)
+        }
+    } else if (s!.audioMuted && !s!.audience) {
+        avEngineKit.switchAudience(s!.callId, true)
+    }
+    refreshSelfSessionState()
+}
+
+/** 主持人不允许自主解除时，只能走「申请」 */
+const requestUnmute = (audio: boolean) => {
+    showConfirmDialog('提示', '主持人不允许自行解除静音，是否向主持人申请？', false, (): void => {
+        conferenceManager.applyUnmute(audio, false)
+    })
+}
+
+const canUnmuteBySelf = (): boolean => {
+    const s = session.value
+    if (s == null) {
+        return false
+    }
+    if (!s!.audience) {
+        return true
+    }
+    return conferenceManager.isOwner() || conferenceInfo.value.allowSwitchMode
+}
+
+const onMuteAudioTap = () => {
+    const enable = !audioEnabled.value
+    if (enable && !canUnmuteBySelf()) {
+        requestUnmute(true)
+        return
+    }
+    enableAudio(enable)
+}
+
+const onMuteVideoTap = () => {
+    const enable = !videoEnabled.value
+    if (enable && !canUnmuteBySelf()) {
+        requestUnmute(false)
+        return
+    }
+    enableVideo(enable)
+}
+
+const handUp = () => {
+    conferenceManager.handUp(!conferenceManager.isHandUp)
+}
+
+// ------------------------------------------------------------------
+// 其他操作
+// ------------------------------------------------------------------
+
+const prePage = () => {
+    if (currentGridPageIndex.value > 0) {
+        currentGridPageIndex.value--
+    }
+}
+
+const nextPage = () => {
+    if (currentGridPageIndex.value < gridPageCount.value - 1) {
+        currentGridPageIndex.value++
+    }
+}
+
+const manage = () => {
+    uni.navigateTo({
+        url: '/pages/voip/conference/ConferenceManagePage',
+        fail: (err) => {
+            console.log('nav to ConferenceManagePage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+/** 会议聊天走会议聊天室会话（target 就是 callId） */
+const chat = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    const conversation = new Conversation(ConversationType.ChatRoom, s!.callId, 0)
+    store.setCurrentConversation(conversation)
+    uni.navigateTo({
+        url: '/pages/conversation/ConversationPage',
+        fail: (err) => {
+            console.log('nav to ConversationPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
+const minimize = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    if (!avEngineKit.checkOverlayPermission()) {
+        toast('需要悬浮窗权限')
+        return
+    }
+    avEngineKit.minimize(s!.callId, '')
+    uni.navigateBack({
+        delta: 1,
+        fail: (err) => {
+            console.log('nav back err', err)
+        }
+    } as NavigateBackOptions)
+}
+
+const saveHistory = () => {
+    const info = conferenceManager.conferenceInfo
+    if (info == null) {
+        return
+    }
+    conferenceManager.addHistory(info!, new Date().getTime() - info!.startTime * 1000)
+}
+
+const leave = (destroyRoom: boolean) => {
+    const s = session.value
+    if (s != null) {
+        avEngineKit.leaveConference(s!.callId, destroyRoom)
+    }
+    session.value = null
+    saveHistory()
+    conferenceManager.destroy()
+    uni.navigateBack({
+        delta: 1,
+        fail: (err) => {
+            console.log('nav back err', err)
+        }
+    } as NavigateBackOptions)
+}
+
+const hangup = () => {
+    if (conferenceManager.isOwner()) {
+        // 主持人可以选择只是自己离开，还是把整个会议结束掉
+        uni.showActionSheet({
+            itemList: ['离开会议', '结束会议'],
+            success: (res) => {
+                leave(res.tapIndex == 1)
+            },
+            fail: (err) => {
+                console.log('showActionSheet fail', err)
+            }
+        } as ShowActionSheetOptions)
+        return
+    }
+    leave(false)
+}
+
+// ------------------------------------------------------------------
+// 会话回调
+// ------------------------------------------------------------------
+
+const onConferenceConnected = () => {
+    reloadParticipants()
+    if (timer.value == 0) {
+        if (startTimestamp.value == 0) {
+            startTimestamp.value = new Date().getTime()
+        }
+        timer.value = setInterval((): void => {
+            currentTimestamp.value = new Date().getTime()
+        }, 1000)
+    }
+}
+
+const setupSessionCallback = () => {
+    const callback = new CallSessionCallback()
+
+    callback.didChangeState = (state: number): void => {
+        if (callState.value == state) {
+            return
+        }
+        callState.value = state
+        if (state == CallState.STATUS_CONNECTED) {
+            onConferenceConnected()
+        } else if (state == CallState.STATUS_IDLE && timer.value != 0) {
+            clearInterval(timer.value)
+            timer.value = 0
+        }
+    }
+
+    callback.didParticipantJoined = (userId: string, screenSharing: boolean): void => {
+        const s = session.value
+        if (s == null) {
+            return
+        }
+        const profile = avEngineKit.getParticipantProfile(s!.callId, userId, screenSharing)
+        if (profile == null) {
+            return
+        }
+        const next = participants.value.filter((p: ConferenceParticipant): boolean => {
+            return !(p.userId == userId && p.screenSharing == screenSharing)
+        })
+        next.push(participantOfProfile(profile!, s!.host, wfc.getUserId()))
+        participants.value = next
+        setupVideoViews()
+    }
+
+    callback.didParticipantLeft = (userId: string, _reason: number, screenSharing: boolean): void => {
+        participants.value = participants.value.filter((p: ConferenceParticipant): boolean => {
+            return !(p.userId == userId && p.screenSharing == screenSharing)
+        })
+        videoElements.value.delete(userId + (screenSharing ? '-ss' : ''))
+    }
+
+    callback.didReceiveRemoteVideoTrack = (userId: string, screenSharing: boolean): void => {
+        participants.value.forEach((p: ConferenceParticipant): void => {
+            if (p.userId == userId && p.screenSharing == screenSharing) {
+                p.videoMuted = false
+                p.state = CallState.STATUS_CONNECTED
+            }
+        })
+        setupVideoViews()
+    }
+
+    callback.didCreateLocalVideoTrack = (): void => {
+        setupVideoViews()
+    }
+
+    callback.didVideoMuted = (userId: string, muted: boolean): void => {
+        participants.value.forEach((p: ConferenceParticipant): void => {
+            if (p.userId == userId && !p.screenSharing) {
+                p.videoMuted = muted
+            }
+        })
+        if (userId == wfc.getUserId()) {
+            refreshSelfSessionState()
+        }
+        // videoMuted 变了要重新决定哪些格子挂视频
+        participants.value = participants.value.slice(0)
+        setupVideoViews()
+    }
+
+    callback.didChangeType = (userId: string, audience: boolean, screenSharing: boolean): void => {
+        const s = session.value
+        if (s == null) {
+            return
+        }
+        const profile = avEngineKit.getParticipantProfile(s!.callId, userId, screenSharing)
+        let found = false
+        participants.value.forEach((p: ConferenceParticipant): void => {
+            if (p.userId == userId && p.screenSharing == screenSharing) {
+                p.audience = audience
+                if (profile != null) {
+                    p.videoMuted = profile!.videoMuted
+                    p.audioMuted = profile!.audioMuted
+                }
+                found = true
+            }
+        })
+        if (!found && profile != null) {
+            const next = participants.value.slice(0)
+            next.push(participantOfProfile(profile!, s!.host, wfc.getUserId()))
+            participants.value = next
+        } else {
+            participants.value = participants.value.slice(0)
+        }
+        if (userId == wfc.getUserId()) {
+            refreshSelfSessionState()
+        }
+        setupVideoViews()
+    }
+
+    callback.didMuteStateChanged = (userIds: string[]): void => {
+        const s = session.value
+        if (s == null) {
+            return
+        }
+        for (let i = 0; i < userIds.length; i++) {
+            const uid = userIds[i]
+            const profile = avEngineKit.getParticipantProfile(s!.callId, uid, false)
+            if (profile == null) {
+                continue
+            }
+            participants.value.forEach((p: ConferenceParticipant): void => {
+                if (p.userId == uid && !p.screenSharing) {
+                    p.videoMuted = profile!.videoMuted
+                    p.audioMuted = profile!.audioMuted
+                }
+            })
+            if (uid == wfc.getUserId()) {
+                refreshSelfSessionState()
+            }
+        }
+        participants.value = participants.value.slice(0)
+        setupVideoViews()
+    }
+
+    callback.didReportAudioVolume = (userId: string, volume: number): void => {
+        if (volume < 100) {
+            return
+        }
+        participants.value.forEach((p: ConferenceParticipant): void => {
+            if (p.userId == userId && !p.screenSharing) {
+                p.volume = volume
+            }
+        })
+        // 音频模式下才需要刷新「正在讲话」，视频模式下频繁重排代价太大
+        if (!videoMode.value) {
+            participants.value = participants.value.slice(0)
+        }
+    }
+
+    callback.didCallEndWithReason = (_reason: number): void => {
+        saveHistory()
+        conferenceManager.destroy()
+        session.value = null
+    }
+
+    avEngineKit.setSessionCallback(callback)
+}
+
+// ------------------------------------------------------------------
+// 生命周期
+// ------------------------------------------------------------------
+
+function joinConference(options: ConferenceJoinOptions): void {
+    const info = options.conferenceInfo
+    conferenceManager.setConferenceInfo(info)
+    // 两个都关 = 以观众身份入会
+    const audience = options.muteAudio && options.muteVideo
+    const s = avEngineKit.joinConference(info.conferenceId, false, info.pin, info.owner,
+        info.conferenceTitle, '', audience, info.advance, options.muteAudio, options.muteVideo, '')
+    if (s == null) {
+        toast('加入会议失败')
+        conferenceManager.destroy()
+        uni.navigateBack({
+            delta: 1,
+            fail: (err) => {
+                console.log('nav back err', err)
+            }
+        } as NavigateBackOptions)
+        return
+    }
+    session.value = s
+    callState.value = s!.state
+    setupSessionCallback()
+    reloadParticipants()
+}
+
+const onManagerUpdated = (): void => {
+    managerRevision.value++
+}
+
+onLoad((_options: OnLoadOptions) => {
+    conferenceManager.setup()
+    conferenceManager.onEnableAudio = (enable: boolean): void => {
+        enableAudio(enable)
+    }
+    conferenceManager.onEnableVideo = (enable: boolean): void => {
+        enableVideo(enable)
+    }
+    conferenceManager.addUpdateListener(onManagerUpdated)
+
+    let joinOptions = takePendingConferenceJoinOptions()
+    if (joinOptions == null) {
+        const pageOptions = takePageOptions()
+        if (pageOptions != null && pageOptions instanceof ConferenceJoinOptions) {
+            joinOptions = pageOptions as ConferenceJoinOptions
+        } else if (pageOptions != null && pageOptions instanceof CallSession) {
+            // 通话中恢复页面
+            const s = pageOptions as CallSession
+            session.value = s
+            callState.value = s.state
+            if (s.connectedTime > 0) {
+                startTimestamp.value = s.connectedTime
+            }
+            conferenceManager.getConferenceInfo(s.callId)
+        }
+    }
+    if (joinOptions != null) {
+        joinConference(joinOptions!)
+    }
+})
+
+onMounted(() => {
+    if (session.value == null) {
+        // 没有入会参数（比如从悬浮窗恢复），接管当前会话
+        const cur = avEngineKit.currentCallSession()
+        if (cur == null || cur.state == CallState.STATUS_IDLE || !cur.conference) {
+            uni.navigateBack({
+                delta: 1,
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+            return
+        }
+        session.value = cur
+        callState.value = cur.state
+        conferenceManager.getConferenceInfo(cur.callId)
+    }
+    setupSessionCallback()
+    if (callState.value == CallState.STATUS_CONNECTED) {
+        onConferenceConnected()
+    } else {
+        reloadParticipants()
+    }
+})
+
+// 会议中按返回键不退出（要退请点「结束」或「最小化」），与 Multi/Single 一致
+onBackPress((event: OnBackPressOptions): boolean => {
+    return event.from != 'navigateBack'
+})
+
+onBeforeUnmount(() => {
+    if (timer.value != 0) {
+        clearInterval(timer.value)
+        timer.value = 0
+    }
+    conferenceManager.removeUpdateListener(onManagerUpdated)
+    avEngineKit.setSessionCallback(null)
+})
+</script>
+
+<style scoped>
+.conference-page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding-top: 132rpx;
+    padding-bottom: 140px;
+    background-color: #2d3033;
+}
+
+.content-container {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+}
+
+.tile {
+    display: flex;
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 2rpx;
+}
+
+.tile-large {
+    width: 375rpx;
+    height: 375rpx;
+}
+
+.tile-small {
+    width: 250rpx;
+    height: 250rpx;
+}
+
+.tile-video {
+    display: flex;
+}
+
+.tile-avatar-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #3a3d40;
+}
+
+.tile-avatar {
+    width: 90px;
+    height: 90px;
+    border-radius: 45px;
+}
+
+.tile-name {
+    position: absolute;
+    left: 4rpx;
+    bottom: 4rpx;
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.4);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.tile-mic {
+    position: absolute;
+    right: 6rpx;
+    bottom: 6rpx;
+    color: #ff5a5a;
+}
+
+.speaking-bar {
+    position: absolute;
+    left: 0;
+    top: 160rpx;
+    width: 750rpx;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.speaking-text {
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.4);
+    padding: 4px 12px;
+    border-radius: 4px;
+}
+
+.arrow-container {
+    position: absolute;
+    top: 132rpx;
+    bottom: 140px;
+    width: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.arrow-container-left {
+    left: 0;
+}
+
+.arrow-container-right {
+    right: 0;
+}
+
+.page-arrow {
+    color: #c8cacc;
+}
+
+.title-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 750rpx;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 44rpx;
+    padding: 0 40rpx;
+    height: 88rpx;
+}
+
+.duration-text {
+    color: #ffffff;
+}
+
+.minimize-img {
+    width: 30px;
+    height: 30px;
+}
+
+.action-container {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 750rpx;
+    height: 140px;
+    background-color: #808080;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 0;
+}
+
+.action-img {
+    width: 40px;
+    height: 40px;
+}
+
+.action-icon {
+    color: #ffffff;
+    height: 40px;
+}
+
+.action-desc {
+    color: #ffffff;
+    padding-top: 4px;
+}
+</style>

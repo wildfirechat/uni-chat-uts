@@ -1,0 +1,89 @@
+/**
+ * 会议信息，对应 app server 的 /conference/* 系列接口。
+ * 字段名必须和服务端保持一致（createConference/updateConference 是把整个对象 POST 上去的）。
+ */
+export default class ConferenceInfo {
+    conferenceId = '';
+    conferenceTitle = '';
+    // 入会密码，为空表示不需要密码
+    password = '';
+    pin = '';
+    owner = '';
+    managers: string[] = [];
+    // 焦点用户（主持人锁定的画面），为空表示未锁定
+    focus = '';
+    // 秒
+    startTime = 0;
+    // 秒
+    endTime = 0;
+    // 新加入者是否默认为观众
+    audience = false;
+    // 是否是大规模（超级）会议
+    advance = false;
+    // 服务端字段名就叫 allowSwitchMode，语义是「允许成员自主开麦克风/摄像头」
+    allowSwitchMode = false;
+    noJoinBeforeStart = false;
+    recording = false;
+
+    isAllowTurnOnMic(): boolean {
+        return this.allowSwitchMode;
+    }
+
+    toJsonObject(): UTSJSONObject {
+        return {
+            conferenceId: this.conferenceId,
+            conferenceTitle: this.conferenceTitle,
+            password: this.password,
+            pin: this.pin,
+            owner: this.owner,
+            managers: this.managers,
+            focus: this.focus,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            audience: this.audience,
+            advance: this.advance,
+            allowSwitchMode: this.allowSwitchMode,
+            noJoinBeforeStart: this.noJoinBeforeStart,
+            recording: this.recording,
+        } as UTSJSONObject;
+    }
+
+    static fromJsonObject(obj: UTSJSONObject | null): ConferenceInfo | null {
+        if (obj == null) {
+            return null;
+        }
+        const info = new ConferenceInfo();
+        info.conferenceId = obj.getString('conferenceId') ?? '';
+        info.conferenceTitle = obj.getString('conferenceTitle') ?? '';
+        info.password = obj.getString('password') ?? '';
+        info.pin = obj.getString('pin') ?? '';
+        info.owner = obj.getString('owner') ?? '';
+        const managers = obj.getArray('managers');
+        if (managers != null) {
+            const list: string[] = [];
+            for (let i = 0; i < managers.length; i++) {
+                const m = managers[i];
+                if (m != null) {
+                    list.push('' + m);
+                }
+            }
+            info.managers = list;
+        }
+        info.focus = obj.getString('focus') ?? '';
+        info.startTime = obj.getNumber('startTime') ?? 0;
+        info.endTime = obj.getNumber('endTime') ?? 0;
+        info.audience = obj.getBoolean('audience') ?? false;
+        info.advance = obj.getBoolean('advance') ?? false;
+        info.allowSwitchMode = obj.getBoolean('allowSwitchMode') ?? false;
+        info.noJoinBeforeStart = obj.getBoolean('noJoinBeforeStart') ?? false;
+        info.recording = obj.getBoolean('recording') ?? false;
+        return info;
+    }
+
+    static fromJsonStr(str: string | null): ConferenceInfo | null {
+        if (str == null || str == '' || str == 'null') {
+            return null;
+        }
+        return ConferenceInfo.fromJsonObject(JSON.parseObject(str));
+    }
+}

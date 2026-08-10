@@ -251,6 +251,7 @@ export default {
     },
     "discovery": {
         "chatroom": "聊天室",
+        "conference": "會議",
         "robot": "機器人",
         "channel": "頻道",
         "dev_guide": "開發手冊"

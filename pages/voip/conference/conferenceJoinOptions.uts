@@ -1,0 +1,31 @@
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+
+/**
+ * 跳到 ConferencePage 时携带的入会参数。
+ *
+ * 原实现是把 conferenceInfo 序列化成 JSON 拼在 url query 上
+ * （`ConferencePage?conferenceInfo=...&muteAudio=...`），本项目页面间传参统一走
+ * common/nav.uts 的 navigateToPage(url, options) + takePageOptions()，
+ * 所以定义一个具体类型，避免在页面里再解析一遍 JSON。
+ */
+export class ConferenceJoinOptions {
+    conferenceInfo: ConferenceInfo = new ConferenceInfo();
+    /** 静音入会 */
+    muteAudio = false;
+    /** 关摄像头入会 */
+    muteVideo = false;
+}
+
+// 会议详情页是 redirectTo 进会议页的（入会后再退回详情页没意义），走不了
+// navigateToPage 那套暂存，这里单独存一份。
+let pendingJoinOptions: ConferenceJoinOptions | null = null
+
+export function setPendingConferenceJoinOptions(options: ConferenceJoinOptions): void {
+    pendingJoinOptions = options
+}
+
+export function takePendingConferenceJoinOptions(): ConferenceJoinOptions | null {
+    const options = pendingJoinOptions
+    pendingJoinOptions = null
+    return options
+}

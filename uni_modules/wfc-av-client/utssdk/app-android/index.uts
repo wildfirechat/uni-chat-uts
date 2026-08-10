@@ -139,6 +139,7 @@ function callSessionToJson(session: CallSession): string {
     obj.put("endReason", endReason == null ? 0 : endReason.ordinal)
     obj.put("conference", session.isConference())
     obj.put("audience", session.isAudience())
+    obj.put("defaultAudience", session.isDefaultAudience())
     obj.put("advanced", session.isAdvanced())
     obj.put("audioMuted", session.audioMuted)
     obj.put("videoMuted", session.videoMuted)
@@ -332,6 +333,13 @@ export function isSupportMultiCall(): boolean {
     return AVEngineKit.isSupportMultiCall()
 }
 
+// 音视频 SDK 分两个版本，通过替换 libs/avenginekit.aar 切换（见 libs/README 与 README-AV.md）：
+// 多人版返回 false，高级版（会议版）返回 true。两个 aar 的 Java 接口一致，会议相关方法在多人版里
+// 同样存在但不可用，所以下面这些会议接口在两个版本上都能编过，应用层靠本方法决定是否放出会议入口。
+export function isSupportConference(): boolean {
+    return AVEngineKit.isSupportConference()
+}
+
 export function setVideoProfile(profile: number, swapWidthHeight: boolean): void {
     AVEngineKit.Instance().setVideoProfile(profile.toInt(), swapWidthHeight)
 }
@@ -346,6 +354,58 @@ export function startMultiCall(groupId: string, participants: string[], audioOnl
     const conv = toConversation(1 /* Group */, groupId, 0)
     const session = AVEngineKit.Instance().startCall(conv, participants.toKotlinList(), audioOnly, nativeCallSessionCallback)
     return session == null ? null : callSessionToJson(session)
+}
+
+/**
+ * 发起会议（仅会议版 aar 有效）。
+ * 参数顺序与旧版 nativeplugin 的 AVEngineKitModule.startConference 保持一致；
+ * callExtra 目前只在 iOS/鸿蒙 SDK 上有对应入参，Android 的 startConference 没有该重载，
+ * 这里保留参数只为三端签名一致，Android 侧忽略。
+ */
+export function startConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, record: boolean, callExtra: string): string | null {
+    const session = AVEngineKit.Instance().startConference(callId, audioOnly, pin, host, title, desc, audience, advance, record, nativeCallSessionCallback)
+    if (session == null) {
+        return null
+    }
+    // 会议画面由应用层自己排版，关掉 SDK 的自动大小流切换，避免和 setParticipantVideoType 打架
+    session.autoSwitchVideoType = false
+    return callSessionToJson(session)
+}
+
+/** 加入会议（仅会议版 aar 有效） */
+export function joinConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, muteAudio: boolean, muteVideo: boolean, callExtra: string): string | null {
+    const session = AVEngineKit.Instance().joinConference(callId, audioOnly, pin, host, title, desc, audience, advance, muteAudio, muteVideo, nativeCallSessionCallback)
+    if (session == null) {
+        return null
+    }
+    session.autoSwitchVideoType = false
+    return callSessionToJson(session)
+}
+
+/** 离开会议；destroyRoom 为 true 且自己是主持人时，会议一并结束 */
+export function leaveConference(callId: string, destroyRoom: boolean): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId) {
+        session.leaveConference(destroyRoom)
+    }
+}
+
+/** 当前是否允许切换观众/互动者身份（主持人可以限制） */
+export function canSwitchAudience(callId: string): boolean {
+    if (!AVEngineKit.isSupportConference()) {
+        return false
+    }
+    const session = currentSessionOrNull()
+    return session != null && session.getCallId() == callId && session.canSwitchAudience()
+}
+
+/** 切换观众/互动者身份 */
+export function switchAudience(callId: string, audience: boolean): boolean {
+    if (!AVEngineKit.isSupportConference()) {
+        return false
+    }
+    const session = currentSessionOrNull()
+    return session != null && session.getCallId() == callId && session.switchAudience(audience)
 }
 
 export function currentCallSession(): string | null {
@@ -488,8 +548,9 @@ export function checkOverlayPermission(): boolean {
 
 // 未实现系统级悬浮窗挂起 UI（需要额外的 WindowManager 悬浮控件开发），当前 minimize 仅退回会话列表，
 // 通话仍在原生层继续进行，可通过 resumeVoipPage（应用层 onReceiveCall/currentCallSession 兜底）重新进入。
-export function minimize(callId: string): void {
-    // no-op：具体的“返回上一页”交给调用方（uts 应用层 uni.navigateBack）处理
+export function minimize(callId: string, focusVideoUser: string): void {
+    // no-op：具体的“返回上一页”交给调用方（uts 应用层 uni.navigateBack）处理。
+    // focusVideoUser 为悬浮窗要显示谁的视频流，等实现悬浮窗后才有意义。
 }
 
 export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {

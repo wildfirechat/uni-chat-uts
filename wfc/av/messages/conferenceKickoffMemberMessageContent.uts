@@ -1,0 +1,30 @@
+import MessageContent from "../../messages/messageContent.uts";
+import MessageContentType from "../../messages/messageContentType.uts";
+import MessagePayload from '../../messages/messagePayload.uts';
+
+/**
+ * 主持人把成员移出会议。只有 callId 一个字段，放在 content 里。
+ */
+export default class ConferenceKickoffMemberMessageContent extends MessageContent {
+    callId = '';
+
+    constructor(callId: string = '') {
+        super(MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER);
+        this.callId = callId;
+    }
+
+    override digest(message: any | null): string {
+        return '[被移出会议]'
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.callId;
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.callId = payload.content;
+    }
+}

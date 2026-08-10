@@ -1,0 +1,86 @@
+import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
+import ParticipantProfile from "@/wfc/av/engine/participantProfile.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { getUserInfo } from "@/wfc/client/userBrief.uts";
+import wfc from "@/wfc/client/wfc.uts";
+
+/**
+ * 会议里的一个「画面」。
+ *
+ * 注意不是「一个人」：同一个人开着屏幕共享时会有两条（screenSharing = false / true），
+ * 所以列表的 key 必须是 userId + screenSharing，只用 userId 会导致画面串位。
+ * 原实现是把这些状态挂在 UserInfo 上（`userInfo._isAudience` 之类），UTS 是强类型的，
+ * 只能单独建一个类。
+ */
+export class ConferenceParticipant {
+    userId = '';
+    userInfo: UserInfo = new UserInfo();
+    /** 观众身份，既不发音也不发视频 */
+    audience = false;
+    /** 是不是主持人 */
+    host = false;
+    videoMuted = false;
+    audioMuted = false;
+    screenSharing = false;
+    /** CallState，远端画面就绪后是 STATUS_CONNECTED */
+    state = 0;
+    /** 最近一次上报的音量，用于「正在讲话」和演讲者视图 */
+    volume = 0;
+    /** 是不是自己 */
+    self = false;
+
+    get key(): string {
+        return this.userId + (this.screenSharing ? '-ss' : '')
+    }
+
+    get displayName(): string {
+        const u = this.userInfo
+        if (u.groupAlias != '') {
+            return u.groupAlias
+        }
+        if (u.friendAlias != '') {
+            return u.friendAlias
+        }
+        if (u.displayName != '') {
+            return u.displayName
+        }
+        return u.name
+    }
+
+    /** 是否应该显示视频画面（而不是头像） */
+    get hasVideo(): boolean {
+        return !this.audience && !this.videoMuted
+    }
+}
+
+export function participantOfProfile(profile: ParticipantProfile, hostId: string, selfUserId: string): ConferenceParticipant {
+    const p = new ConferenceParticipant()
+    p.userId = profile.userId
+    p.userInfo = getUserInfo(profile.userId, false)
+    p.audience = profile.audience
+    p.host = hostId == profile.userId
+    p.videoMuted = profile.videoMuted
+    p.audioMuted = profile.audioMuted
+    p.screenSharing = profile.screenSharing
+    p.state = profile.state
+    p.self = profile.userId == selfUserId
+    return p
+}
+
+/**
+ * 拉一份完整的参与者列表（自己排在最前面）。
+ * 会议中成员变动比较频繁，各页面都是「变了就整表重建」，比逐条 patch 稳。
+ */
+export function loadConferenceParticipants(callId: string, hostId: string): ConferenceParticipant[] {
+    const selfUserId = wfc.getUserId()
+    const list: ConferenceParticipant[] = []
+    const myProfile = avEngineKit.getMyProfile(callId)
+    if (myProfile != null) {
+        list.push(participantOfProfile(myProfile!, hostId, selfUserId))
+    }
+    const profiles = avEngineKit.getParticipantProfiles(callId)
+    for (let i = 0; i < profiles.length; i++) {
+        list.push(participantOfProfile(profiles[i], hostId, selfUserId))
+    }
+    return list
+}

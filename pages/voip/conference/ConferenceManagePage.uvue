@@ -1,0 +1,535 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="navTitle" :show-back="true" :intercept-back="mode != MODE_PARTICIPANTS"
+            @backTap="onBackTap" />
+
+        <scroll-view class="body" direction="vertical">
+            <!-- 参与者列表 -->
+            <template v-if="mode == MODE_PARTICIPANTS">
+                <view v-if="isOwner" class="section">
+                    <form-card :radius="8">
+                        <option-item v-if="audioApplyTip != ''" :title="audioApplyTip"
+                            @tap="showAudioApply" />
+                        <option-item v-if="videoApplyTip != ''" :title="videoApplyTip"
+                            @tap="showVideoApply" />
+                        <option-item v-if="handUpTip != ''" :title="handUpTip" @tap="showHandUpList" />
+                        <option-item title="全体静音" :show-right-arrow="false" @tap="muteAll(true)" />
+                        <option-item title="解除全体静音" :show-right-arrow="false" @tap="unmuteAll(true)" />
+                        <option-item title="关闭全体摄像头" :show-right-arrow="false" @tap="muteAll(false)" />
+                        <option-item title="打开全体摄像头" :show-right-arrow="false" @tap="unmuteAll(false)" />
+                        <option-item :title="recording ? '结束录制' : '开始录制'" :show-right-arrow="false"
+                            :show-bottom-divider="false" @tap="toggleRecord" />
+                    </form-card>
+                </view>
+
+                <view class="section">
+                    <form-card :radius="8">
+                        <option-item title="邀请新参与者" left-icon="&#xf216;" :show-right-arrow="false"
+                            :show-bottom-divider="participants.length > 0" @tap="invite" />
+                        <view v-for="(p, i) in participants" :key="p.key" class="participant-row"
+                            @tap="showParticipantActions(p)">
+                            <image class="avatar" :src="p.userInfo.portrait" />
+                            <view class="name-container">
+                                <text class="name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{
+                                    p.displayName }}</text>
+                                <text v-if="participantDesc(p) != ''" class="desc"
+                                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ participantDesc(p)
+                                    }}</text>
+                            </view>
+                            <!-- 麦克风/摄像头状态：关着用 outline 图标 + 次要色 -->
+                            <text v-if="p.audience || p.audioMuted" class="icomoon state-icon"
+                                :style="{ color: c.textTertiary, fontSize: iconPx(18) }">&#xf45f;</text>
+                            <text v-else class="icomoon state-icon"
+                                :style="{ color: c.textPrimary, fontSize: iconPx(18) }">&#xf461;</text>
+                            <text v-if="p.audience || p.videoMuted" class="icomoon state-icon"
+                                :style="{ color: c.textTertiary, fontSize: iconPx(18) }">&#xf4cc;</text>
+                            <text v-else class="icomoon state-icon"
+                                :style="{ color: c.textPrimary, fontSize: iconPx(18) }">&#xf4cd;</text>
+                            <view v-if="i < participants.length - 1" class="row-divider"
+                                :style="{ backgroundColor: c.hairlineSoft }"></view>
+                        </view>
+                    </form-card>
+                </view>
+            </template>
+
+            <!-- 申请解除静音 / 申请开摄像头 / 举手 三个子列表 -->
+            <template v-else>
+                <view class="section">
+                    <form-card :radius="8">
+                        <view v-for="(u, i) in subListUsers" :key="u.uid" class="participant-row">
+                            <image class="avatar" :src="u.portrait" />
+                            <view class="name-container">
+                                <text class="name" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{
+                                    u._displayName == '' ? u.displayName : u._displayName }}</text>
+                            </view>
+                            <text v-if="mode != MODE_HAND_UP" class="action-text"
+                                :style="{ color: c.accent, fontSize: fontPx(FONT_BASE) }"
+                                @tap="approve(u.uid, true)">同意</text>
+                            <text v-if="mode != MODE_HAND_UP" class="action-text"
+                                :style="{ color: c.danger, fontSize: fontPx(FONT_BASE) }"
+                                @tap="approve(u.uid, false)">拒绝</text>
+                            <text v-else class="action-text" :style="{ color: c.accent, fontSize: fontPx(FONT_BASE) }"
+                                @tap="putDown(u.uid)">放下</text>
+                            <view v-if="i < subListUsers.length - 1" class="row-divider"
+                                :style="{ backgroundColor: c.hairlineSoft }"></view>
+                        </view>
+                        <view v-if="subListUsers.length == 0" class="empty">
+                            <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_SM) }">暂无</text>
+                        </view>
+                    </form-card>
+                </view>
+
+                <view class="section">
+                    <form-card :radius="8">
+                        <option-button-item v-if="mode == MODE_HAND_UP" title="全部放下" tone="accent"
+                            :show-bottom-divider="false" @tap="putAllDown" />
+                        <template v-else>
+                            <option-button-item title="全部同意" tone="accent" @tap="approveAll(true)" />
+                            <option-button-item title="全部拒绝" tone="danger" :show-bottom-divider="false"
+                                @tap="approveAll(false)" />
+                        </template>
+                    </form-card>
+                </view>
+            </template>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 会议管理页，把原版拆成 4 个组件的
+ * ConferenceManagePage / ConferenceParticipantListView / ConferenceHandUpListView /
+ * ConferenceApplyUnmute{Audio,Video}ListView 合成了一个页面，用 mode 切换子列表
+ * （移动端不适合原版那种同屏多列表的桌面布局）。
+ *
+ * 每个参与者的操作（邀请发言、关摄像头、设为焦点、移出会议…）用 actionSheet 展示，
+ * 对应原版的右键上下文菜单。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
+import CallSession from "@/wfc/av/engine/callSession.uts";
+import ConferenceInviteMessageContent from "@/wfc/av/messages/conferenceInviteMessageContent.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import Message from "@/wfc/messages/message.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import UserInfo from "@/wfc/model/userInfo.uts";
+import { getUserInfos } from "@/wfc/client/userBrief.uts";
+import conferenceManager from "./conferenceManager.uts";
+import { ConferenceParticipant, loadConferenceParticipants } from "./conferenceParticipant.uts";
+import { forward } from "@/common/forward.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_XS, FONT_SM, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
+import { toast, showConfirmDialog } from "@/common/prompt.uts";
+
+defineOptions({
+    name: "ConferenceManagePage"
+})
+
+const MODE_PARTICIPANTS = 0
+const MODE_AUDIO_APPLY = 1
+const MODE_VIDEO_APPLY = 2
+const MODE_HAND_UP = 3
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const mode = ref<number>(MODE_PARTICIPANTS)
+const participants = ref<ConferenceParticipant[]>([] as ConferenceParticipant[])
+const session = ref<CallSession | null>(null as CallSession | null)
+const managerRevision = ref<number>(0)
+
+const conferenceInfo = computed<ConferenceInfo>((): ConferenceInfo => {
+    const _ = managerRevision.value
+    const info = conferenceManager.conferenceInfo
+    return info == null ? new ConferenceInfo() : info!
+})
+
+const isOwner = computed<boolean>((): boolean => {
+    const _ = managerRevision.value
+    return conferenceManager.isOwner()
+})
+
+const recording = computed<boolean>((): boolean => conferenceInfo.value.recording)
+
+const navTitle = computed<string>((): string => {
+    if (mode.value == MODE_AUDIO_APPLY) {
+        return '申请发言'
+    }
+    if (mode.value == MODE_VIDEO_APPLY) {
+        return '申请开摄像头'
+    }
+    if (mode.value == MODE_HAND_UP) {
+        return '举手列表'
+    }
+    return '会议管理'
+})
+
+function tipOf(userIds: string[], suffix: string): string {
+    if (userIds.length == 0) {
+        return ''
+    }
+    const users = getUserInfos(userIds, '')
+    if (users.length == 0) {
+        return ''
+    }
+    let desc = users[0].displayName
+    if (users.length > 1) {
+        desc += ' 等'
+    }
+    return desc + suffix
+}
+
+const audioApplyTip = computed<string>((): string => {
+    const _ = managerRevision.value
+    return tipOf(conferenceManager.applyingUnmuteAudioMembers, '正在申请发言')
+})
+
+const videoApplyTip = computed<string>((): string => {
+    const _ = managerRevision.value
+    return tipOf(conferenceManager.applyingUnmuteVideoMembers, '正在申请打开摄像头')
+})
+
+const handUpTip = computed<string>((): string => {
+    const _ = managerRevision.value
+    return tipOf(conferenceManager.handUpMembers, '正在举手')
+})
+
+const subListUsers = computed<UserInfo[]>((): UserInfo[] => {
+    const _ = managerRevision.value
+    let ids: string[] = []
+    if (mode.value == MODE_AUDIO_APPLY) {
+        ids = conferenceManager.applyingUnmuteAudioMembers
+    } else if (mode.value == MODE_VIDEO_APPLY) {
+        ids = conferenceManager.applyingUnmuteVideoMembers
+    } else if (mode.value == MODE_HAND_UP) {
+        ids = conferenceManager.handUpMembers
+    }
+    if (ids.length == 0) {
+        return [] as UserInfo[]
+    }
+    return getUserInfos(ids, '')
+})
+
+const participantDesc = (p: ConferenceParticipant): string => {
+    if (p.self) {
+        return p.host ? '我、主持人' : '我'
+    }
+    if (p.host) {
+        return '主持人'
+    }
+    if (p.screenSharing) {
+        return '屏幕共享'
+    }
+    return ''
+}
+
+const reloadParticipants = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    participants.value = loadConferenceParticipants(s!.callId, s!.host)
+}
+
+// 模板里不要直接写 `mode = X` 这种赋值表达式：uni-app x 的模板编译到 Kotlin 后
+// 对 ref 的直接赋值不保证生效，统一走方法
+const showAudioApply = () => {
+    mode.value = MODE_AUDIO_APPLY
+}
+
+const showVideoApply = () => {
+    mode.value = MODE_VIDEO_APPLY
+}
+
+const showHandUpList = () => {
+    mode.value = MODE_HAND_UP
+}
+
+const onBackTap = () => {
+    if (mode.value != MODE_PARTICIPANTS) {
+        mode.value = MODE_PARTICIPANTS
+        return
+    }
+    uni.navigateBack({
+        fail: (err) => {
+            console.log('nav back err', err)
+        }
+    } as NavigateBackOptions)
+}
+
+// ------------------------------------------------------------------
+// 主持人的全局操作
+// ------------------------------------------------------------------
+
+const muteAll = (audio: boolean) => {
+    showConfirmDialog(audio ? '全体静音' : '关闭全体摄像头', '是否允许成员自主开启？', false, (): void => {
+        conferenceManager.requestMuteAll(audio, true)
+    })
+}
+
+const unmuteAll = (audio: boolean) => {
+    conferenceManager.requestUnmuteAll(audio, true)
+}
+
+const toggleRecord = () => {
+    conferenceManager.requestRecord(!recording.value)
+}
+
+const invite = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    const info = conferenceInfo.value
+    const content = new ConferenceInviteMessageContent()
+    content.callId = s!.callId
+    content.host = info.owner
+    content.title = info.conferenceTitle
+    content.desc = s!.desc
+    content.startTime = s!.startTime
+    content.audioOnly = s!.audioOnly
+    content.audience = false
+    content.advanced = s!.advanced
+    content.pin = info.pin
+    forward(ForwardType.NORMAL, [new Message(null, content)])
+}
+
+// ------------------------------------------------------------------
+// 子列表操作
+// ------------------------------------------------------------------
+
+const approve = (userId: string, isAllow: boolean) => {
+    conferenceManager.approveUnmute(userId, mode.value == MODE_AUDIO_APPLY, isAllow)
+}
+
+const approveAll = (isAllow: boolean) => {
+    conferenceManager.approveAllUnmute(mode.value == MODE_AUDIO_APPLY, isAllow)
+}
+
+const putDown = (userId: string) => {
+    conferenceManager.putMemberHandDown(userId)
+}
+
+const putAllDown = () => {
+    conferenceManager.putAllHandDown()
+}
+
+// ------------------------------------------------------------------
+// 单个参与者的操作菜单
+// ------------------------------------------------------------------
+
+/**
+ * 按 uni.showActionSheet 的用法，菜单项文案和处理逻辑分成两个平行数组，
+ * 用户选中后按下标取回调（uts 里没法像 JS 那样往 item 上挂闭包再传给原生）。
+ */
+const kickoff = (p: ConferenceParticipant) => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    showConfirmDialog('移除成员', '确认将 ' + p.displayName + ' 移出会议？', true, (): void => {
+        avEngineKit.kickoffParticipant(s!.callId, p.userId, (): void => {
+            reloadParticipants()
+        }, (err: number): void => {
+            console.log('kickoffParticipant error', err)
+            toast('移除失败')
+        })
+    })
+}
+
+const showParticipantActions = (p: ConferenceParticipant) => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    const labels: string[] = []
+    const actions: Array<() => void> = []
+
+    if (p.self) {
+        if (p.audience || p.audioMuted) {
+            labels.push('开启麦克风')
+            actions.push((): void => {
+                avEngineKit.switchAudience(s!.callId, false)
+                avEngineKit.muteAudio(s!.callId, false)
+                reloadParticipants()
+            })
+        } else {
+            labels.push('关闭麦克风')
+            actions.push((): void => {
+                avEngineKit.muteAudio(s!.callId, true)
+                if (p.videoMuted) {
+                    avEngineKit.switchAudience(s!.callId, true)
+                }
+                reloadParticipants()
+            })
+        }
+        if (p.audience || p.videoMuted) {
+            labels.push('开启摄像头')
+            actions.push((): void => {
+                avEngineKit.switchAudience(s!.callId, false)
+                avEngineKit.muteVideo(s!.callId, false)
+                reloadParticipants()
+            })
+        } else {
+            labels.push('关闭摄像头')
+            actions.push((): void => {
+                avEngineKit.muteVideo(s!.callId, true)
+                if (p.audioMuted) {
+                    avEngineKit.switchAudience(s!.callId, true)
+                }
+                reloadParticipants()
+            })
+        }
+    }
+
+    if (isOwner.value && !p.self) {
+        if (p.audience || p.audioMuted) {
+            labels.push('邀请发言')
+            actions.push((): void => {
+                conferenceManager.requestMemberMute(p.userId, true, false)
+            })
+        } else {
+            labels.push('取消发言')
+            actions.push((): void => {
+                conferenceManager.requestMemberMute(p.userId, true, true)
+            })
+        }
+        if (p.audience || p.videoMuted) {
+            labels.push('邀请打开摄像头')
+            actions.push((): void => {
+                conferenceManager.requestMemberMute(p.userId, false, false)
+            })
+        } else {
+            labels.push('关闭摄像头')
+            actions.push((): void => {
+                conferenceManager.requestMemberMute(p.userId, false, true)
+            })
+        }
+        labels.push('移除成员')
+        actions.push((): void => {
+            kickoff(p)
+        })
+    }
+
+    if (isOwner.value) {
+        if (conferenceInfo.value.focus == p.userId) {
+            labels.push('取消焦点用户')
+            actions.push((): void => {
+                conferenceManager.requestCancelFocus()
+            })
+        } else {
+            labels.push('设置为焦点用户')
+            actions.push((): void => {
+                conferenceManager.requestFocus(p.userId)
+            })
+        }
+    }
+
+    if (labels.length == 0) {
+        return
+    }
+
+    uni.showActionSheet({
+        itemList: labels,
+        success: (res) => {
+            const index = res.tapIndex
+            if (index >= 0 && index < actions.length) {
+                actions[index]()
+            }
+        },
+        fail: (err) => {
+            console.log('showActionSheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+
+const onManagerUpdated = (): void => {
+    managerRevision.value++
+    reloadParticipants()
+}
+
+onLoad((_options: OnLoadOptions) => {
+    session.value = avEngineKit.currentCallSession()
+    reloadParticipants()
+    // 会议状态变化（举手、申请…）由 conferenceManager 广播；ConferencePage 也挂着一个监听，
+    // 所以这里只能"加一个"，不能覆盖
+    conferenceManager.addUpdateListener(onManagerUpdated)
+})
+
+onUnload(() => {
+    conferenceManager.removeUpdateListener(onManagerUpdated)
+})
+</script>
+
+<style scoped>
+.page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    flex: 1;
+}
+
+.section {
+    padding: 12px 12px 0 12px;
+}
+
+.participant-row {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    margin-right: 10px;
+}
+
+/* 名字列吃掉剩余宽度，否则右侧图标会把它挤没 */
+.name-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.name {
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.desc {
+    padding-top: 2px;
+}
+
+.state-icon {
+    padding-left: 12px;
+}
+
+.action-text {
+    padding-left: 14px;
+}
+
+.row-divider {
+    position: absolute;
+    left: 16px;
+    right: 0;
+    bottom: 0;
+    height: 0.5px;
+}
+
+.empty {
+    padding: 14px 16px;
+}
+
+.tail {
+    height: 24px;
+}
+</style>

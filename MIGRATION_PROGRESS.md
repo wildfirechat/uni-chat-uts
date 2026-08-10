@@ -45,7 +45,7 @@
 13. **导航栏按钮**：uni-app x 不支持 titleNView buttons。ConversationListPage/ConversationPage/ChannelListPage/ContactListPage/NewFriendListPage 已在 pages.json 设为 navigationStyle:custom，需页面内自定义导航栏（计划 `pages/common/NavBar.uvue`）。
 14. **页面参数传递**：`common/nav.uts`：navigateToPage(url, options)（全局栈暂存）+ takePageOptions()（页面 onLoad 取）+ go2ConversationPage() + notify(text)。替代 eventChannel 与 globalProperties。
 15. **事件总线**：`common/eventBus.uts`（$on/$off/$emit），替代 mitt。
-16. **voip/ptt**：pages.json 已移除 voip 页面；wfc/av 仅迁移消息类：callStartMessageContent.uts、conferenceInviteMessageContent.uts，其余信令用 voipStubMessageContent.uts 占位；wfc/ptt、pages/voip 不迁移；UI 隐藏通话入口。
+16. **voip/ptt**：voip（单聊/多人/会议）与 ptt 已接入，见 uni_modules/wfc-av-client、wfc/av、pages/voip。wfc/av/messages 里 voip 信令消息（callAnswer/callBye/callSignal…）仍是 voipStubMessageContent.uts 占位——原生 SDK 自己收发这些信令，应用层不需要解析；会议指令类（conferenceCommand/ChangeMode/KickoffMember）是完整实现。会议依赖高级版音视频 SDK，见 README-AV.md。
 17. **Config**：config.uts（class 静态字段；ICEServer 类；去掉了动态 Config.config()——无人使用）。ENABLE_VOIP/ENABLE_PTT 置 false。
 
 ## 二、关键技术风险（编译/运行时验证点）
@@ -93,7 +93,7 @@
 - [x] text/ptext/image/video/sound(含 _isPlaying)/file(FILE_NAME_PREFIX)/sticker/location/link/card/composite(文件写入用 FileSystemManager)/articles(含 Article)/typing/markUnread/streaming×2/enterChannel/leaveChannel/channelMenuEvent/delete/pcLoginRequest/unknown/unsupport
 - [x] notification 全部 20 个（基于 userBrief + base64）
 - [x] 枚举 cp：messageStatus/persistFlag/messageContentMediaType/messageContentType
-- [x] wfc/av/messages：callStartMessageContent.uts、conferenceInviteMessageContent.uts、voipStubMessageContent.uts（其余 [-]）
+- [x] wfc/av/messages：callStartMessageContent.uts、conferenceInviteMessageContent.uts、conferenceCommandMessageContent.uts、conferenceChangeModeContent.uts、conferenceKickoffMemberMessageContent.uts、voipStubMessageContent.uts（voip 信令类仍为 stub）
 - [x] wfc_custom_message 全部 4 个
 
 ### store
@@ -136,7 +136,7 @@
 - [x] me/MePage（头像上传 uploadMediaFile+modifyMyInfo）
 - [x] misc/WebViewPage、PreviewVideoPage
 - [x] search/SearchPortalPage（options 拆成4个 boolean props）、SearchResultView、SearchConversationMessagePage（SearchState 增加 conversation 字段）
-- [x] voip/Single.uvue、voip/Multi.uvue（页面脚本已迁移组合式 API；voip 入口隐藏，信令不接）
+- [x] voip/Single.uvue、voip/Multi.uvue、voip/conference/*（Portal/Create/Order/Join/Info/Conference/Manage；会议入口按 avEngineKit.isSupportConference() 显隐）
 - [ ] workspace/WorkspacePage、WorkspaceWebViewPage（nvue+JS bridge，待做，可先简化为 web-view+authCode）
 - [ ] misc/ApiTestPage（待做）
 - [-] pick/PickerConversationPage、pick/CheckableOrganizationTreeView、contact/GroupDetailView(未路由)、test/*(未路由)、message/PreviewMessageView、MessageReceiptDetailView、DeleteMessageDialogView(未被引用则不迁)

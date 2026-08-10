@@ -4,6 +4,9 @@
         <form-card>
             <option-item :title="t('discovery.chatroom')" left-image="/static/image/icon/ic_chatroom.png"
                 @tap="showChatroomList" />
+            <!-- 会议入口只在集成了高级版（会议版）音视频 SDK 时出现，见 README-AV.md -->
+            <option-item v-if="supportConference" :title="t('discovery.conference')"
+                left-image="/static/image/av/ic_conference.png" @tap="showConferencePortal" />
             <option-item :title="t('discovery.robot')" left-image="/static/image/icon/ic_robot.png"
                 :show-bottom-divider="false" @tap="showRobotConversation" />
         </form-card>
@@ -23,11 +26,27 @@
 import store from "../../store.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
+import avEngineKit from "../../wfc/av/engine/avEngineKit.uts";
+import Config from "../../config.uts";
 import { go2ConversationPage } from "../../common/nav.uts";
 import { colors, AppColors } from "../../common/theme.uts";
 import { t } from "../../i18n/i18n.uts";
 
 const c = computed<AppColors>((): AppColors => colors())
+
+// 会议依赖会议版音视频 SDK（替换 avenginekit.aar/har/xcframework 切换），多人版下不显示入口
+const supportConference = computed<boolean>((): boolean => {
+    return Config.ENABLE_VOIP && avEngineKit.isSupportConference()
+})
+
+const showConferencePortal = () => {
+    uni.navigateTo({
+        url: '/pages/voip/conference/ConferencePortalPage',
+        fail: (e) => {
+            console.log(e)
+        }
+    } as NavigateToOptions);
+}
 
 const showChatroomList = () => {
     uni.navigateTo({

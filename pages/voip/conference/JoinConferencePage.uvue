@@ -1,0 +1,89 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar title="加入会议" :show-back="true" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="section">
+                <form-card :radius="8">
+                    <form-text-row :value="conferenceId" placeholder="请输入会议号" :maxlength="32"
+                        @input="onConferenceIdInput" />
+                    <form-text-row :value="password" placeholder="请输入会议密码，没有可忽略" :maxlength="32"
+                        :show-bottom-divider="false" @input="onPasswordInput" />
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-button-item title="加入会议" tone="accent" :show-bottom-divider="false"
+                        @tap="joinConference" />
+                </form-card>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 输入会议号加入会议，迁移自 JoinConferencePage.vue。
+ * 这里只负责查会议信息，真正入会在 ConferenceInfoPage 上确认音视频开关后再进。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import conferenceApi from "@/api/conferenceApi.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import { navigateToPage } from "@/common/nav.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { toast } from "@/common/prompt.uts";
+
+defineOptions({
+    name: "JoinConferencePage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const conferenceId = ref<string>('')
+const password = ref<string>('')
+
+const onConferenceIdInput = (v: string) => {
+    conferenceId.value = v
+}
+
+const onPasswordInput = (v: string) => {
+    password.value = v
+}
+
+const joinConference = () => {
+    const id = conferenceId.value.trim()
+    if (id == '') {
+        toast('请输入会议号')
+        return
+    }
+    conferenceApi.queryConferenceInfo(id, password.value.trim())
+        .then((info: ConferenceInfo | null): void => {
+            if (info == null) {
+                toast('获取会议信息失败')
+                return
+            }
+            navigateToPage('/pages/voip/conference/ConferenceInfoPage', info)
+        })
+        .catch((err: any | null): void => {
+            console.log('queryConferenceInfo failed', err)
+            toast('获取会议信息失败')
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    flex: 1;
+}
+
+.section {
+    padding: 12px;
+}
+</style>

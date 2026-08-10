@@ -1,0 +1,599 @@
+/**
+ * 会议控制面（举手、静音、焦点、录制…）的状态机。
+ *
+ * 迁移自 pages/voip/conference/conferenceManager.js，两点改动：
+ * 1. 原实现靠 `this.vueInstance.$notify` 和 `this.conferencePage.enableAudio/alert` 反向调页面，
+ *    uni-app x 里没有 `$parent`/全局 vue 实例这套东西，改成由 ConferencePage 注入
+ *    onEnableAudio / onEnableVideo 两个回调。
+ * 2. 状态字段本身是普通对象，页面要感知变化得靠 addUpdateListener 注册的回调主动通知，
+ *    不要指望 uvue 的响应式能穿透到这个单例里。
+ *
+ * 会议指令走会议聊天室（ChatRoom 会话，target 就是 conferenceId）广播，
+ * 所以 setConferenceInfo 时会 joinChatroom，destroy 时 quitChatroom。
+ */
+import conferenceApi from "@/api/conferenceApi.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import ConferenceCommandMessageContent, { ConferenceCommandType } from "@/wfc/av/messages/conferenceCommandMessageContent.uts";
+import Message from "@/wfc/messages/message.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import EventType from "@/wfc/client/wfcEvent.uts";
+import { WfcEventListener } from "@/wfc/util/eventEmitter.uts";
+import { getItem, setItem } from "@/pages/util/storageHelper.uts";
+import { notify } from "@/common/nav.uts";
+import { showConfirmDialog } from "@/common/prompt.uts";
+
+const HISTORY_KEY = 'historyConfList'
+
+class ConferenceManager {
+    conferenceInfo: ConferenceInfo | null = null;
+
+    applyingUnmuteAudioMembers: string[] = [];
+    applyingUnmuteVideoMembers: string[] = [];
+    isApplyingUnmuteAudio = false;
+    isApplyingUnmuteVideo = false;
+    handUpMembers: string[] = [];
+    isHandUp = false;
+    isMuteAll = false;
+
+    allowUnmuteAudio = false;
+    allowUnmuteVideo = false;
+
+    // 主持人锁定的焦点用户（服务端下发）
+    currentFocusUser = '';
+    // 本端手动选中的大画面用户
+    localFocusUser = '';
+
+    selfUserId = '';
+
+    // ---- 由 ConferencePage 注入的回调 ----
+    /** 打开/关闭本端麦克风 */
+    onEnableAudio: (enable: boolean) => void = (_enable: boolean): void => { };
+    /** 打开/关闭本端摄像头 */
+    onEnableVideo: (enable: boolean) => void = (_enable: boolean): void => { };
+
+    private messageListener: WfcEventListener | null = null;
+    /**
+     * 会议状态有变化（申请列表、举手列表、会议信息…）时的回调。
+     * 用列表而不是单个回调：会议中页面和会议管理页会同时在栈里，两边都要刷新。
+     */
+    private updateListeners: Array<() => void> = [];
+
+    addUpdateListener(listener: () => void): void {
+        if (this.updateListeners.indexOf(listener) < 0) {
+            this.updateListeners.push(listener)
+        }
+    }
+
+    removeUpdateListener(listener: () => void): void {
+        const index = this.updateListeners.indexOf(listener)
+        if (index >= 0) {
+            this.updateListeners.splice(index, 1)
+        }
+    }
+
+    private notifyUpdated(): void {
+        // 复制一份，防止回调里增删监听器
+        const copy = this.updateListeners.slice(0)
+        for (let i = 0; i < copy.length; i++) {
+            copy[i]()
+        }
+    }
+
+    setup(): void {
+        this.selfUserId = wfc.getUserId();
+        const listener: WfcEventListener = (args: Array<any | null>): void => {
+            this._onReceiveMessages(args)
+        }
+        this.messageListener = listener
+        wfc.eventEmitter.on(EventType.ReceiveMessages, listener)
+    }
+
+    destroy(): void {
+        const listener = this.messageListener
+        if (listener != null) {
+            wfc.eventEmitter.off(EventType.ReceiveMessages, listener)
+            this.messageListener = null
+        }
+        const info = this.conferenceInfo
+        if (info != null) {
+            wfc.quitChatroom(info.conferenceId)
+        }
+        this.conferenceInfo = null
+        this.applyingUnmuteAudioMembers = []
+        this.applyingUnmuteVideoMembers = []
+        this.handUpMembers = []
+        this.isApplyingUnmuteAudio = false
+        this.isApplyingUnmuteVideo = false
+        this.isHandUp = false
+        this.isMuteAll = false
+        this.currentFocusUser = ''
+        this.localFocusUser = ''
+        this.onEnableAudio = (_enable: boolean): void => { }
+        this.onEnableVideo = (_enable: boolean): void => { }
+        this.updateListeners = []
+    }
+
+    setConferenceInfo(conferenceInfo: ConferenceInfo): void {
+        this.conferenceInfo = conferenceInfo
+        this.currentFocusUser = conferenceInfo.focus
+        wfc.joinChatroom(conferenceInfo.conferenceId, (): void => {
+            console.log('join conference chatroom success')
+        }, (err: number): void => {
+            console.log('join conference chatroom error', err)
+        })
+        this.notifyUpdated()
+    }
+
+    getConferenceInfo(conferenceId: string): void {
+        conferenceApi.queryConferenceInfo(conferenceId, '')
+            .then((info: ConferenceInfo | null): void => {
+                if (info != null) {
+                    this.conferenceInfo = info
+                    this.currentFocusUser = info!.focus
+                    this.notifyUpdated()
+                }
+            })
+            .catch((err: any | null): void => {
+                console.log('queryConferenceInfo error', err)
+            })
+    }
+
+    isOwner(): boolean {
+        const info = this.conferenceInfo
+        return info != null && info!.owner == this.selfUserId
+    }
+
+    // ------------------------------------------------------------------
+    // 收指令
+    // ------------------------------------------------------------------
+
+    private _onReceiveMessages(args: Array<any | null>): void {
+        if (args.length < 2) {
+            return
+        }
+        if (args[1] == true) {
+            return
+        }
+        const info = this.conferenceInfo
+        if (info == null) {
+            return
+        }
+        const msgs = args[0] as Message[]
+        for (let i = 0; i < msgs.length; i++) {
+            const msg = msgs[i]
+            const content = msg.messageContent
+            if (!(content instanceof ConferenceCommandMessageContent)) {
+                continue
+            }
+            const command = content as ConferenceCommandMessageContent
+            if (command.conferenceId != info!.conferenceId) {
+                continue
+            }
+            this._handleCommand(msg.from, command)
+        }
+        this.notifyUpdated()
+    }
+
+    private _handleCommand(from: string, command: ConferenceCommandMessageContent): void {
+        let senderName = ''
+        switch (command.commandType) {
+            case ConferenceCommandType.MUTE_ALL_AUDIO:
+                this._reloadCurrentConferenceInfo()
+                this._onMuteAll(true)
+                this.allowUnmuteAudio = command.boolValue
+                break
+            case ConferenceCommandType.MUTE_ALL_VIDEO:
+                this._reloadCurrentConferenceInfo()
+                this._onMuteAll(false)
+                this.allowUnmuteVideo = command.boolValue
+                break
+            case ConferenceCommandType.CANCEL_MUTE_ALL_AUDIO:
+                this._reloadCurrentConferenceInfo()
+                this._onCancelMuteAll(true, command.boolValue)
+                break
+            case ConferenceCommandType.CANCEL_MUTE_ALL_VIDEO:
+                this._reloadCurrentConferenceInfo()
+                this._onCancelMuteAll(false, command.boolValue)
+                break
+            case ConferenceCommandType.REQUEST_MUTE_AUDIO:
+                if (command.targetUserId == this.selfUserId) {
+                    this._onRequestMute(true, command.boolValue)
+                }
+                break
+            case ConferenceCommandType.REQUEST_MUTE_VIDEO:
+                if (command.targetUserId == this.selfUserId) {
+                    this._onRequestMute(false, command.boolValue)
+                }
+                break
+            case ConferenceCommandType.REJECT_UNMUTE_AUDIO_REQUEST:
+                notify('主持人拒绝了你的发言请求')
+                break
+            case ConferenceCommandType.REJECT_UNMUTE_VIDEO_REQUEST:
+                notify('主持人拒绝了你的打开摄像头请求')
+                break
+            case ConferenceCommandType.APPLY_UNMUTE_AUDIO:
+                senderName = wfc.getUserDisplayName(from)
+                if (command.boolValue) {
+                    this.applyingUnmuteAudioMembers = this.applyingUnmuteAudioMembers.filter((uid: string): boolean => uid != from)
+                } else {
+                    if (this.applyingUnmuteAudioMembers.indexOf(from) < 0) {
+                        this.applyingUnmuteAudioMembers.push(from)
+                    }
+                    notify(senderName + '请求发言')
+                }
+                break
+            case ConferenceCommandType.APPLY_UNMUTE_VIDEO:
+                senderName = wfc.getUserDisplayName(from)
+                if (command.boolValue) {
+                    this.applyingUnmuteVideoMembers = this.applyingUnmuteVideoMembers.filter((uid: string): boolean => uid != from)
+                } else {
+                    if (this.applyingUnmuteVideoMembers.indexOf(from) < 0) {
+                        this.applyingUnmuteVideoMembers.push(from)
+                    }
+                    notify(senderName + '请求打开摄像头')
+                }
+                break
+            case ConferenceCommandType.APPROVE_UNMUTE_AUDIO:
+            case ConferenceCommandType.APPROVE_ALL_UNMUTE_AUDIO:
+                if (this.isApplyingUnmuteAudio) {
+                    this.isApplyingUnmuteAudio = false
+                    if (command.boolValue) {
+                        this.onEnableAudio(true)
+                        notify('主持人已同意了你的发言请求')
+                    }
+                }
+                break
+            case ConferenceCommandType.APPROVE_UNMUTE_VIDEO:
+            case ConferenceCommandType.APPROVE_ALL_UNMUTE_VIDEO:
+                if (this.isApplyingUnmuteVideo) {
+                    this.isApplyingUnmuteVideo = false
+                    if (command.boolValue) {
+                        this.onEnableVideo(true)
+                        notify('主持人已同意了你的打开摄像头请求')
+                    }
+                }
+                break
+            case ConferenceCommandType.HANDUP:
+                senderName = wfc.getUserDisplayName(from)
+                if (command.boolValue) {
+                    if (this.handUpMembers.indexOf(from) < 0) {
+                        this.handUpMembers.push(from)
+                    }
+                } else {
+                    this.handUpMembers = this.handUpMembers.filter((uid: string): boolean => uid != from)
+                }
+                notify(command.boolValue ? (senderName + '举手') : (senderName + '放下举手'))
+                break
+            case ConferenceCommandType.PUT_HAND_DOWN:
+            case ConferenceCommandType.PUT_ALL_HAND_DOWN:
+                if (this.isHandUp) {
+                    this.isHandUp = false
+                    notify('主持人放下了你的举手')
+                }
+                break
+            case ConferenceCommandType.RECORDING: {
+                const info = this.conferenceInfo
+                if (info != null) {
+                    info!.recording = command.boolValue
+                }
+                notify(command.boolValue ? '主持人开始录制' : '主持人结束录制')
+                break
+            }
+            case ConferenceCommandType.FOCUS: {
+                const info = this.conferenceInfo
+                if (info != null) {
+                    info!.focus = command.targetUserId
+                }
+                this.currentFocusUser = command.targetUserId
+                notify('主持人锁定焦点用户')
+                break
+            }
+            case ConferenceCommandType.CANCEL_FOCUS: {
+                const info = this.conferenceInfo
+                if (info != null) {
+                    info!.focus = ''
+                }
+                this.currentFocusUser = ''
+                notify('主持人取消锁定焦点用户')
+                break
+            }
+            default:
+                break
+        }
+    }
+
+    private _onMuteAll(audio: boolean): void {
+        if (audio) {
+            this.onEnableAudio(false)
+            notify('管理员将全体成员静音了')
+        } else {
+            this.onEnableVideo(false)
+            notify('管理员关闭了所有人的摄像头')
+        }
+    }
+
+    private _onCancelMuteAll(audio: boolean, requestUnmute: boolean): void {
+        if (requestUnmute) {
+            const title = audio ? '主持人关闭了全员静音，是否要打开麦克风' : '管理员取消了全体成员关闭摄像头，是否打开摄像头'
+            showConfirmDialog(title, title, false, (): void => {
+                if (audio) {
+                    this.onEnableAudio(true)
+                } else {
+                    this.onEnableVideo(true)
+                }
+            })
+        }
+        notify(audio ? '管理员取消了全体成员静音' : '管理员取消了全体成员关闭摄像头')
+    }
+
+    private _onRequestMute(audio: boolean, mute: boolean): void {
+        if (!mute) {
+            const title = audio ? '主持人邀请你发言' : '主持人邀请你打开摄像头'
+            showConfirmDialog(title, title, false, (): void => {
+                if (audio) {
+                    this.onEnableAudio(true)
+                } else {
+                    this.onEnableVideo(true)
+                }
+            })
+        } else {
+            if (audio) {
+                this.onEnableAudio(false)
+            } else {
+                this.onEnableVideo(false)
+            }
+            notify(audio ? '管理员关闭了你的发言' : '管理员关闭了你的摄像头')
+        }
+    }
+
+    private _reloadCurrentConferenceInfo(): void {
+        const info = this.conferenceInfo
+        if (info == null) {
+            return
+        }
+        conferenceApi.queryConferenceInfo(info!.conferenceId, info!.password)
+            .then((newInfo: ConferenceInfo | null): void => {
+                if (newInfo != null) {
+                    this.conferenceInfo = newInfo
+                    this.currentFocusUser = newInfo!.focus
+                    this.notifyUpdated()
+                }
+            })
+            .catch((err: any | null): void => {
+                console.log('queryConferenceInfo error', err)
+            })
+    }
+
+    // ------------------------------------------------------------------
+    // 发指令
+    // ------------------------------------------------------------------
+
+    /**
+     * 申请打开麦克风或摄像头
+     * @param audio true 麦克风，false 摄像头
+     * @param isCancel true 取消之前的申请，false 发起申请
+     */
+    applyUnmute(audio: boolean, isCancel: boolean): void {
+        if (audio) {
+            this.isApplyingUnmuteAudio = !isCancel
+        } else {
+            this.isApplyingUnmuteVideo = !isCancel
+        }
+        const type = audio ? ConferenceCommandType.APPLY_UNMUTE_AUDIO : ConferenceCommandType.APPLY_UNMUTE_VIDEO
+        this._sendCommandMessage(type, '', isCancel)
+    }
+
+    /** 主持人批准某个成员打开麦克风/摄像头 */
+    approveUnmute(userId: string, audio: boolean, isAllow: boolean): void {
+        if (!this.isOwner()) {
+            return
+        }
+        if (audio) {
+            this.applyingUnmuteAudioMembers = this.applyingUnmuteAudioMembers.filter((uid: string): boolean => uid != userId)
+        } else {
+            this.applyingUnmuteVideoMembers = this.applyingUnmuteVideoMembers.filter((uid: string): boolean => uid != userId)
+        }
+        const type = audio ? ConferenceCommandType.APPROVE_UNMUTE_AUDIO : ConferenceCommandType.APPROVE_UNMUTE_VIDEO
+        this._sendCommandMessage(type, userId, isAllow)
+        this.notifyUpdated()
+    }
+
+    /** 主持人批准全部申请 */
+    approveAllUnmute(audio: boolean, isAllow: boolean): void {
+        if (!this.isOwner()) {
+            return
+        }
+        if (audio) {
+            this.applyingUnmuteAudioMembers = []
+        } else {
+            this.applyingUnmuteVideoMembers = []
+        }
+        const type = audio ? ConferenceCommandType.APPROVE_ALL_UNMUTE_AUDIO : ConferenceCommandType.APPROVE_ALL_UNMUTE_VIDEO
+        this._sendCommandMessage(type, '', isAllow)
+        this.notifyUpdated()
+    }
+
+    /**
+     * 主持人要求某个成员开关麦克风/摄像头
+     * @param mute true 关闭，false 打开
+     */
+    requestMemberMute(userId: string, audio: boolean, mute: boolean): void {
+        if (!this.isOwner()) {
+            return
+        }
+        const type = audio ? ConferenceCommandType.REQUEST_MUTE_AUDIO : ConferenceCommandType.REQUEST_MUTE_VIDEO
+        this._sendCommandMessage(type, userId, mute)
+    }
+
+    /**
+     * 主持人关闭所有人的麦克风或摄像头
+     * @param allowMemberUnmute 是否允许成员自主开启
+     */
+    requestMuteAll(audio: boolean, allowMemberUnmute: boolean): void {
+        const info = this.conferenceInfo
+        if (!this.isOwner() || info == null) {
+            return
+        }
+        this.isMuteAll = true
+        info!.audience = true
+        info!.allowSwitchMode = allowMemberUnmute
+        conferenceApi.updateConference(info!)
+            .then((_r: UTSJSONObject | null): void => {
+                const type = audio ? ConferenceCommandType.MUTE_ALL_AUDIO : ConferenceCommandType.MUTE_ALL_VIDEO
+                this._sendCommandMessage(type, '', allowMemberUnmute)
+                this.notifyUpdated()
+            })
+            .catch((err: any | null): void => {
+                console.log('updateConference error', err)
+            })
+    }
+
+    /**
+     * 主持人取消全员静音/关摄像头
+     * @param unmute 是否提示成员打开麦克风或摄像头
+     */
+    requestUnmuteAll(audio: boolean, unmute: boolean): void {
+        const info = this.conferenceInfo
+        if (!this.isOwner() || info == null) {
+            return
+        }
+        this.isMuteAll = false
+        info!.audience = false
+        info!.allowSwitchMode = true
+        conferenceApi.updateConference(info!)
+            .then((_r: UTSJSONObject | null): void => {
+                const type = audio ? ConferenceCommandType.CANCEL_MUTE_ALL_AUDIO : ConferenceCommandType.CANCEL_MUTE_ALL_VIDEO
+                this._sendCommandMessage(type, '', unmute)
+                this.notifyUpdated()
+            })
+            .catch((err: any | null): void => {
+                console.log('updateConference error', err)
+            })
+    }
+
+    handUp(isHandUp: boolean): void {
+        this.isHandUp = isHandUp
+        this._sendCommandMessage(ConferenceCommandType.HANDUP, '', isHandUp)
+        notify(isHandUp ? '已举手，等待管理员处理' : '已放下举手')
+        this.notifyUpdated()
+    }
+
+    putMemberHandDown(memberId: string): void {
+        if (!this.isOwner()) {
+            return
+        }
+        this.handUpMembers = this.handUpMembers.filter((uid: string): boolean => uid != memberId)
+        this._sendCommandMessage(ConferenceCommandType.PUT_HAND_DOWN, memberId, false)
+        this.notifyUpdated()
+    }
+
+    putAllHandDown(): void {
+        if (!this.isOwner()) {
+            return
+        }
+        this.handUpMembers = []
+        this._sendCommandMessage(ConferenceCommandType.PUT_ALL_HAND_DOWN, '', false)
+        this.notifyUpdated()
+    }
+
+    requestRecord(record: boolean): void {
+        const info = this.conferenceInfo
+        if (!this.isOwner() || info == null) {
+            return
+        }
+        conferenceApi.recordConference(info!.conferenceId, record)
+            .then((_r: UTSJSONObject | null): void => {
+                info!.recording = record
+                this.notifyUpdated()
+            })
+            .catch((err: any | null): void => {
+                console.log('recordConference error', err)
+            })
+    }
+
+    /** 主持人锁定焦点用户，userId 传空字符串表示取消 */
+    requestFocus(userId: string): void {
+        const info = this.conferenceInfo
+        if (!this.isOwner() || info == null) {
+            return
+        }
+        conferenceApi.setConferenceFocusUserId(info!.conferenceId, userId)
+            .then((_r: UTSJSONObject | null): void => {
+                info!.focus = userId
+                this.currentFocusUser = userId
+                this.notifyUpdated()
+            })
+            .catch((err: any | null): void => {
+                console.log('setConferenceFocusUserId error', err)
+            })
+    }
+
+    requestCancelFocus(): void {
+        this.requestFocus('')
+    }
+
+    private _sendCommandMessage(commandType: number, targetUser: string, boolValue: boolean): void {
+        const info = this.conferenceInfo
+        if (info == null) {
+            return
+        }
+        const content = new ConferenceCommandMessageContent(info!.conferenceId, commandType, targetUser, boolValue)
+        const conversation = new Conversation(ConversationType.ChatRoom, info!.conferenceId, 0)
+        wfc.sendConversationMessage(conversation, content)
+    }
+
+    // ------------------------------------------------------------------
+    // 历史会议（本地存储，最多 10 条）
+    // ------------------------------------------------------------------
+
+    addHistory(conferenceInfo: ConferenceInfo, durationMS: number): void {
+        let historyList = this.getHistoryConference()
+        conferenceInfo.endTime = Math.ceil(conferenceInfo.startTime + durationMS / 1000)
+        let replaced = false
+        for (let i = 0; i < historyList.length; i++) {
+            if (historyList[i].conferenceId == conferenceInfo.conferenceId) {
+                historyList[i] = conferenceInfo
+                replaced = true
+                break
+            }
+        }
+        if (!replaced) {
+            historyList.push(conferenceInfo)
+            if (historyList.length > 10) {
+                historyList = historyList.slice(historyList.length - 10)
+            }
+        }
+        const arr: UTSJSONObject[] = []
+        for (let i = 0; i < historyList.length; i++) {
+            arr.push(historyList[i].toJsonObject())
+        }
+        setItem(HISTORY_KEY, JSON.stringify(arr)!)
+    }
+
+    getHistoryConference(): ConferenceInfo[] {
+        const list: ConferenceInfo[] = []
+        const str = getItem(HISTORY_KEY)
+        if (str == '') {
+            return list
+        }
+        const arr = JSON.parseArray(str)
+        if (arr == null) {
+            return list
+        }
+        for (let i = 0; i < arr.length; i++) {
+            const item = arr[i]
+            if (item instanceof UTSJSONObject) {
+                const info = ConferenceInfo.fromJsonObject(item as UTSJSONObject)
+                if (info != null) {
+                    list.push(info!)
+                }
+            }
+        }
+        return list
+    }
+}
+
+const conferenceManager = new ConferenceManager();
+export default conferenceManager;

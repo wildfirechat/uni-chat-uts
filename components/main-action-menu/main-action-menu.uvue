@@ -32,6 +32,7 @@ import Config from "../../config.uts";
 import store, { contactState } from "../../store.uts";
 import WfcScheme from "../../wfcScheme.uts";
 import wfc from "../../wfc/client/wfc.uts";
+import avEngineKit from "../../wfc/av/engine/avEngineKit.uts";
 import UserInfo from "../../wfc/model/userInfo.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import { pickUsers, PickUsersOptions } from "../../common/picker.uts";
@@ -135,8 +136,18 @@ const onScanQrCode = (qrcode: string) => {
             } as NavigateToOptions)
             break;
         case WfcScheme.QR_CODE_PREFIX_CONFERENCE:
-            // 会议属于 M7，SDK 侧的会议能力还没接，先如实提示而不是装作能进
-            toast(t('qrcode.conference_not_support'))
+            // 会议只有高级版（会议版）音视频 SDK 才有，多人版上如实提示而不是装作能进
+            if (!avEngineKit.isSupportConference()) {
+                toast(t('qrcode.conference_not_support'))
+                break;
+            }
+            uni.navigateTo({
+                url: '/pages/voip/conference/ConferenceInfoPage?conferenceId=' + parsed.value
+                    + '&password=' + WfcScheme.queryParam(qrcode, 'pwd'),
+                fail: (err) => {
+                    console.log('nav to ConferenceInfoPage err', err);
+                }
+            } as NavigateToOptions)
             break;
         default:
             toast(t1('qrcode.invalid', qrcode))

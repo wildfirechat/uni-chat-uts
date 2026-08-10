@@ -95,6 +95,7 @@ function callSessionToJson(session: WFAVCallSession): string {
         "\"endReason\":" + session.endReason.rawValue + "," +
         "\"conference\":" + (session.conference ? "true" : "false") + "," +
         "\"audience\":" + (session.audience ? "true" : "false") + "," +
+        "\"defaultAudience\":" + (session.defaultAudience ? "true" : "false") + "," +
         "\"advanced\":" + (session.advanced ? "true" : "false") + "," +
         "\"audioMuted\":" + (session.audioMuted ? "true" : "false") + "," +
         "\"videoMuted\":" + (session.videoMuted ? "true" : "false") + "," +
@@ -228,6 +229,13 @@ export function isSupportMultiCall(): boolean {
     return WFAVEngineKit.sharedEngineKit().supportMultiCall
 }
 
+// 和 Android 一样，音视频 SDK 分多人版 / 高级版（会议版）两个包，替换
+// Frameworks/WFAVEngineKit.xcframework 切换。多人版里会议接口是「为兼容会议 UI 保留的空实现」
+// （见 WFAVEngineKit.h 里的注释），supportConference 返回 false，应用层据此隐藏会议入口。
+export function isSupportConference(): boolean {
+    return WFAVEngineKit.sharedEngineKit().supportConference
+}
+
 export function setVideoProfile(profile: number, swapWidthHeight: boolean): void {
     // profile 数值和 Android VideoProfile 常量、iOS WFAVVideoProfile 枚举原始值保持一致（见头文件注释）
     WFAVEngineKit.sharedEngineKit().setVideoProfile(profile as WFAVVideoProfile, swapWidthHeight = swapWidthHeight)
@@ -247,6 +255,44 @@ export function startMultiCall(groupId: string, participants: string[], audioOnl
     const conv = WFCCConversation.groupConversation(groupId)
     const session = WFAVEngineKit.sharedEngineKit().startCall(participants, audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
     return session == null ? null : callSessionToJson(session!)
+}
+
+/** 发起会议（仅会议版 xcframework 有效） */
+export function startConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, record: boolean, callExtra: string): string | null {
+    // maxParticipants 传 0 表示不限制，与 Android 的 startConference（无该入参）行为一致
+    const session = WFAVEngineKit.sharedEngineKit().startConference(callId, audioOnly = audioOnly, pin = pin, host = host, title = title, desc = desc, callExtra = callExtra, audience = audience, advanced = advance, record = record, maxParticipants = 0, sessionDelegate = nativeCallSessionDelegate)
+    if (session == null) {
+        return null
+    }
+    session!.autoSwitchVideoType = false
+    return callSessionToJson(session!)
+}
+
+/** 加入会议（仅会议版 xcframework 有效） */
+export function joinConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, muteAudio: boolean, muteVideo: boolean, callExtra: string): string | null {
+    const session = WFAVEngineKit.sharedEngineKit().joinConference(callId, audioOnly = audioOnly, pin = pin, host = host, title = title, desc = desc, callExtra = callExtra, audience = audience, advanced = advance, muteAudio = muteAudio, muteVideo = muteVideo, sessionDelegate = nativeCallSessionDelegate)
+    if (session == null) {
+        return null
+    }
+    session!.autoSwitchVideoType = false
+    return callSessionToJson(session!)
+}
+
+export function leaveConference(callId: string, destroyRoom: boolean): void {
+    const session = currentSessionOrNull()
+    if (session != null && session!.callId == callId) {
+        session!.leaveConference(destroyRoom)
+    }
+}
+
+export function canSwitchAudience(callId: string): boolean {
+    const session = currentSessionOrNull()
+    return session != null && session!.callId == callId && session!.canSwitchAudience()
+}
+
+export function switchAudience(callId: string, audience: boolean): boolean {
+    const session = currentSessionOrNull()
+    return session != null && session!.callId == callId && session!.switchAudience(audience)
 }
 
 export function currentCallSession(): string | null {
@@ -363,7 +409,7 @@ export function checkOverlayPermission(): boolean {
     return true
 }
 
-export function minimize(callId: string): void {
+export function minimize(callId: string, focusVideoUser: string): void {
     // no-op：iOS 下由调用方（uts 应用层）自行处理返回上一页
 }
 

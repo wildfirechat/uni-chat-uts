@@ -1,0 +1,254 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar title="预定会议" :show-back="true" right-text="预定" :right-text-disabled="!canSubmit"
+            @rightTextTap="orderConference" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="section">
+                <form-card :radius="8">
+                    <form-text-row :value="title" placeholder="会议标题" :maxlength="60" :show-bottom-divider="false"
+                        @input="onTitleInput" />
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <picker mode="multiSelector" :range="timeRange" :value="startTimeIndexes"
+                        @change="onStartTimeChange">
+                        <option-item title="开始时间" :desc="timeDesc(startTime)" />
+                    </picker>
+                    <picker mode="multiSelector" :range="timeRange" :value="endTimeIndexes" @change="onEndTimeChange">
+                        <option-item title="结束时间" :desc="timeDesc(endTime)" :show-bottom-divider="false" />
+                    </picker>
+                </form-card>
+            </view>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <option-switch-item title="参与者开麦克风、摄像头入会" :value="notAudience" @change="onNotAudienceChange" />
+                    <option-switch-item title="允许参与者自主开启" :value="allowTurnOnMic" :disabled="notAudience"
+                        @change="onAllowTurnOnMicChange" />
+                    <option-switch-item title="大规模会议" :value="advance" @change="onAdvanceChange" />
+                    <option-switch-item title="启用密码" :value="enablePassword" :show-bottom-divider="enablePassword"
+                        @change="onEnablePasswordChange" />
+                    <form-text-row v-if="enablePassword" :value="password" placeholder="请输入会议密码" :maxlength="6"
+                        :show-bottom-divider="false" @input="onPasswordInput" />
+                </form-card>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 预定会议，迁移自 OrderConferencePage.vue。
+ * 起止时间用「日期 + 时 + 分」三列 picker（和 CreatePollPage 的截止时间同一套写法），
+ * uni-app x 的 <picker> 只能点击拉起，没法把 date/time 两个弹窗串起来。
+ */
+import NavBar from "@/pages/common/NavBar.uvue";
+import conferenceApi from "@/api/conferenceApi.uts";
+import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { toast } from "@/common/prompt.uts";
+
+defineOptions({
+    name: "OrderConferencePage"
+})
+
+/** 最远可预定一年后 */
+const MAX_DAYS = 365
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const title = ref<string>('')
+// 毫秒时间戳，0 表示未选
+const startTime = ref<number>(0)
+const endTime = ref<number>(0)
+const notAudience = ref<boolean>(true)
+const allowTurnOnMic = ref<boolean>(true)
+const advance = ref<boolean>(false)
+const enablePassword = ref<boolean>(false)
+const password = ref<string>('')
+const submitting = ref<boolean>(false)
+
+function pad2(n: number): string {
+    return n < 10 ? '0' + n : '' + n
+}
+
+/** 三列候选值：日期（今天起 365 天）、时、分 */
+const timeRange = computed<string[][]>((): string[][] => {
+    const days: string[] = []
+    const base = new Date()
+    base.setHours(0, 0, 0, 0)
+    const baseTime = base.getTime()
+    for (let i = 0; i <= MAX_DAYS; i++) {
+        const d = new Date(baseTime + i * 86400000)
+        days.push(d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()))
+    }
+    const hours: string[] = []
+    for (let h = 0; h < 24; h++) {
+        hours.push(pad2(h))
+    }
+    const minutes: string[] = []
+    for (let m = 0; m < 60; m++) {
+        minutes.push(pad2(m))
+    }
+    return [days, hours, minutes]
+})
+
+function indexesOf(ts: number, defaultHour: number): number[] {
+    if (ts <= 0) {
+        return [0, defaultHour, 0]
+    }
+    const d = new Date(ts)
+    const dayStart = new Date(ts)
+    dayStart.setHours(0, 0, 0, 0)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const offset = Math.round((dayStart.getTime() - today.getTime()) / 86400000)
+    return [offset < 0 ? 0 : offset, d.getHours(), d.getMinutes()]
+}
+
+const startTimeIndexes = computed<number[]>((): number[] => indexesOf(startTime.value, 9))
+const endTimeIndexes = computed<number[]>((): number[] => indexesOf(endTime.value, 10))
+
+function pickedToTimestamp(picked: number[]): number {
+    const base = new Date()
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + picked[0])
+    d.setHours(picked[1], picked[2], 0, 0)
+    return d.getTime()
+}
+
+const timeDesc = (ts: number): string => {
+    if (ts <= 0) {
+        return '请选择'
+    }
+    const d = new Date(ts)
+    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+}
+
+const onTitleInput = (v: string) => {
+    title.value = v
+}
+
+const onPasswordInput = (v: string) => {
+    password.value = v
+}
+
+const onStartTimeChange = (e: UniPickerChangeEvent) => {
+    const picked = e.detail.value as number[]
+    if (picked.length < 3) {
+        return
+    }
+    const ts = pickedToTimestamp(picked)
+    if (ts < new Date().getTime()) {
+        toast('开始时间不能早于当前时间')
+        return
+    }
+    startTime.value = ts
+    // 结束时间没设或早于开始时间时，自动顺延一小时
+    if (endTime.value <= ts) {
+        endTime.value = ts + 3600000
+    }
+}
+
+const onEndTimeChange = (e: UniPickerChangeEvent) => {
+    const picked = e.detail.value as number[]
+    if (picked.length < 3) {
+        return
+    }
+    const ts = pickedToTimestamp(picked)
+    if (ts <= startTime.value) {
+        toast('结束时间必须晚于开始时间')
+        return
+    }
+    endTime.value = ts
+}
+
+const onNotAudienceChange = (value: boolean) => {
+    notAudience.value = value
+}
+
+const onAllowTurnOnMicChange = (value: boolean) => {
+    allowTurnOnMic.value = value
+}
+
+const onAdvanceChange = (value: boolean) => {
+    advance.value = value
+    if (value) {
+        notAudience.value = false
+    }
+}
+
+const onEnablePasswordChange = (value: boolean) => {
+    enablePassword.value = value
+    if (!value) {
+        password.value = ''
+    }
+}
+
+const canSubmit = computed<boolean>((): boolean => {
+    if (submitting.value || title.value.trim() == '') {
+        return false
+    }
+    const start = startTime.value
+    const end = endTime.value
+    return start > 0 && end > start && start > new Date().getTime()
+})
+
+const orderConference = () => {
+    if (!canSubmit.value) {
+        return
+    }
+    const info = new ConferenceInfo()
+    info.conferenceTitle = title.value.trim()
+    info.password = enablePassword.value ? password.value.trim() : ''
+    info.pin = '' + Math.ceil((1 + Math.random() * 100000) / 10)
+    info.owner = wfc.getUserId()
+    info.startTime = Math.ceil(startTime.value / 1000)
+    info.endTime = Math.ceil(endTime.value / 1000)
+    info.audience = !notAudience.value
+    info.allowSwitchMode = allowTurnOnMic.value
+    info.advance = advance.value
+
+    submitting.value = true
+    conferenceApi.createConference(info)
+        .then((_conferenceId: string): void => {
+            submitting.value = false
+            toast('预定会议成功')
+            uni.navigateBack({
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+        })
+        .catch((err: any | null): void => {
+            submitting.value = false
+            console.log('createConference error', err)
+            toast('预定会议失败')
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    flex: 1;
+}
+
+.section {
+    padding: 12px 12px 0 12px;
+}
+
+.tail {
+    height: 24px;
+}
+</style>

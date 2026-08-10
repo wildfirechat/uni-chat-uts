@@ -1,0 +1,103 @@
+import MessageContent from "../../messages/messageContent.uts";
+import MessageContentType from "../../messages/messageContentType.uts";
+import MessagePayload from '../../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+
+/**
+ * 会议控制指令，在会议聊天室（ChatRoom 会话，target 为 conferenceId）里收发。
+ * 报文格式对齐 android-chat 的 ConferenceCommandContent：content 放 conferenceId，
+ * binaryContent 是 base64(JSON)，字段 t=commandType、u=targetUserId、b=boolValue
+ * （b 只在为 true 时才写入，和旧实现保持一致，否则老版本客户端解析会出现差异）。
+ */
+export default class ConferenceCommandMessageContent extends MessageContent {
+    conferenceId = '';
+    commandType = 0;
+    targetUserId = '';
+    boolValue = false;
+
+    constructor(conferenceId: string = '', commandType: number = 0, targetUserId: string = '', boolValue: boolean = false) {
+        super(MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND);
+        this.conferenceId = conferenceId;
+        this.commandType = commandType;
+        this.targetUserId = targetUserId;
+        this.boolValue = boolValue;
+    }
+
+    override digest(message: any | null): string {
+        return '[会议指令]'
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.conferenceId;
+        const obj = {
+            t: this.commandType,
+            u: this.targetUserId,
+        } as UTSJSONObject;
+        if (this.boolValue) {
+            obj['b'] = true;
+        }
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.conferenceId = payload.content;
+        if (payload.binaryContent != '') {
+            const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+            if (obj != null) {
+                this.commandType = obj.getNumber('t') ?? 0;
+                this.targetUserId = obj.getString('u') ?? '';
+                this.boolValue = obj.getBoolean('b') ?? false;
+            }
+        }
+    }
+}
+
+/**
+ * 会议指令类型。原实现是 ConferenceCommandMessageContent.ConferenceCommandType 这个内部常量对象，
+ * uts 里没有嵌套 class 静态对象的等价写法，改成同文件导出的独立 class。
+ */
+export class ConferenceCommandType {
+    // 全体静音，只有主持人可以操作，结果写入 conference profile。参数为是否允许成员自主解除静音
+    static MUTE_ALL_AUDIO = 0;
+    // 取消全体静音，只有主持人可以操作。参数为是否邀请成员解除静音
+    static CANCEL_MUTE_ALL_AUDIO = 1;
+    // 要求某个用户更改静音状态，只有主持人可以操作。参数为静音/解除静音
+    static REQUEST_MUTE_AUDIO = 2;
+    // 拒绝解除静音的申请（同意时不需要单独通知）
+    static REJECT_UNMUTE_AUDIO_REQUEST = 3;
+    // 普通用户申请解除静音，参数为发起申请还是取消申请
+    static APPLY_UNMUTE_AUDIO = 4;
+    // 主持人批准解除静音申请，参数为同意还是拒绝
+    static APPROVE_UNMUTE_AUDIO = 5;
+    // 主持人批准全部解除静音申请，参数为同意还是拒绝
+    static APPROVE_ALL_UNMUTE_AUDIO = 6;
+    // 举手，参数为举手还是放下举手
+    static HANDUP = 7;
+    // 主持人放下某个成员的举手
+    static PUT_HAND_DOWN = 8;
+    // 主持人放下全体成员的举手
+    static PUT_ALL_HAND_DOWN = 9;
+    // 录制，参数为开始还是结束录制
+    static RECORDING = 10;
+    // 设置焦点用户
+    static FOCUS = 11;
+    // 取消设置焦点用户
+    static CANCEL_FOCUS = 12;
+    // 关闭全体摄像头，参数为是否允许成员自主打开
+    static MUTE_ALL_VIDEO = 13;
+    // 取消关闭全体摄像头，参数为是否邀请成员打开摄像头
+    static CANCEL_MUTE_ALL_VIDEO = 14;
+    // 要求某个用户开关摄像头，只有主持人可以操作
+    static REQUEST_MUTE_VIDEO = 15;
+    // 拒绝打开摄像头的申请
+    static REJECT_UNMUTE_VIDEO_REQUEST = 16;
+    // 普通用户申请打开摄像头，参数为发起申请还是取消申请
+    static APPLY_UNMUTE_VIDEO = 17;
+    // 主持人批准打开摄像头申请
+    static APPROVE_UNMUTE_VIDEO = 18;
+    // 主持人批准全部打开摄像头申请
+    static APPROVE_ALL_UNMUTE_VIDEO = 19;
+}

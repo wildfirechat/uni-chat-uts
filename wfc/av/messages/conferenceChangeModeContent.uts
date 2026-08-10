@@ -1,0 +1,42 @@
+import MessageContent from "../../messages/messageContent.uts";
+import MessageContentType from "../../messages/messageContentType.uts";
+import MessagePayload from '../../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../../util/base64.uts'
+
+/**
+ * 主持人请求某个成员切换观众/互动者身份。
+ * content 放 callId，binaryContent 为 base64(JSON)，字段 a=audience。
+ */
+export default class ConferenceChangeModeContent extends MessageContent {
+    callId = '';
+    audience = false;
+
+    constructor(callId: string = '', audience: boolean = false) {
+        super(MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE);
+        this.callId = callId;
+        this.audience = audience;
+    }
+
+    override digest(message: any | null): string {
+        return '[会议模式变更]'
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.content = this.callId;
+        const obj = { a: this.audience } as UTSJSONObject;
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.callId = payload.content;
+        if (payload.binaryContent != '') {
+            const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+            if (obj != null) {
+                this.audience = obj.getBoolean('a') ?? false;
+            }
+        }
+    }
+}

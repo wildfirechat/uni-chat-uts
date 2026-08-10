@@ -138,11 +138,14 @@ function callSessionToJson(session: CallSession): string {
         endReason: 0,
         conference: session.conference,
         audience: session.audience,
+        defaultAudience: session.defaultAudience,
         advanced: session.advance,
         audioMuted: session.audioMuted,
         videoMuted: session.videoMuted,
         title: session.title,
         desc: session.desc,
+        pin: session.pin,
+        host: session.host,
         multiCall: session.getParticipantIds().length > 1,
     }
     return JSON.stringify(obj)
@@ -330,7 +333,9 @@ class NativeAVEngineCallback extends AVEngineCallback {
     }
 
     override onJoinConference(session: CallSession): void {
-        // 会议功能未在 uni-app x 侧实现，仅保持后台任务与 Android/iOS 行为一致
+        // 建房/入会成功的回调。会议页面的跳转由应用层在 startConference/joinConference 拿到
+        // 会话后自己做（和 Android/iOS 一致，那两端没有这个回调），这里只负责起长时任务、
+        // AVSession 和屏幕常亮。
         onCallStarted(session)
     }
 
@@ -434,8 +439,15 @@ export function addICEServer(url: string, name: string, password: string): void 
 }
 
 export function isSupportMultiCall(): boolean {
-    // 当前集成的是多人版 avenginekit.har，多人通话可用（高级版同样支持）
+    // 多人版 / 高级版（会议版）avenginekit.har 都支持多人通话
     return true
+}
+
+// 鸿蒙的两个版本 har（libs/avenginekit.har-multi、libs/avenginekit.har-conference）对外 .d.ets
+// 完全一致，会议相关方法在多人版里也存在（startConference 直接 Promise.reject、joinConference 返回
+// null），差别只体现在 isSupportConference() 的返回值上，所以下面的会议接口在两个版本上都能编过。
+export function isSupportConference(): boolean {
+    return avengineKitImpl.isSupportConference()
 }
 
 export function setVideoProfile(profile: number, _swapWidthHeight: boolean): void {
@@ -467,6 +479,76 @@ function startCall(conversation: Conversation, participants: string[], audioOnly
         return null
     }
     return callSessionToJson(session!)
+}
+
+/**
+ * 发起会议（仅会议版 har 有效）。
+ * 引擎的 startConference 返回 Promise，但和 startCall 一样，CallSession 是在 Promise 体里
+ * **同步**建好并挂到 currentSession 上的（建房间的信令才是异步的），所以这里同样用
+ * “调用后立刻取 currentSession” 的写法，把签名和 Android/iOS 的同步返回对齐。
+ * Promise 的失败分支只用来兜底清场 + 打日志，不 catch 会变成 unhandled rejection。
+ */
+export function startConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, record: boolean, callExtra: string): string | null {
+    const existing = currentSessionOrNull()
+    if (existing != null) {
+        console.error(TAG, 'startConference 失败：已有通话进行中', existing!.callId, existing!.status)
+        return null
+    }
+    avengineKitImpl.startConference(callId, audioOnly, pin, host, title, desc, audience, advance, record, '', callExtra)
+        .catch((err: object) => {
+            console.error(TAG, 'startConference failed', err)
+        })
+    const session = currentSessionOrNull()
+    if (session == null) {
+        console.error(TAG, 'startConference 失败：引擎未创建会话，检查是否为会议版 SDK、IM 是否已连接')
+        return null
+    }
+    return callSessionToJson(session!)
+}
+
+/** 加入会议（仅会议版 har 有效） */
+export function joinConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, muteAudio: boolean, muteVideo: boolean, callExtra: string): string | null {
+    const existing = currentSessionOrNull()
+    if (existing != null) {
+        console.error(TAG, 'joinConference 失败：已有通话进行中', existing!.callId, existing!.status)
+        return null
+    }
+    const session = avengineKitImpl.joinConference(callId, audioOnly, pin, host, title, desc, audience, advance, muteAudio, muteVideo, '', callExtra)
+    if (session == null) {
+        console.error(TAG, 'joinConference 失败：引擎未创建会话，检查是否为会议版 SDK、IM 是否已连接')
+        return null
+    }
+    return callSessionToJson(session!)
+}
+
+/**
+ * 离开会议。鸿蒙 CallSession 上没有 leaveConference()，离会就是挂断；
+ * destroyRoom（主持人结束整个会议）在鸿蒙端要靠应用层调 conferenceApi.destroyConference 完成，
+ * 这里只负责把本端的会话断掉，保持三端签名一致。
+ */
+export function leaveConference(callId: string, _destroyRoom: boolean): void {
+    const session = sessionOf(callId)
+    if (session != null && session!.status != CallState.STATUS_IDLE) {
+        session!.hangup()
+    }
+}
+
+/**
+ * 鸿蒙引擎没有 canSwitchAudience()，是否允许切换由会议信息里的 allowSwitchMode 决定，
+ * 那个判断在应用层（conferenceManager）已经做了，这里只要是会议中就放行。
+ */
+export function canSwitchAudience(callId: string): boolean {
+    const session = sessionOf(callId)
+    return session != null && session!.conference
+}
+
+export function switchAudience(callId: string, audience: boolean): boolean {
+    const session = sessionOf(callId)
+    if (session == null || !session!.conference) {
+        return false
+    }
+    session!.switchAudience(audience)
+    return true
 }
 
 export function currentCallSession(): string | null {
@@ -607,7 +689,7 @@ export function checkOverlayPermission(): boolean {
     return true
 }
 
-export function minimize(_callId: string): void {
+export function minimize(_callId: string, _focusVideoUser: string): void {
     // no-op：返回上一页由调用方（应用层 uni.navigateBack）处理，通话在后台继续
 }
 
