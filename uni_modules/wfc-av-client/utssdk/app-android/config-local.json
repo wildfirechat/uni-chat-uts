@@ -1,0 +1,7 @@
+{
+  "minSdkVersion": "21",
+  "dependencies": [
+    "com.github.wildfirechat.android-chat:client:v1.4.1",
+    "com.github.wildfirechat.android-chat:mars-core-release:v1.4.1"
+  ]
+}

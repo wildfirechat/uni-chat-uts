@@ -2,8 +2,12 @@
   "minSdkVersion": "21",
   "dependencies": [
     {
-      "id": "wfc-client-libs-glob-root",
-      "source": "compileOnly fileTree(dir: rootProject.projectDir, include: ['**/wfc-client/**/client-release.aar', '**/wfc-client/**/mars-core-release.aar'])"
+      "id": "wfc-client-compile-only",
+      "source": "compileOnly 'com.github.wildfirechat.android-chat:client:v1.4.1' // 只解决编译期类引用，运行期由 wfc-client 插件自带的本地 aar 提供，写成 implementation 会和它撞 duplicate class；注释里的 implementation 字样是 HBuilderX 原样透传本行所必需的，勿删"
+    },
+    {
+      "id": "wfc-mars-compile-only",
+      "source": "compileOnly 'com.github.wildfirechat.android-chat:mars-core-release:v1.4.1' // 只解决编译期类引用，运行期由 wfc-client 插件自带的本地 aar 提供，写成 implementation 会和它撞 duplicate class；注释里的 implementation 字样是 HBuilderX 原样透传本行所必需的，勿删"
     }
   ]
 }

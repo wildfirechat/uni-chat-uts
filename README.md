@@ -29,22 +29,15 @@
 2. 野火IM 鸿蒙 SDK 是需要付费的，鸿蒙 5.0 上，默认只能连到官方服务，需要申请试用才能连到自行部署的`im-server`
 3. 申请试用，具体请看 [试用](https://docs.wildfirechat.cn/trial/)
 
-## 关于音视频通话功能的重要说明
+## Android 端特别说明
+1. 由于 HBuilderX 的原因，制作自定义调试基座和云打包时，配置和本地运行无法统一，需要根据当前情况进行切换，具体请参考`uni_modules/wfc-av-client/utssdk/app-android/README.md`
 
-1. HarmonyOS 平台上，暂不支持音视频通话，未来将提供 uts 插件方案的音视频通话能力
-2. Android、iOS 平台，支持音视频通话，但是是基于原生语言插件实现的，并且有两种方案
-    1. 对应的插件是[野火实时音视频RTC插件(原生UI)](https://ext.dcloud.net.cn/plugin?id=9364), 使用原生UI，就是把Android平台和iOS平台的音视频SDK和UI代码全都集成到uni-chat项目中。这种方案的问题是引入的无关代码太多，且原生UI无法修改，跟uniapp互通也很不方便，不利于二次开发。
-    2. 对应的插件是[野火实时音视频RTC插件](https://ext.dcloud.net.cn/plugin?id=15619), 是使用原生的音视频SDK，但UI层使用nvue编写，UI和SDK使用uniapp插件的方式沟通。这种方案引入的SDK比较小，且修改方便，有利于大家做自定义相关 UI。
-3. 默认附带免费版本音视频，关于野火音视频可以参考[野火音视频使用说明](https://docs.wildfirechat.cn/webrtc/)和[野火音视频简介](https://docs.wildfirechat.cn/blogs/野火音视频简介.html)。 如果需要使用音视频高级版，请参考[音视频高级版切换方法](./README-AV.MD)。
-
-** 自 2023-11-29 起，已将音视频通话方案切换到方案 2，方案1 相关的代码，保留到`uni-chat`项目的`native-rtc-ui`分支 **
 
 ## 配置
 
 1. [野火IM uts插件](https://ext.dcloud.net.cn/plugin?id=20059) 已包含在项目，一般不用特殊处理
-2. 插件市场搜索[野火实时音视频RTC插件](https://ext.dcloud.net.cn/plugin?id=15619) ，并购买(插件是免费的!)
-3. HBuilderX 原生插件配置，选择云端插件，并选中购买的野火插件
-4. 如果使用野火官方服务，直接编译运行即可。如果使用自己私有部署IM服务，需要在[config.js](./config.js)配置应用服务地址和IM服务地址。修改如下配置：
+2. HBuilderX 原生插件配置，选择云端插件，并选中购买的野火插件
+3. 如果使用野火官方服务，直接编译运行即可。如果使用自己私有部署IM服务，需要在[config.js](./config.js)配置应用服务地址和IM服务地址。修改如下配置：
     ```
     // 下面两个配置都要一起修复，否则登录进去之后，会马上退回登录界面
     //应用服务地址
