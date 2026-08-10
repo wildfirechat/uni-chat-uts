@@ -35,16 +35,23 @@ hm-chat 的 `client` 模块是完整的 IM SDK（156 个 .ets），并且自带�
 搬过来会出现 so 重复打包、以及 `setReceiveMessageListener` 等单例监听器被覆盖的问题。
 
 因此这里只保留纯数据/编解码相关的类（从 hm-chat 原样拷贝），
-而 `wfc.ets` 门面只实现 avenginekit 用到的 5 个方法，底层复用已经打进 App 的
+而 `wfc.ets` 门面只实现 avenginekit 用到的那几个方法，底层复用已经打进 App 的
 `@wfc/marswrapper`（同一个 libmarswrapper.so 实例，和 UTS 侧共用一条连接）：
 
-| avenginekit 调用           | 本适配层实现                                   |
-| -------------------------- | ---------------------------------------------- |
-| `getUserId()`              | `marswrapper.getUserId()`                      |
-| `getServerDeltaTime()`     | `marswrapper.getServerDeltaTime()`             |
-| `getMessageByUid(uid)`     | `marswrapper.getMessageByUid()` + 本地解码     |
-| `updateMessageContent()`   | `marswrapper.updateMessage()`                  |
-| `sendConversationMessage()`| `marswrapper.sendMessage()`                    |
+| avenginekit 调用            | 本适配层实现                                   |
+| --------------------------- | ---------------------------------------------- |
+| `getUserId()`               | `marswrapper.getUserId()`                      |
+| `getServerDeltaTime()`      | `marswrapper.getServerDeltaTime()`             |
+| `getMessageByUid(uid)`      | `marswrapper.getMessageByUid()` + 本地解码     |
+| `updateMessageContent()`    | `marswrapper.updateMessage()`                  |
+| `sendConversationMessage()` | `marswrapper.sendMessage()`                    |
+| `sendConferenceRequestEx()` | `marswrapper.sendConferenceRequest()`          |
+
+> `sendConferenceRequestEx` 是会议版 avenginekit 才用到的（create_room / join_pub / mute /
+> kick / leave / keepalive 等会议信令走这条通道，不是 IM 消息）。
+> native 的参数顺序是 `(sessionId, roomId, request, data, successCB, failCB, advance)`，
+> **advance 在最后**，和 UTS 侧 `wfc.uts#sendConferenceRequestEx` 的签名不一样，
+> 以 `uni_modules/wfc-client/utssdk/app-harmony/index.uts` 为准。
 
 ## 为什么要打成 har，而不是当源码模块用
 
@@ -68,6 +75,11 @@ avenginekit 在 `setup(context, callback)` 时通过
 用本适配层的 `Message.fromProtoMessage` 解码后，emit 到同一个 eventHub 上。
 链路见 `wfc/client/wfc.uts` → `EventType.ReceiveProtoMessages` → `avEngineKit.uts`
 → 插件 `dispatchReceivedMessages()`。
+
+`messageBridge.ets` 里有一张 `VOIP_CONTENT_TYPES` 白名单，只有名单里的类型才会被解码后喂给引擎。
+**升级 avenginekit 后如果它开始处理新的消息类型（比如会议版新增的 410 changeMode、411 kickoff），
+要同时改三处**：白名单、`message.ets` 的 `createMessageContent`、以及对应的 `av/messages/*.ets`；
+少改一处的表现是引擎收到消息但 `messageContent.callId` 是 undefined，静默不生效。
 
 ## 维护提示
 

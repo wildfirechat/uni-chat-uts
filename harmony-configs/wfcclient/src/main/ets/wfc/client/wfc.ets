@@ -95,6 +95,28 @@ export class WfcClientShim {
     }
 
     /**
+     * 会议信令（create_room/join_pub/mute/kick/leave/keepalive…）走独立的 conference request 通道，
+     * 不是 IM 消息。avenginekit 只调 Ex 版本（普通版在它内部自己包了一层，会把 advance 传进来）。
+     * 参数与 UTS 侧 wfc.uts#sendConferenceRequestEx 一一对应。
+     */
+    sendConferenceRequestEx(sessionId: string, roomId: string, request: string, data: string, advance: boolean,
+        callback: ((errorCode: number, resp: string | null) => void) | null = null): void {
+        // 注意 native 的参数顺序是 (sessionId, roomId, request, data, successCB, failCB, advance)，
+        // advance 在最后，和 UTS 侧 wfc.uts 的签名不一样，别照着那边抄
+        // （见 uni_modules/wfc-client/utssdk/app-harmony/index.uts#sendConferenceRequest）
+        console.log('sendConferenceRequestEx', sessionId, roomId, request, data, advance)
+        protoProxy.sendConferenceRequest('' + sessionId, roomId, request, data,
+            (resp: string) => {
+                callback?.(0, resp);
+            },
+            (errorCode: number) => {
+                console.error(TAG, 'send conference request failed', request, errorCode);
+                callback?.(errorCode, null);
+            },
+            advance);
+    }
+
+    /**
      * 只被 AddParticipants/MuteVideo 这类通知消息的 formatNotification 用到，
      * 而 avenginekit 从不调用 formatNotification（通知文案由 UTS 侧的消息类负责），
      * 这里返回 userId 兜底即可。

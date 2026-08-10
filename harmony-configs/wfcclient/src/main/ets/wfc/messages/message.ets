@@ -18,6 +18,8 @@ import CallModifyMessageContent from '../av/messages/callModifyMessageContent';
 import AddParticipantsMessageContent from '../av/messages/addParticipantsMessageContent';
 import MuteVideoMessageContent from '../av/messages/muteVideoMessageContent';
 import JoinCallRequestMessageContent from '../av/messages/joinCallRequestMessageContent';
+import ConferenceChangeModeContent from '../av/messages/conferenceChangeModeContent';
+import ConferenceKickoffMemberMessageContent from '../av/messages/conferenceKickoffMemberMessageContent';
 
 const TAG = 'wfc-client-shim';
 
@@ -46,6 +48,10 @@ function createMessageContent(type: number): MessageContent {
             return new MuteVideoMessageContent();
         case MessageContentType.VOIP_Join_Call_Request:
             return new JoinCallRequestMessageContent();
+        case MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE:
+            return new ConferenceChangeModeContent();
+        case MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER:
+            return new ConferenceKickoffMemberMessageContent();
         default:
             return new MessageContent(type);
     }

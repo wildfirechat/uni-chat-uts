@@ -18,7 +18,10 @@ const VOIP_CONTENT_TYPES: number[] = [
     MessageContentType.VOIP_CONTENT_TYPE_MODIFY,
     MessageContentType.VOIP_CONTENT_TYPE_ADD_PARTICIPANT,
     MessageContentType.VOIP_CONTENT_TYPE_MUTE_VIDEO,
-    MessageContentType.VOIP_Join_Call_Request
+    MessageContentType.VOIP_Join_Call_Request,
+    // 会议：主持人请求切换观众/互动者、把成员移出会议
+    MessageContentType.CONFERENCE_CONTENT_TYPE_CHANGE_MODE,
+    MessageContentType.CONFERENCE_CONTENT_TYPE_KICKOFF_MEMBER
 ];
 
 /**
