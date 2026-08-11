@@ -116,8 +116,17 @@ function toConversation(type: number, target: string, line: number): Conversatio
     return conv
 }
 
-function conversationToJson(conv: Conversation): JSONObject {
+// 参数必须声明成可空：会议（joinConference/startConference）创建的 CallSession 没有 conversation，
+// Java 侧 getConversation() 返回 null，声明成非空时 Kotlin 会插入 checkNotNullExpressionValue，
+// 抛 "getConversation(...) must not be null"。空会话时给一个占位值，与鸿蒙实现保持一致。
+function conversationToJson(conv: Conversation | null): JSONObject {
     const obj = new JSONObject()
+    if (conv == null) {
+        obj.put("type", ConversationType.Single.ordinal)
+        obj.put("target", "")
+        obj.put("line", 0)
+        return obj
+    }
     obj.put("type", conv.type.ordinal)
     obj.put("target", conv.target)
     obj.put("line", conv.line)

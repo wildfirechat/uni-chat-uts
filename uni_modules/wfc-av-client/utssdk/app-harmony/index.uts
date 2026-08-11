@@ -59,6 +59,10 @@ let initialized = false
 let iceServerReplaced = false
 let abilityContext: common.UIAbilityContext | null = null
 let avSession: AVSessionManager.AVSession | null = null
+// 当前通话的会话，用来在通话结束时算时长（那时引擎已经把 currentSession 置空了）
+let activeSession: CallSession | null = null
+// 最近一次挂断原因，由 CallSessionCallback.didCallEndWithReason 记录，见 didCallEnded 的注释
+let lastCallEndReason = 0
 
 // <native-view> 元素 -> 绑定在它上面的视频渲染信息。
 // 轨道可能在视图创建之后才产生（本地流是异步开的，远端流要等对方连上），
@@ -164,12 +168,32 @@ function participantProfileToJson(p: ParticipantProfile): UTSJSONObject {
     }
 }
 
+/**
+ * args 只能放基本类型和纯数据，SDK 回调传进来的对象（CallSession / VideoTrack 等）一律不能直接放进来：
+ * 它们内部有循环引用，JSON.stringify 会抛 "stack contains value, usually caused by circular structure"。
+ * 这里兜一层 try/catch，是为了万一某个回调的实参和 .d.ets 签名对不上（SDK 里确实有，见
+ * NativeAVEngineCallback.didCallEnded 的注释），异常不要顺着回调抛回引擎里把后续逻辑打断。
+ */
+function fireEvent(listener: NativeEventListener | null, event: string, args: Array<any>): void {
+    if (listener == null) {
+        return
+    }
+    let argsJson: string
+    try {
+        argsJson = JSON.stringify(args)
+    } catch (e) {
+        console.error(TAG, '事件参数序列化失败，请检查实参类型', event, e)
+        return
+    }
+    listener!(event, argsJson)
+}
+
 function fireAVEngineEvent(event: string, args: Array<any>): void {
-    avEngineEventListener?.(event, JSON.stringify(args))
+    fireEvent(avEngineEventListener, event, args)
 }
 
 function fireCallSessionEvent(event: string, args: Array<any>): void {
-    callSessionEventListener?.(event, JSON.stringify(args))
+    fireEvent(callSessionEventListener, event, args)
 }
 
 // ------------------------------------------------------------------
@@ -287,6 +311,9 @@ function setKeepScreenOn(on: boolean): void {
 }
 
 function onCallStarted(session: CallSession): void {
+    activeSession = session
+    // 0 = CallEndReason.REASON_Unknown，避免万一没收到 didCallEndWithReason 时用上一通电话的原因
+    lastCallEndReason = 0
     const type: AVSessionManager.AVSessionType = session.audioOnly ? 'voice_call' : 'video_call'
     AVSessionManager.createAVSession(context(), 'voip', type).then((s: AVSessionManager.AVSession) => {
         avSession = s
@@ -299,6 +326,7 @@ function onCallStarted(session: CallSession): void {
 }
 
 function onCallStopped(): void {
+    activeSession = null
     if (avSession != null) {
         avSession!.deactivate()
         avSession!.destroy()
@@ -306,6 +334,21 @@ function onCallStopped(): void {
     }
     stopContinuousTask()
     setKeepScreenOn(false)
+}
+
+/**
+ * 通话时长（秒），语义对齐 Android/iOS 的 didCallEnded(reason, duration)：没接通就挂断的记 0。
+ * 鸿蒙 CallSession 的 connectedTime 是接通那一刻才赋值的（此前是 undefined），
+ * 所以这里用「算出来不大于 0 就当 0」的写法兜住 NaN。
+ */
+function callDuration(): number {
+    if (activeSession == null) {
+        return 0
+    }
+    const session = activeSession!
+    const end = session.endTime > 0 ? session.endTime : Date.now()
+    const seconds = Math.floor((end - session.connectedTime) / 1000)
+    return seconds > 0 ? seconds : 0
 }
 
 // ------------------------------------------------------------------
@@ -347,7 +390,16 @@ class NativeAVEngineCallback extends AVEngineCallback {
         fireAVEngineEvent('shouldStopRing', [])
     }
 
-    override didCallEnded(reason: number, duration: number = 0): void {
+    // 形参一个都不能用：鸿蒙 SDK 的实参和它自己的 .d.ets 签名（reason: CallEndReason, duration?: number）
+    // 对不上，引擎里写的是 `callback.didCallEnded(this)`，传进来的是 CallSession 对象而不是挂断原因
+    // （duration 也就永远是默认值）。CallSession 内部持有 PeerConnection、定时器等循环引用，
+    // 塞给 JSON.stringify 会抛 "stack contains value, usually caused by circular structure"，
+    // 一抛应用层就收不到 didCallEnded，铃声停不了、通话页也退不回去。
+    // 所以原因取挂断前一步 didCallEndWithReason 记下的 lastCallEndReason，时长自己按会话时间算。
+    override didCallEnded(_reason: number, _duration: number = 0): void {
+        const reason = lastCallEndReason
+        // 要在 onCallStopped() 清掉 activeSession 之前算
+        const duration = callDuration()
         clearVideoViews()
         onCallStopped()
         fireAVEngineEvent('didCallEnded', [reason, duration])
@@ -357,6 +409,8 @@ class NativeAVEngineCallback extends AVEngineCallback {
 function createCallSessionCallback(): CallSessionCallback {
     const cb = new CallSessionCallback()
     cb.didCallEndWithReason = (reason: number) => {
+        // 引擎紧接着就会调 AVEngineCallback.didCallEnded，但那里拿不到原因，只能在这里记下来
+        lastCallEndReason = reason
         fireCallSessionEvent('didCallEndWithReason', [reason])
     }
     cb.didChangeState = (state: number) => {
