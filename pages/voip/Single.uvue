@@ -37,44 +37,46 @@
 
         <!--incoming-->
         <view v-if="callState == 2" class="action-container">
-            <view class="action">
-                <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
+            <view class="action" @tap="hangup">
+                <image class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
             </view>
-            <view class="action">
-                <image @tap="answer" class="action-img" src="/static/image/av/av_video_answer.png" />
+            <view class="action" @tap="answer">
+                <image class="action-img" src="/static/image/av/av_video_answer.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">接听</text>
             </view>
         </view>
 
         <!--outgoing / connecting-->
         <view v-if="callState == 1 || callState == 3" class="action-container">
-            <view class="action">
-                <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
+            <view class="action" @tap="hangup">
+                <image class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
             </view>
         </view>
 
         <!--connected-->
         <view v-if="callState == 4" class="action-container">
-            <view class="action">
-                <image v-if="!audioMuted" @tap="mute" class="action-img" src="/static/image/av/av_mute.png" />
-                <image v-else @tap="mute" class="action-img" src="/static/image/av/av_mute_hover.png" />
+            <view class="action" @tap="mute">
+                <image v-if="!audioMuted" class="action-img" src="/static/image/av/av_mute.png" />
+                <image v-else class="action-img" src="/static/image/av/av_mute_hover.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">静音</text>
             </view>
-            <view v-if="!audioOnly" class="action">
-                <image @tap="switchCamera" class="action-img" src="/static/image/av/av_camera.png" />
+            <view v-if="!audioOnly" class="action" @tap="switchCamera">
+                <image class="action-img" src="/static/image/av/av_camera.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">切换摄像头</text>
             </view>
-            <view class="action">
-                <image @tap="hangup" class="action-img" src="/static/image/av/av_hang_up.png" />
+            <view class="action" @tap="hangup">
+                <image class="action-img" src="/static/image/av/av_hang_up.png" />
                 <text class="action-desc" :style="{ fontSize: fontPx(12) }">挂断</text>
             </view>
         </view>
 
         <view class="voip-title-container">
             <text class="duration-text" :style="{ fontSize: fontPx(15) }" v-if="callState == 4">{{ duration }}</text>
-            <image @tap="minimize" class="minimize-img" src="/static/image/av/av_minimize.png" />
+            <view class="title-action" @tap="minimize">
+                <image class="minimize-img" src="/static/image/av/av_minimize.png" />
+            </view>
         </view>
     </view>
 </template>
@@ -336,11 +338,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 顶部标题栏、底部操作栏都用 padding 给它们留出真实空间，不要让 content-container 铺满整页、
+ * 再把两个栏绝对定位盖在上面：Android 上视频用的 native-view 是真正的原生 View（内部是 SurfaceView），
+ * 画在页面画布之上，会把压在它下面的按钮挡住（音频通话没有 native-view，则是 content-container
+ * 把点击吞掉，按钮看得见点不动）。鸿蒙渲染层级不同所以看不出问题。与 ConferencePage 的做法保持一致。
+ * 绝对定位的子节点按 border box 定位（不受父节点 padding 影响），所以两个栏正好落在留白里。 */
 .voip-page {
     flex: 1;
     display: flex;
     flex-direction: column;
     position: relative;
+    padding-top: 132rpx;
+    padding-bottom: 140px;
     background-color: #292929;
 }
 
@@ -422,18 +431,22 @@ onBeforeUnmount(() => {
 
 .action-container {
     width: 750rpx;
+    height: 140px;
     position: absolute;
-    bottom: 40px;
+    bottom: 0;
     left: 0;
+    z-index: 1;
     display: flex;
     flex-direction: row;
     justify-content: space-around;
+    align-items: center;
 }
 
 .action {
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding: 10px 0;
 }
 
 .action-img {
@@ -451,6 +464,7 @@ onBeforeUnmount(() => {
     left: 0;
     top: 0;
     width: 750rpx;
+    z-index: 2;
     display: flex;
     flex-direction: row;
     justify-content: center;
@@ -463,9 +477,16 @@ onBeforeUnmount(() => {
     color: #ffffff;
 }
 
-.minimize-img {
+.title-action {
     position: absolute;
-    right: 40rpx;
+    right: 24rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+}
+
+.minimize-img {
     width: 30px;
     height: 30px;
 }
