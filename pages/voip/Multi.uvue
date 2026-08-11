@@ -9,7 +9,7 @@
                         :src="selfUserInfo.portrait" />
                     <text class="desc" :style="{ fontSize: fontPx(13) }">我</text>
                 </view>
-                <native-view v-else class="video localVideo"
+                <native-view v-else class="video"
                     :class="manyParticipants ? 'participant-small' : 'participant-large'"
                     @init="onLocalVideoViewInit"></native-view>
             </view>
@@ -118,8 +118,9 @@ const startTimestamp = ref<number>(0)
 const currentTimestamp = ref<number>(0)
 const timer = ref<number>(0)
 const broadcastTimer = ref<number>(0)
-const localVideoElement = ref<UniNativeViewElement | null>(null as UniNativeViewElement | null)
-const remoteVideoElements = ref<Map<string, UniNativeViewElement>>(new Map<string, UniNativeViewElement>())
+// 本端已经收到过谁的视频流。SDK 里远端 participant 的 videoMuted 初值是 true、只靠对端的静音信令更新，
+// 收到视频轨才是「对方摄像头开着」最可靠的信号，单独记一份，syncParticipants 时用它纠正。
+const videoTrackUsers = ref<Set<string>>(new Set<string>())
 
 const selfUserInfo = computed<UserInfo>((): UserInfo => {
     return getUserInfo(wfc.getUserId(), false)
@@ -138,32 +139,6 @@ const duration = computed<string>((): string => {
     const secStr = sec < 10 ? ('0' + sec) : ('' + sec)
     return minStr + ':' + secStr
 })
-
-const setupVideoViews = () => {
-    if (audioOnly.value || session.value == null) {
-        return
-    }
-    nextTick((): void => {
-        const callSession = session.value
-        if (callSession == null) {
-            return
-        }
-        if (!selfVideoMuted.value) {
-            const element = localVideoElement.value
-            if (element != null) {
-                avEngineKit.setLocalVideoView(callSession.callId, element)
-            }
-        }
-        participants.value.forEach((p: ParticipantProfile): void => {
-            if (!p.videoMuted && p.state == CallState.STATUS_CONNECTED) {
-                const element = remoteVideoElements.value.get(p.userId)
-                if (element != null) {
-                    avEngineKit.setRemoteVideoView(callSession.callId, p.userId, element)
-                }
-            }
-        })
-    })
-}
 
 const broadcastMultiCallOngoing = () => {
     const callSession = session.value
@@ -194,11 +169,35 @@ const onVoipConnected = () => {
             currentTimestamp.value = new Date().getTime()
         }, 1000)
     }
-    setupVideoViews()
+    // 视频画面不在这里挂：connected 后模板会渲染出 native-view，挂载统一在 @init 里做
 }
 
 const userInfoOf = (userId: string): UserInfo => {
     return getUserInfo(userId, false)
+}
+
+/**
+ * 参与者列表一律从 SDK 重新拉全量，不在本地做增删改。两个原因：
+ *
+ * 1. ParticipantProfile 是普通 UTS class，改它的字段**不会**触发重渲染（uni-app x 只对
+ *    UTSJSONObject/Array/Map/Set 做响应式包装，见 store.uts 开头），必须整体换数组引用。
+ *    迁移前的 Multi.nvue 直接改字段能生效，是因为 web 运行时对普通对象也是响应式的。
+ * 2. 只靠 didParticipantJoined 往本地列表塞人很脆：漏一次（邀请新成员、重进页面、
+ *    事件早于回调注册）那个人就永远不出现。每个事件重拉一遍就能自愈。
+ */
+const syncParticipants = () => {
+    const callSession = session.value
+    if (callSession == null) {
+        return
+    }
+    const profiles = avEngineKit.getParticipantProfiles(callSession.callId)
+    profiles.forEach((p: ParticipantProfile): void => {
+        if (videoTrackUsers.value.has(p.userId)) {
+            p.state = CallState.STATUS_CONNECTED
+            p.videoMuted = false
+        }
+    })
+    participants.value = profiles
 }
 
 const switchVideoType = (userId: string) => {
@@ -278,27 +277,46 @@ const invite = () => {
         for (let i = 0; i < users.length; i++) {
             ids.push(users[i].uid)
         }
+        if (ids.length == 0) {
+            return
+        }
+        // 引擎要等邀请消息发送成功才会建 PeerConnectionClient 并回调 didParticipantJoined，
+        // 新成员的格子由那个回调驱动，这里不用自己往列表里加
         avEngineKit.inviteNewParticipant(callSession.callId, ids)
     }
     pickUsers(options)
 }
 
-// native-view 创建后（v-if/v-else 首次满足或重新满足时）触发；视图尚未创建时 setupVideoViews
-// 里对应的 element 为 null 会跳过，等 @init 触发后再补挂载，不再需要轮询重试
+// ⚠️ native-view 的挂载必须在 @init 里**同步**完成。Android 运行时的
+// UniNativeViewComponent.initComponentView 是「同步派发 init 事件 → 立刻把 bindAndroidView
+// 绑进来的 View 当组件宿主 View 返回」，回调里没同步绑，组件就按 null 宿主 View 建好了，
+// 之后再绑也没用：画面永远不显示，元素过桥还会报
+// “Parameter specified as non-null is null: ... parameter element”。
+// setLocal/RemoteVideoView 内部做的正是 bindAndroidView，所以只能用 e.detail.element 直接同步调，
+// 不能套 nextTick/setTimeout，也不能把 element 存起来后面复用（格子在头像/视频间切换时元素会被销毁）。
+//
+// 视频轨晚于视图到达不用管：引擎收到视频轨时会检查容器是否已登记，已登记就自己挂渲染器，反之亦然。
 const onLocalVideoViewInit = (e: UniNativeViewInitEvent) => {
-    localVideoElement.value = e.detail.element
-    setupVideoViews()
+    const callSession = session.value
+    if (callSession == null) {
+        return
+    }
+    avEngineKit.setLocalVideoView(callSession.callId, e.detail.element)
 }
 
 const onRemoteVideoViewInit = (e: UniNativeViewInitEvent, userId: string) => {
-    remoteVideoElements.value.set(userId, e.detail.element)
-    setupVideoViews()
+    const callSession = session.value
+    if (callSession == null) {
+        return
+    }
+    avEngineKit.setRemoteVideoView(callSession.callId, userId, e.detail.element)
 }
 
 const setupSessionCallback = () => {
     const callback = new CallSessionCallback()
     callback.didChangeState = (state: number): void => {
         callState.value = state
+        syncParticipants()
         if (state == CallState.STATUS_CONNECTED) {
             onVoipConnected()
             if (Config.ENABLE_MULTI_CALL_AUTO_JOIN && initiatorId.value == wfc.getUserId() && broadcastTimer.value == 0) {
@@ -316,30 +334,23 @@ const setupSessionCallback = () => {
     callback.didChangeMode = (isAudioOnly: boolean): void => {
         audioOnly.value = isAudioOnly
     }
-    callback.didParticipantJoined = (userId: string, screenSharing: boolean): void => {
-        const callSession = session.value
-        if (callSession == null) {
-            return
-        }
-        participants.value = participants.value.filter((p: ParticipantProfile): boolean => p.userId != userId)
-        const profile = avEngineKit.getParticipantProfile(callSession.callId, userId, screenSharing)
-        if (profile != null) {
-            participants.value.push(profile)
-        }
+    callback.didParticipantJoined = (_userId: string, _screenSharing: boolean): void => {
+        syncParticipants()
+    }
+    callback.didParticipantConnected = (_userId: string, _screenSharing: boolean): void => {
+        syncParticipants()
     }
     callback.didParticipantLeft = (userId: string, _reason: number, _screenSharing: boolean): void => {
-        participants.value = participants.value.filter((p: ParticipantProfile): boolean => p.userId != userId)
-        remoteVideoElements.value.delete(userId)
+        videoTrackUsers.value.delete(userId)
+        syncParticipants()
     }
     callback.didReceiveRemoteVideoTrack = (userId: string, _screenSharing: boolean): void => {
-        participants.value.forEach((p: ParticipantProfile): void => {
-            if (p.userId == userId) {
-                p.state = CallState.STATUS_CONNECTED
-            }
-        })
-        if (callState.value == CallState.STATUS_CONNECTED) {
-            setupVideoViews()
-        }
+        videoTrackUsers.value.add(userId)
+        syncParticipants()
+    }
+    callback.didRemoveRemoteVideoTrack = (userId: string): void => {
+        videoTrackUsers.value.delete(userId)
+        syncParticipants()
     }
     callback.didCallEndWithReason = (_reason: number): void => {
         session.value = null
@@ -347,14 +358,13 @@ const setupSessionCallback = () => {
     callback.didVideoMuted = (userId: string, muted: boolean): void => {
         if (userId == wfc.getUserId()) {
             selfVideoMuted.value = muted
-        } else {
-            participants.value.forEach((p: ParticipantProfile): void => {
-                if (p.userId == userId) {
-                    p.videoMuted = muted
-                }
-            })
+            return
         }
-        setupVideoViews()
+        // 对方关摄像头后原来那条视频轨就不作数了；重新打开时等 didReceiveRemoteVideoTrack 再点亮
+        if (muted) {
+            videoTrackUsers.value.delete(userId)
+        }
+        syncParticipants()
     }
     callback.didChangeInitiator = (initiator: string): void => {
         initiatorId.value = initiator
@@ -422,8 +432,7 @@ onMounted(() => {
 
     setupSessionCallback()
 
-    const profiles = avEngineKit.getParticipantProfiles(curSession.callId)
-    participants.value = profiles
+    syncParticipants()
 
     if (callState.value == CallState.STATUS_CONNECTED) {
         onVoipConnected()
@@ -514,9 +523,9 @@ onBeforeUnmount(() => {
     display: flex;
 }
 
-.localVideo {
-    transform: scaleX(-1);
-}
+/* 本地预览不要加 transform: scaleX(-1) 做镜像（迁移前 Multi.nvue 是这么写的）：引擎自己已经对
+ * 本地渲染器调过 setMirror（切前后摄像头还会跟着翻），再翻一次是把镜像抵消掉；而且这个 transform
+ * 会落到 SurfaceViewRenderer 的父 View 上，SurfaceView 不跟随负向缩放。Single 页面也没有。 */
 
 .duration-text {
     color: #ffffff;

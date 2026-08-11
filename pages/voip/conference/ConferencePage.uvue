@@ -117,7 +117,6 @@ const timer = ref<number>(0)
 const currentGridPageIndex = ref<number>(0)
 // conferenceManager 是普通单例，它内部状态变了要靠这个计数触发页面重算
 const managerRevision = ref<number>(0)
-const videoElements = ref<Map<string, UniNativeViewElement>>(new Map<string, UniNativeViewElement>())
 
 const conferenceInfo = computed<ConferenceInfo>((): ConferenceInfo => {
     // 读一下 managerRevision，保证 conferenceManager 更新后这里跟着重算
@@ -273,36 +272,19 @@ const tileName = (p: ConferenceParticipant): string => {
 // 视频画面
 // ------------------------------------------------------------------
 
-const setupVideoViews = () => {
-    const s = session.value
-    if (s == null || !videoMode.value) {
+// ⚠️ native-view 的挂载必须在 @init 里**同步**完成，理由同 pages/voip/Multi.uvue 里的长注释：
+// 运行时是「同步派发 init 事件 → 立刻把 bindAndroidView 绑进来的 View 当组件宿主 View 返回」，
+// 套一层 nextTick/setTimeout 就等于没绑，画面永远不显示；element 也不能存起来后面复用。
+const onVideoViewInit = (e: UniNativeViewInitEvent, p: ConferenceParticipant) => {
+    const callSession = session.value
+    if (callSession == null) {
         return
     }
-    nextTick((): void => {
-        const callSession = session.value
-        if (callSession == null) {
-            return
-        }
-        currentPageParticipants.value.forEach((p: ConferenceParticipant): void => {
-            if (!p.hasVideo) {
-                return
-            }
-            const element = videoElements.value.get(p.key)
-            if (element == null) {
-                return
-            }
-            if (p.self && !p.screenSharing) {
-                avEngineKit.setLocalVideoView(callSession.callId, element!)
-            } else {
-                avEngineKit.setRemoteVideoView(callSession.callId, p.userId, element!, p.screenSharing)
-            }
-        })
-    })
-}
-
-const onVideoViewInit = (e: UniNativeViewInitEvent, p: ConferenceParticipant) => {
-    videoElements.value.set(p.key, e.detail.element)
-    setupVideoViews()
+    if (p.self && !p.screenSharing) {
+        avEngineKit.setLocalVideoView(callSession!.callId, e.detail.element)
+    } else {
+        avEngineKit.setRemoteVideoView(callSession!.callId, p.userId, e.detail.element, p.screenSharing)
+    }
 }
 
 const onTileTap = (p: ConferenceParticipant) => {
@@ -323,7 +305,6 @@ const reloadParticipants = () => {
         return
     }
     participants.value = loadConferenceParticipants(s!.callId, s!.host)
-    setupVideoViews()
 }
 
 const refreshSelfSessionState = () => {
@@ -567,14 +548,12 @@ const setupSessionCallback = () => {
         })
         next.push(participantOfProfile(profile!, s!.host, wfc.getUserId()))
         participants.value = next
-        setupVideoViews()
     }
 
     callback.didParticipantLeft = (userId: string, _reason: number, screenSharing: boolean): void => {
         participants.value = participants.value.filter((p: ConferenceParticipant): boolean => {
             return !(p.userId == userId && p.screenSharing == screenSharing)
         })
-        videoElements.value.delete(userId + (screenSharing ? '-ss' : ''))
     }
 
     callback.didReceiveRemoteVideoTrack = (userId: string, screenSharing: boolean): void => {
@@ -584,11 +563,8 @@ const setupSessionCallback = () => {
                 p.state = CallState.STATUS_CONNECTED
             }
         })
-        setupVideoViews()
-    }
-
-    callback.didCreateLocalVideoTrack = (): void => {
-        setupVideoViews()
+        // ConferenceParticipant 是普通 class，改字段不触发重算，整体换一个数组引用
+        participants.value = participants.value.slice(0)
     }
 
     callback.didVideoMuted = (userId: string, muted: boolean): void => {
@@ -602,7 +578,6 @@ const setupSessionCallback = () => {
         }
         // videoMuted 变了要重新决定哪些格子挂视频
         participants.value = participants.value.slice(0)
-        setupVideoViews()
     }
 
     callback.didChangeType = (userId: string, audience: boolean, screenSharing: boolean): void => {
@@ -632,7 +607,6 @@ const setupSessionCallback = () => {
         if (userId == wfc.getUserId()) {
             refreshSelfSessionState()
         }
-        setupVideoViews()
     }
 
     callback.didMuteStateChanged = (userIds: string[]): void => {
@@ -657,7 +631,6 @@ const setupSessionCallback = () => {
             }
         }
         participants.value = participants.value.slice(0)
-        setupVideoViews()
     }
 
     callback.didReportAudioVolume = (userId: string, volume: number): void => {
