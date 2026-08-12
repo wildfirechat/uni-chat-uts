@@ -83,6 +83,9 @@ import ConversationType from 'cn.wildfirechat.model.Conversation.ConversationTyp
 import JSONObject from 'org.json.JSONObject'
 import JSONArray from 'org.json.JSONArray'
 import FrameLayout from 'android.widget.FrameLayout'
+import FrameLayoutParams from 'android.widget.FrameLayout.LayoutParams'
+import MeasureSpec from 'android.view.View.MeasureSpec'
+import Context from 'android.content.Context'
 import ScalingType from 'org.webrtc.RendererCommon.ScalingType'
 import StatsReport from 'org.webrtc.StatsReport'
 import Settings from 'android.provider.Settings'
@@ -98,14 +101,108 @@ let initialized = false
 // SurfaceViewRenderer，重复对同一元素 setup 时必须复用同一个容器（bindAndroidView 只能绑一次）
 const videoContainers = new Map<UniNativeViewElement, FrameLayout>()
 
+// 每个远端画面（userId + 是否屏幕共享）最近一次绑定的容器，供 ensureRemoteVideoAttached 在
+// didReceiveRemoteVideoTrack 回调里重新取到。
+const remoteVideoContainers = new Map<string, FrameLayout>()
+
+// 传 null 表示「解绑」，用来清掉 SDK 记住的容器。声明成变量而不是字面量 null，是为了让 Kotlin 侧
+// 明确推导出 ViewGroup? 而不是在重载里挑不出签名。
+const noVideoContainer: FrameLayout | null = null
+
+/**
+ * 视频容器。之所以不能直接用裸的 FrameLayout：<native-view> 通过 bindAndroidView 绑上来的宿主 View
+ * 不参与常规布局流程，容器自己首次 layout 之后再 addView，addView 内部触发的 requestLayout() 会被丢掉，
+ * 子 View 永远停在 0×0——SurfaceViewRenderer 挂上去了但量不出尺寸，画面就是不显示。
+ *
+ * 实测（adb logcat -s PCRTCClient）：本地预览的渲染器在容器首次布局**之前**挂上，跟着容器一起量出
+ * 413×550，正常；远端要等 janus 订阅回来（晚约 1.4 秒），挂进已经布局完的 1080×1825 容器后，450ms 后
+ * 仍是 0,0-0,0。多人版是 P2P，视频轨来得早、赶在首次布局前后，所以看着没事——这不是两版 SDK 的接口
+ * 差异，是 native-view 宿主不重排。
+ *
+ * 解法是 View 自愈：requestLayout() 被丢掉就自己补一次 measure + layout（和 React Native 给它的宿主
+ * View 打的补丁是同一套）。这样除了「晚挂的渲染器」，远端旋转屏幕导致 SurfaceViewRenderer 自己
+ * requestLayout() 的场景也一并覆盖。
+ */
+class VideoContainer extends FrameLayout {
+    private relayout: Runnable | null = null
+
+    constructor(context: Context) {
+        super(context)
+        const self = this
+        this.relayout = new MainThreadRunnable((): void => {
+            const w = self.getWidth()
+            const h = self.getHeight()
+            if (w <= 0 || h <= 0) {
+                return
+            }
+            self.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
+            self.layout(self.getLeft(), self.getTop(), self.getRight(), self.getBottom())
+        })
+    }
+
+    override requestLayout(): void {
+        super.requestLayout()
+        // 父类构造过程中也会走到这里，此时 relayout 还没赋值
+        const task = this.relayout
+        if (task != null) {
+            this.removeCallbacks(task)
+            this.post(task)
+        }
+    }
+}
+
 function videoContainerOf(element: UniNativeViewElement): FrameLayout {
     let container = videoContainers.get(element)
     if (container == null) {
-        container = new FrameLayout(element.getAndroidActivity()!)
-        element.bindAndroidView(container)
-        videoContainers.set(element, container)
+        container = new VideoContainer(element.getAndroidActivity()!)
+        element.bindAndroidView(container!)
+        videoContainers.set(element, container!)
     }
-    return container
+    return container!
+}
+
+function remoteVideoKey(userId: string, screenSharing: boolean): string {
+    return screenSharing ? (userId + "-ss") : userId
+}
+
+// 高级版在 setupRemoteVideoView 这条路径上给渲染器用的是 WRAP_CONTENT（视频轨先到那条路径用的是
+// MATCH_PARENT，多人版两条路径都是 MATCH_PARENT）。这里统一改回 MATCH_PARENT，与多人版行为对齐，
+// 免得 SCALE_ASPECT_FILL 被 wrap_content 按宽高比缩成一块小的。
+function stretchRenderersToContainer(container: FrameLayout): void {
+    for (let i = 0; i < container.getChildCount(); i++) {
+        container.getChildAt(i.toInt()).setLayoutParams(new FrameLayoutParams(-1, -1))
+    }
+}
+
+/**
+ * 视频轨到达时兜一次底。绝大多数情况下 SDK 自己已经把渲染器挂进容器了（容器交给它的时候登记了 fintr），
+ * 这里只需要把 LayoutParams normalize 一下——真正的显示问题由 VideoContainer 的自愈布局解决。
+ *
+ * 只有容器里一个子 View 都没有，才说明挂载真的漏了（视频轨到达时 fintr 还是空）。这时才重挂，而且必须
+ * 先传 null 解绑：高级版的 setupRemoteVideoView 里有 `if (client.fintr == containerView) return`，
+ * 同一个容器再传一次会被直接短路掉。解绑那次照样要传 scalingType，多人版的解绑会把记下的 scalingType
+ * 一起写成 null，之后 setScalingType(null) 会在 SurfaceViewRenderer 里 NPE。
+ *
+ * 不无条件重挂：解绑会 release 掉渲染器再重建，实测（见 VideoContainer 注释里的 logcat）会在 600ms 内
+ * 空转四轮 create/release。
+ */
+function ensureRemoteVideoAttached(userId: string, screenSharing: boolean): void {
+    const container = remoteVideoContainers.get(remoteVideoKey(userId, screenSharing))
+    if (container == null) {
+        return
+    }
+    // 回调在 SDK 线程池上，addView / measure / layout 都必须切主线程
+    runOnMainThread((): void => {
+        if (container.getChildCount() == 0) {
+            const session = currentSessionOrNull()
+            if (session == null) {
+                return
+            }
+            session.setupRemoteVideoView(userId, screenSharing, noVideoContainer, ScalingType.SCALE_ASPECT_FILL)
+            session.setupRemoteVideoView(userId, screenSharing, container, ScalingType.SCALE_ASPECT_FILL)
+        }
+        stretchRenderersToContainer(container)
+    })
 }
 
 function toConversation(type: number, target: string, line: number): Conversation {
@@ -235,6 +332,7 @@ class NativeAVEngineCallback implements AVEngineCallback {
 
     override didCallEnded(reason: CallEndReason, duration: Int): void {
         videoContainers.clear()
+        remoteVideoContainers.clear()
         fireAVEngineEvent("didCallEnded", [reason.ordinal, duration])
     }
 }
@@ -257,6 +355,7 @@ class NativeCallSessionCallback implements CallSessionCallback {
     }
 
     override didParticipantLeft(userId: string, reason: CallEndReason, screenSharing: boolean): void {
+        remoteVideoContainers.delete(remoteVideoKey(userId, screenSharing))
         fireCallSessionEvent("didParticipantLeft", [userId, reason.ordinal, screenSharing])
     }
 
@@ -273,10 +372,12 @@ class NativeCallSessionCallback implements CallSessionCallback {
     }
 
     override didReceiveRemoteVideoTrack(userId: string, screenSharing: boolean): void {
+        ensureRemoteVideoAttached(userId, screenSharing)
         fireCallSessionEvent("didReceiveRemoteVideoTrack", [userId, screenSharing])
     }
 
     override didRemoveRemoteVideoTrack(userId: string): void {
+        remoteVideoContainers.delete(remoteVideoKey(userId, false))
         fireCallSessionEvent("didRemoveRemoteVideoTrack", [userId])
     }
 
@@ -289,6 +390,10 @@ class NativeCallSessionCallback implements CallSessionCallback {
     }
 
     override didVideoMuted(userId: string, muted: boolean): void {
+        // 对方重新打开摄像头时 SDK 会用自己记住的容器重挂，同样需要兜一次布局
+        if (!muted) {
+            ensureRemoteVideoAttached(userId, false)
+        }
         fireCallSessionEvent("didVideoMuted", [userId, muted])
     }
 
@@ -330,7 +435,18 @@ export function initAVEngineKit(): void {
         return
     }
     initialized = true
-    AVEngineKit.DISABLE_SURFACE_VIEW_AUTO_OVERLAY = true
+    // 必须保持 false（默认值），这里显式写出来是防止有人再改回 true。
+    //
+    // 它只有高级版 aar 会读（多人版声明了但从不读），置 true 会把引擎的 SurfaceView z 序编排整段关掉。
+    // 而两个 SurfaceView 默认都在 APPLICATION_MEDIA_SUBLAYER(-2)，同层之间后创建的盖住先创建的：
+    // 本地渲染器在通话接通时就建好，远端要等视频轨（高级版走 janus，晚 1~2 秒）才建，于是远端满屏画面
+    // 一出现就把本地小窗盖掉——现象就是「先看到自己，再看到对方，然后自己没了」。
+    //
+    // 打开后引擎按容器大小编排：最大的那个 setZOrderOnTop(false)+setZOrderMediaOverlay(false) → -2，
+    // 其余 setZOrderOnTop(true)+setZOrderMediaOverlay(true) → 注意 MediaOverlay 写在后面，会把 subLayer
+    // 从 +1 覆盖回 -1。所以最终是「大画面 -2、小窗 -1，两个都仍在 window 之下」，视频不会盖住页面按钮。
+    // 这与多人版 aar 里恒定执行的那段编排完全一致。
+    AVEngineKit.DISABLE_SURFACE_VIEW_AUTO_OVERLAY = false
     AVEngineKit.init(UTSAndroid.getAppContext()!, nativeAVEngineCallback)
 }
 
@@ -575,7 +691,10 @@ export function setRemoteVideoView(callId: string, userId: string, screenSharing
     if (session == null || session.getCallId() != callId) {
         return
     }
-    session.setupRemoteVideoView(userId, screenSharing, videoContainerOf(element), ScalingType.SCALE_ASPECT_FILL)
+    const container = videoContainerOf(element)
+    remoteVideoContainers.set(remoteVideoKey(userId, screenSharing), container)
+    session.setupRemoteVideoView(userId, screenSharing, container, ScalingType.SCALE_ASPECT_FILL)
+    stretchRenderersToContainer(container)
 }
 
 export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {
