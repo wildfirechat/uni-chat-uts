@@ -1,0 +1,308 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="pageTitle" :show-back="true" :right-text="t('moment.publish')"
+            :right-text-disabled="!canPublish" @rightTextTap="publish" />
+
+        <scroll-view class="scroll" direction="vertical">
+            <view class="editor" :style="{ backgroundColor: c.surface }">
+                <textarea class="input" v-model="text" :placeholder="t('moment.publish_placeholder')"
+                    :placeholder-style="'color:' + c.textTertiary" :maxlength="1000" auto-height
+                    :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }" />
+
+                <view v-if="medias.length > 0 || medias.length < MAX_MEDIA_COUNT" class="media-grid">
+                    <view v-for="(path, index) in medias" :key="index" class="media-cell"
+                        :style="{ width: cellSize + 'px', height: cellSize + 'px', marginRight: cellMarginRight(index) + 'px' }">
+                        <image class="media-image" :src="path" mode="aspectFill"
+                            :style="{ backgroundColor: c.inputBg }" />
+                        <view class="media-remove" @tap="removeMedia(index)">
+                            <text class="icomoon remove-icon" :style="{ fontSize: iconPx(14) }">&#xf12a;</text>
+                        </view>
+                    </view>
+                    <view v-if="medias.length < MAX_MEDIA_COUNT" class="media-cell media-add"
+                        :style="{ width: cellSize + 'px', height: cellSize + 'px', backgroundColor: c.sectionGap }"
+                        @tap="addMedia">
+                        <text class="icomoon add-icon"
+                            :style="{ color: c.textTertiary, fontSize: iconPx(36) }">&#xf2c7;</text>
+                    </view>
+                </view>
+            </view>
+
+            <section-divider />
+
+            <form-card>
+                <option-item :title="t('moment.mention_who')" :desc="mentionDesc" @tap="pickMentionUsers" />
+                <option-item :title="t('moment.who_can_see')" :desc="scopeDesc" :show-bottom-divider="false"
+                    @tap="openVisibleScope" />
+            </form-card>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 发布朋友圈。对齐 flutter `moment/lib/src/publish_feed_page.dart`。
+ *
+ * 已选的图从信息流页带过来（见 [publishState.uts](./publishState.uts)），本页还能继续加/删。
+ *
+ * ## 与 flutter 的三处刻意差异
+ *
+ * 1. **不区分图片/视频混选**：uni 的 `chooseImage` 只出图片，视频要另走 `chooseVideo`；
+ *    这里跟 flutter 的 file_picker 一样按扩展名判定类型，选图入口只有相册/相机。
+ * 2. **上传进度用 showLoading 的标题**，不是页面中央那个自绘遮罩 —— 少一层浮层。
+ * 3. **删除单张图直接点右上角 ×**，没有 flutter 那条「长按弹确认框」的重复路径。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import momentClient from '@/wfc/moment/momentClient.uts'
+import { FeedEntry, WFMContentType } from '@/wfc/moment/momentModel.uts'
+import UserInfo from '@/wfc/model/userInfo.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, iconPx, FONT_LG } from '@/common/layoutScale.uts'
+import { toast } from '@/common/prompt.uts'
+import { toLocalFilePath } from '@/common/filePath.uts'
+import { pickUsers, PickUsersOptions } from '@/common/picker.uts'
+import { isVideoPath, uploadMomentImage, uploadMomentVideo, SCOPE_PUBLIC, SCOPE_PRIVATE, SCOPE_INCLUDE, SCOPE_EXCLUDE, loadDefaultScope } from '@/pages/moment/momentUi.uts'
+import { markPublished, takePublishMedias } from '@/pages/moment/publishState.uts'
+import { currentVisibleScope, setVisibleScope, takeVisibleScopeResult } from '@/pages/moment/visibleScopeState.uts'
+import { t, t1 } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'PublishFeedPage'
+})
+
+const MAX_MEDIA_COUNT = 9
+const GRID_SPACING = 4
+const PAGE_INSET = 12 * 2
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const text = ref<string>('')
+const medias = ref<string[]>([] as string[])
+const mentionUsers = ref<string[]>([] as string[])
+const scopeMode = ref<number>(SCOPE_PUBLIC)
+const scopeUsers = ref<string[]>([] as string[])
+const publishing = ref<boolean>(false)
+
+const pageTitle = computed<string>((): string => medias.value.length == 0 ? t('moment.publish_text') : t('moment.publish'))
+
+const canPublish = computed<boolean>((): boolean => {
+    return !publishing.value && (text.value.trim() != '' || medias.value.length > 0)
+})
+
+const cellSize = computed<number>((): number => {
+    return Math.floor((uni.getWindowInfo().windowWidth - PAGE_INSET - GRID_SPACING * 2) / 3)
+})
+
+const cellMarginRight = (index: number): number => (index + 1) % 3 == 0 ? 0 : GRID_SPACING
+
+const mentionDesc = computed<string>((): string => {
+    const count = mentionUsers.value.length
+    return count == 0 ? '' : t1('moment.n_persons', '' + count)
+})
+
+const scopeDesc = computed<string>((): string => {
+    const count = scopeUsers.value.length
+    if (scopeMode.value == SCOPE_PRIVATE) {
+        return t('moment.scope_private')
+    }
+    if (scopeMode.value == SCOPE_INCLUDE) {
+        return count == 0 ? t('moment.scope_include') : (t('moment.scope_include') + '(' + count + ')')
+    }
+    if (scopeMode.value == SCOPE_EXCLUDE) {
+        return count == 0 ? t('moment.scope_exclude') : (t('moment.scope_exclude') + '(' + count + ')')
+    }
+    return t('moment.scope_public')
+})
+
+onLoad((_options: OnLoadOptions) => {
+    medias.value = takePublishMedias()
+    // 初始可见范围取「我的 → 隐私 → 朋友圈权限」里存的默认值
+    const scope = loadDefaultScope()
+    scopeMode.value = scope.mode
+    scopeUsers.value = scope.users
+})
+
+// 从可见范围页返回时取结果
+onShow(() => {
+    const result = takeVisibleScopeResult()
+    if (result != null) {
+        scopeMode.value = result!.mode
+        scopeUsers.value = result!.users
+    }
+})
+
+const addMedia = () => {
+    const remain = MAX_MEDIA_COUNT - medias.value.length
+    if (remain <= 0) {
+        return
+    }
+    uni.chooseImage({
+        count: remain,
+        sourceType: ['album', 'camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            const list = medias.value.slice(0)
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                list.push(toLocalFilePath(e.tempFilePaths[i]))
+            }
+            medias.value = list
+        },
+        fail: (err) => {
+            console.log('moment add media fail', err)
+        }
+    } as ChooseImageOptions)
+}
+
+const removeMedia = (index: number) => {
+    const list = medias.value.slice(0)
+    list.splice(index, 1)
+    medias.value = list
+}
+
+const pickMentionUsers = () => {
+    const options = new PickUsersOptions()
+    options.title = t('moment.mention_who')
+    options.successCB = (users: UserInfo[]): void => {
+        const ids: string[] = []
+        for (let i = 0; i < users.length; i++) {
+            ids.push(users[i].uid)
+        }
+        mentionUsers.value = ids
+    }
+    pickUsers(options)
+}
+
+const openVisibleScope = () => {
+    setVisibleScope(scopeMode.value, scopeUsers.value)
+    uni.navigateTo({
+        url: '/pages/moment/VisibleScopePage',
+        fail: (err) => {
+            console.log('nav to visible scope fail', err)
+        }
+    } as NavigateToOptions)
+}
+
+// ---------------------------------------------------------------- 发布
+
+const publish = () => {
+    if (!canPublish.value) {
+        return
+    }
+    publishing.value = true
+    const paths = medias.value
+    if (paths.length == 0) {
+        postFeed([] as FeedEntry[])
+        return
+    }
+    uni.showLoading({ title: t1('moment.uploading_progress', '1/' + paths.length) } as ShowLoadingOptions)
+    uploadNext(paths, 0, [] as FeedEntry[])
+}
+
+// 逐个上传（不能写成箭头常量自递归，见 §M4「android 编译的五条硬规则」第 5 条）
+function uploadNext(paths: string[], index: number, entries: FeedEntry[]): void {
+    if (index >= paths.length) {
+        uni.hideLoading()
+        postFeed(entries)
+        return
+    }
+    uni.showLoading({ title: t1('moment.uploading_progress', '' + (index + 1) + '/' + paths.length) } as ShowLoadingOptions)
+    const path = paths[index]
+    const onDone = (entry: FeedEntry): void => {
+        entries.push(entry)
+        uploadNext(paths, index + 1, entries)
+    }
+    const onFail = (errorCode: number): void => {
+        uni.hideLoading()
+        publishing.value = false
+        toast(t1('moment.upload_failed', '' + errorCode))
+    }
+    if (isVideoPath(path)) {
+        uploadMomentVideo(path, onDone, onFail)
+    } else {
+        uploadMomentImage(path, onDone, onFail)
+    }
+}
+
+function postFeed(entries: FeedEntry[]): void {
+    let type = WFMContentType.Text
+    if (entries.length == 1 && isVideoPath(medias.value[0])) {
+        type = WFMContentType.Video
+    } else if (entries.length > 0) {
+        type = WFMContentType.Image
+    }
+    const toUsers = scopeMode.value == SCOPE_INCLUDE ? scopeUsers.value : ([] as string[])
+    const excludeUsers = scopeMode.value == SCOPE_EXCLUDE ? scopeUsers.value : ([] as string[])
+
+    momentClient.postFeed(type, text.value.trim(), entries, toUsers, excludeUsers, mentionUsers.value, '', (_) => {
+        publishing.value = false
+        markPublished()
+        uni.navigateBack()
+    }, (errorCode: number) => {
+        publishing.value = false
+        toast(t1('moment.publish_failed', '' + errorCode))
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+
+.editor {
+    padding: 12px;
+}
+
+.input {
+    width: 100%;
+    min-height: 100px;
+}
+
+.media-grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.media-cell {
+    position: relative;
+    margin-bottom: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.media-image {
+    width: 100%;
+    height: 100%;
+}
+
+.media-remove {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    background-color: #00000088;
+    align-items: center;
+    justify-content: center;
+}
+
+.remove-icon {
+    color: #FFFFFF;
+}
+
+.media-add {
+    align-items: center;
+    justify-content: center;
+}
+</style>

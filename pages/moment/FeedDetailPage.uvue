@@ -1,0 +1,205 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('moment.detail')" :show-back="true" />
+
+        <scroll-view class="scroll" direction="vertical">
+            <moment-feed-item v-if="feed != null" :feed="feed" :self-user-id="selfUserId" @tapUser="onTapUser"
+                @tapMedia="onTapMedia" @toggleLike="onToggleLike" @comment="onComment"
+                @deleteComment="onDeleteComment" @deleteFeed="onDeleteFeed" />
+
+            <view v-else class="empty">
+                <text class="empty-text"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ emptyText }}</text>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 单条朋友圈详情页。对齐 flutter `moment/lib/src/feed_detail_page.dart`。
+ * 从朋友圈消息列表点进来，或者被@提醒的消息点进来。
+ *
+ * 与信息流页共用 [moment-feed-item](../../components/moment-feed-item/moment-feed-item.uvue)，
+ * 差别只是这里每次操作后重拉整条（只有一条，没有滚动位置的顾虑）。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import wfc from '@/wfc/client/wfc.uts'
+import momentClient from '@/wfc/moment/momentClient.uts'
+import { Comment, Feed, FeedEntry, WFMCommentType } from '@/wfc/moment/momentModel.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, FONT_LG } from '@/common/layoutScale.uts'
+import { showConfirmDialog, toast } from '@/common/prompt.uts'
+import { entryDisplayUrl } from '@/pages/moment/momentUi.uts'
+import { t, t1 } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'FeedDetailPage'
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const feedId = ref<number>(0)
+const feed = ref<Feed | null>(null)
+const failed = ref<boolean>(false)
+const selfUserId = wfc.getUserId()
+
+const emptyText = computed<string>((): string => failed.value ? t('moment.feed_not_exist') : t('common.loading'))
+
+const load = () => {
+    momentClient.getFeed(feedId.value, (result: Feed) => {
+        feed.value = result
+        failed.value = false
+    }, (_: number) => {
+        failed.value = true
+    })
+}
+
+onLoad((options: OnLoadOptions) => {
+    const id = options['feedId']
+    if (id != null) {
+        feedId.value = parseInt('' + id)
+    }
+    load()
+})
+
+const currentFeed = (): Feed | null => feed.value
+
+const onTapUser = (uid: string) => {
+    if (uid == '') {
+        return
+    }
+    uni.navigateTo({
+        url: '/pages/moment/MomentFeedListPage?userId=' + uid,
+        fail: (err) => {
+            console.log('nav to moment page fail', err)
+        }
+    } as NavigateToOptions)
+}
+
+const onTapMedia = (index: number) => {
+    const f = currentFeed()
+    if (f == null) {
+        return
+    }
+    const medias = (f as Feed).medias
+    if (medias.length == 0) {
+        return
+    }
+    const urls: string[] = []
+    for (let i = 0; i < medias.length; i++) {
+        urls.push(medias[i].mediaUrl != '' ? medias[i].mediaUrl : entryDisplayUrl(medias[i]))
+    }
+    uni.previewImage({
+        urls: urls,
+        current: index
+    } as PreviewImageOptions)
+}
+
+const onToggleLike = (liked: boolean) => {
+    const f = currentFeed()
+    if (f == null) {
+        return
+    }
+    const target = f as Feed
+    if (liked) {
+        const thumbups = target.thumbups()
+        for (let i = 0; i < thumbups.length; i++) {
+            if (thumbups[i].sender == selfUserId) {
+                momentClient.deleteComment(thumbups[i].commentId, target.feedId, () => {
+                    load()
+                }, (errorCode: number) => {
+                    toast(t1('moment.operate_failed', '' + errorCode))
+                })
+                return
+            }
+        }
+    } else {
+        momentClient.postComment(WFMCommentType.Thumbup, target.feedId, 0, '', '', '', (_: Comment) => {
+            load()
+        }, (errorCode: number) => {
+            toast(t1('moment.operate_failed', '' + errorCode))
+        })
+    }
+}
+
+const onComment = (replyTo: Comment | null) => {
+    const f = currentFeed()
+    if (f == null) {
+        return
+    }
+    const target = f as Feed
+    const title = replyTo == null ? t('moment.comment') : (t('moment.reply') + ' ' + wfc.getUserDisplayName((replyTo as Comment).sender))
+    uni.showModal({
+        title: title,
+        editable: true,
+        placeholderText: t('moment.comment_placeholder'),
+        success: (res) => {
+            if (!res.confirm) {
+                return
+            }
+            const text = (res.content ?? '').trim()
+            if (text == '') {
+                return
+            }
+            const replyCommentId = replyTo == null ? 0 : (replyTo as Comment).commentId
+            const replyToUser = replyTo == null ? '' : (replyTo as Comment).sender
+            momentClient.postComment(WFMCommentType.Comment, target.feedId, replyCommentId, text, replyToUser, '', (_: Comment) => {
+                load()
+            }, (errorCode: number) => {
+                toast(t1('moment.comment_failed', '' + errorCode))
+            })
+        }
+    } as ShowModalOptions)
+}
+
+const onDeleteComment = (comment: Comment) => {
+    const f = currentFeed()
+    if (f == null) {
+        return
+    }
+    momentClient.deleteComment(comment.commentId, (f as Feed).feedId, () => {
+        load()
+    }, (errorCode: number) => {
+        toast(t1('moment.delete_failed', '' + errorCode))
+    })
+}
+
+const onDeleteFeed = () => {
+    const f = currentFeed()
+    if (f == null) {
+        return
+    }
+    showConfirmDialog(t('common.delete'), t('moment.confirm_delete_feed'), true, () => {
+        momentClient.deleteFeed((f as Feed).feedId, () => {
+            uni.navigateBack()
+        }, (errorCode: number) => {
+            toast(t1('moment.delete_failed', '' + errorCode))
+        })
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+
+.empty {
+    padding: 60px 0;
+    align-items: center;
+}
+
+.empty-text {
+    text-align: center;
+}
+</style>

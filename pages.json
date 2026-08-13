@@ -143,6 +143,63 @@
             }
         },
         {
+            // 首页封面要顶到状态栏之下，标题栏自绘叠在封面上
+            "path": "pages/moment/MomentFeedListPage",
+            "style": {
+                "navigationBarTitleText": "朋友圈",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/moment/PublishFeedPage",
+            "style": {
+                "navigationBarTitleText": "发表",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/moment/FeedDetailPage",
+            "style": {
+                "navigationBarTitleText": "详情",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/moment/MomentMessagesPage",
+            "style": {
+                "navigationBarTitleText": "消息",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/moment/VisibleScopePage",
+            "style": {
+                "navigationBarTitleText": "谁可以看",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/me/MomentPrivacySettingsPage",
+            "style": {
+                "navigationBarTitleText": "朋友圈",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            "path": "pages/me/MomentBlockListPage",
+            "style": {
+                "navigationBarTitleText": "名单",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
             "path": "pages/poll/PollHomePage",
             "style": {
                 "navigationBarTitleText": "群投票"

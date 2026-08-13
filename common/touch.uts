@@ -6,6 +6,8 @@
  *    均为 `changedTouches[0]` 优先）。
  * 2) Harmony(ArkUI DOM 模式) 触摸坐标是物理像素，而 getSystemInfoSync()
  *    的 windowWidth/windowHeight 是逻辑像素(vp)，需恒除以 pixelRatio。
+ * 3) 但 **tap/click 的坐标本来就是 vp，不要折算**，见 [getPointerPoint]。
+ *    touch 用 [getTouchPoint]、tap 用 [getPointerPoint]，两者不通用。
  */
 export class TouchPoint {
     x: number
@@ -37,6 +39,25 @@ function pixelRatio(): number {
         _pixelRatio = uni.getSystemInfoSync().pixelRatio
     }
     return _pixelRatio
+}
+
+/**
+ * tap/click 事件的触点。
+ *
+ * `@tap` 给的是 **UniPointerEvent**（clientX/clientY/pageX/pageY），没有
+ * touches/changedTouches，不能丢给 [getTouchPoint]（会崩在 `.length` 上）。
+ *
+ * ⚠️ **和 [getTouchPoint] 不一样，这里三端都不折算，clientX/clientY 直接就是逻辑像素。**
+ * 别看鸿蒙运行时里 click 和 touch 都走 `helper/pointer.ets` 的同一个 `getPointer()`
+ * （`dom/UniPointerEvent.ets` / `dom/UniTouchEvent/init.ets`）就以为单位一致 ——
+ * 喂进去的 ArkUI 原始值单位本来就不同：`ClickEvent.windowX` 是 vp，
+ * `TouchObject.windowX` 是物理像素，运行时没有归一。
+ *
+ * 实测（388×837 vp、pixelRatio 3.25 的鸿蒙机）：点右边缘的按钮，clientX 就是 365 左右，
+ * 再除一次 pixelRatio 会变成 110，菜单整体被压到屏幕左上角。
+ */
+export function getPointerPoint(e: UniPointerEvent): TouchPoint {
+    return new TouchPoint(e.clientX, e.clientY)
 }
 
 export function getTouchPoint(e: UniTouchEvent): TouchPoint | null {

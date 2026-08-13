@@ -28,6 +28,11 @@
                 </view>
             </template>
 
+            <section-divider v-if="supportMoments" />
+            <view v-if="supportMoments" :style="{ backgroundColor: c.surface }">
+                <option-item :title="t('moment.entry')" :showBottomDivider="false" @tap="openMoments" />
+            </view>
+
             <section-divider />
             <view :style="{ backgroundColor: c.surface }">
                 <option-item v-if="isSelf" :title="t('user.modify_nickname')" :showBottomDivider="false"
@@ -64,7 +69,7 @@
  *
  * - **更多信息**：flutter 有这一行，但点了只是 `showToast(methodNotImpl)` —— 它自己也没实现。
  *   按 §M2「宁可不放入口，也不放一个点了弹『暂未实现』的行」，这里不放。
- * - **朋友圈入口**：flutter 那行由 `Config.ENABLE_MOMENTS` 控制，依赖 M6，等朋友圈落地再补。
+ * 朋友圈入口（M6）已补，同样由 `Config.ENABLE_MOMENTS` 控制。
  *
  * ## 与 flutter 的刻意差异
  *
@@ -110,6 +115,21 @@ const user = ref<UserInfo | null>(contactState.currentFriend as UserInfo | null)
 const isStarred = ref<boolean>(false)
 const isBlacklisted = ref<boolean>(false)
 const organizations = ref<Organization[]>([] as Organization[])
+
+const supportMoments = Config.ENABLE_MOMENTS
+
+const openMoments = () => {
+    const u = user.value
+    if (u == null) {
+        return
+    }
+    uni.navigateTo({
+        url: '/pages/moment/MomentFeedListPage?userId=' + (u as UserInfo).uid,
+        fail: (err) => {
+            console.log('nav to moment page fail', err)
+        }
+    } as NavigateToOptions)
+}
 
 const showCallSheet = ref<boolean>(false)
 const showMoreMenu = ref<boolean>(false)

@@ -1,0 +1,233 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('moment.messages')" :show-back="true" />
+
+        <scroll-view class="scroll" direction="vertical" @scrolltolower="onScrollToLower">
+            <view v-if="items.length == 0" class="empty">
+                <text class="empty-text"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ emptyText }}</text>
+            </view>
+
+            <view v-for="(item, index) in items" :key="index" class="row" :style="{ backgroundColor: c.surface }"
+                :hover-class="pressedClass" hover-stay-time="80" @tap="openDetail(item)">
+                <image class="avatar" :src="item.portrait" :style="{ backgroundColor: c.inputBg }" />
+
+                <view class="texts">
+                    <text class="sender" :style="{ color: c.link, fontSize: fontPx(FONT_BASE) }">{{ item.senderName }}</text>
+                    <text class="content"
+                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ item.content }}</text>
+                    <text class="time" :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ item.time }}</text>
+                </view>
+
+                <image v-if="item.thumbUrl != ''" class="preview-image" :src="item.thumbUrl"
+                    mode="aspectFill" :style="{ backgroundColor: c.inputBg }" />
+                <view v-else class="preview-text" :style="{ backgroundColor: c.sectionGap }">
+                    <text class="preview-text-content"
+                        :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XXS) }">{{ item.feedPreview }}</text>
+                </view>
+
+                <view class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 朋友圈消息列表（收到的评论 / 点赞 / @提醒）。
+ * 对齐 flutter `moment/lib/src/feed_messages_page.dart`。
+ *
+ * 消息来自 line=1 的单聊会话（类型 501 / 502），首屏拉完就清未读、记一次最后阅读时间。
+ *
+ * 右侧那个 56×56 的小方块是被评论的那条朋友圈的缩略：有图就显示图，
+ * 没图就显示正文前几个字 —— 数据都在消息体里冗余带着，不用回查 feed。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import momentClient from '@/wfc/moment/momentClient.uts'
+import Message from '@/wfc/messages/message.uts'
+import MomentCommentMessageContent from '@/wfc/moment/momentCommentMessageContent.uts'
+import MomentFeedMessageContent from '@/wfc/moment/momentFeedMessageContent.uts'
+import { FeedEntry } from '@/wfc/moment/momentModel.uts'
+import { colors, AppColors, pressedRowClass } from '@/common/theme.uts'
+import { fontPx, FONT_LG, FONT_BASE, FONT_XS, FONT_XXS } from '@/common/layoutScale.uts'
+import { entryDisplayUrl, formatMomentMessageTime, momentDisplayName, momentPortrait } from '@/pages/moment/momentUi.uts'
+import { t } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'MomentMessagesPage'
+})
+
+/** 一行的展示数据。直接把 Message 丢给模板的话，class 字段在 android 上取不到（见 §M4 第 1 条） */
+class MomentMessageItem {
+    messageId = 0
+    feedId = 0
+    senderName = ''
+    portrait = ''
+    content = ''
+    time = ''
+    feedPreview = ''
+    thumbUrl = ''
+}
+
+const PAGE_SIZE = 100
+
+const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
+
+const items = ref<MomentMessageItem[]>([] as MomentMessageItem[])
+const loading = ref<boolean>(false)
+const hasMore = ref<boolean>(false)
+
+const emptyText = computed<string>((): string => loading.value ? t('common.loading') : t('moment.no_messages'))
+
+function firstThumb(medias: FeedEntry[]): string {
+    return medias.length > 0 ? entryDisplayUrl(medias[0]) : ''
+}
+
+function toItem(message: Message): MomentMessageItem | null {
+    const item = new MomentMessageItem()
+    item.messageId = message.messageId
+    item.time = formatMomentMessageTime(message.timestamp)
+
+    const content = message.messageContent
+    if (content instanceof MomentCommentMessageContent) {
+        const comment = content as MomentCommentMessageContent
+        item.feedId = comment.feedId
+        item.senderName = momentDisplayName(comment.sender)
+        item.portrait = momentPortrait(comment.sender)
+        item.content = comment.isThumbup() ? t('moment.liked_your_feed') : comment.text
+        item.feedPreview = comment.feedText
+        item.thumbUrl = firstThumb(comment.feedMedias)
+        return item
+    }
+    if (content instanceof MomentFeedMessageContent) {
+        const feed = content as MomentFeedMessageContent
+        item.feedId = feed.feedId
+        item.senderName = momentDisplayName(feed.sender)
+        item.portrait = momentPortrait(feed.sender)
+        item.content = t('moment.mentioned_you')
+        item.feedPreview = feed.text
+        item.thumbUrl = firstThumb(feed.medias)
+        return item
+    }
+    return null
+}
+
+const load = (refresh: boolean) => {
+    if (loading.value) {
+        return
+    }
+    loading.value = true
+    const current = items.value
+    const fromIndex = (refresh || current.length == 0) ? 0 : current[current.length - 1].messageId
+    momentClient.getMessages(fromIndex, false, (messages: Message[]) => {
+        loading.value = false
+        hasMore.value = messages.length >= PAGE_SIZE
+        const list: MomentMessageItem[] = refresh ? ([] as MomentMessageItem[]) : items.value.slice(0)
+        for (let i = 0; i < messages.length; i++) {
+            const item = toItem(messages[i])
+            if (item != null) {
+                list.push(item!)
+            }
+        }
+        items.value = list
+        if (refresh) {
+            // 进过这一页就算读过了
+            momentClient.clearUnreadStatus()
+            momentClient.updateLastReadTimestamp()
+        }
+    }, (_: number) => {
+        loading.value = false
+    })
+}
+
+onLoad((_options: OnLoadOptions) => {
+    load(true)
+})
+
+const onScrollToLower = () => {
+    if (hasMore.value && !loading.value) {
+        load(false)
+    }
+}
+
+const openDetail = (item: MomentMessageItem) => {
+    if (item.feedId <= 0) {
+        return
+    }
+    uni.navigateTo({
+        url: '/pages/moment/FeedDetailPage?feedId=' + item.feedId,
+        fail: (err) => {
+            console.log('nav to feed detail fail', err)
+        }
+    } as NavigateToOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+
+.row {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 10px 12px;
+}
+
+.avatar {
+    width: 46px;
+    height: 46px;
+    border-radius: 4px;
+}
+
+.texts {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    margin: 0 8px 0 10px;
+}
+
+.content {
+    margin-top: 3px;
+}
+
+.time {
+    margin-top: 3px;
+}
+
+.preview-image {
+    width: 56px;
+    height: 56px;
+}
+
+.preview-text {
+    width: 56px;
+    height: 56px;
+    padding: 4px;
+    overflow: hidden;
+}
+
+.preview-text-content {
+    overflow: hidden;
+}
+
+.divider {
+    position: absolute;
+    left: 68px;
+    right: 0;
+    bottom: 0;
+    height: 0.5px;
+}
+</style>

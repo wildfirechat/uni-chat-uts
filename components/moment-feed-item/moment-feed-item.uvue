@@ -1,0 +1,470 @@
+<template>
+    <view class="feed-item" :style="{ backgroundColor: c.surface }">
+        <view class="body">
+            <image class="avatar" :src="senderPortrait" :style="{ backgroundColor: c.inputBg }"
+                @tap="tapSender" />
+
+            <view class="content">
+                <text class="sender" :style="{ color: c.link, fontSize: fontPx(FONT_LG) }"
+                    @tap="tapSender">{{ senderName }}</text>
+
+                <text v-if="feedText != ''" class="text"
+                    :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ feedText }}</text>
+
+                <!-- 九宫格：1 张按原比例，2~3 张一行，4 张 2×2，5~9 张 3 列 -->
+                <view v-if="medias.length == 1" class="media-single"
+                    :style="{ width: singleWidth + 'px', height: singleHeight + 'px' }" @tap="tapMedia(0)">
+                    <image class="media-image" :src="mediaUrl(medias[0])" mode="aspectFill"
+                        :style="{ backgroundColor: c.inputBg }" />
+                    <text v-if="isVideo(medias[0])" class="icomoon play-badge"
+                        :style="{ fontSize: iconPx(36) }">&#xf215;</text>
+                </view>
+
+                <view v-else-if="medias.length > 1" class="media-grid">
+                    <view v-for="(entry, index) in medias" :key="index" class="media-cell"
+                        :style="{ width: cellSize + 'px', height: cellSize + 'px', marginRight: cellMarginRight(index) + 'px' }"
+                        @tap="tapMedia(index)">
+                        <image class="media-image" :src="mediaUrl(entry)" mode="aspectFill"
+                            :style="{ backgroundColor: c.inputBg }" />
+                        <text v-if="isVideo(entry)" class="icomoon play-badge"
+                            :style="{ fontSize: iconPx(30) }">&#xf215;</text>
+                    </view>
+                </view>
+
+                <!-- 链接类型：flutter 把链接地址放在 extra 里 -->
+                <view v-if="isLink" class="link-card" :style="{ backgroundColor: c.sectionGap }">
+                    <text class="icomoon link-icon" :style="{ color: c.link, fontSize: iconPx(20) }">&#xf1fe;</text>
+                    <text class="link-text"
+                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">{{ feedExtra }}</text>
+                </view>
+
+                <view class="time-row">
+                    <text class="time" :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ timeText }}</text>
+                    <text v-if="isSelf" class="delete" :style="{ color: c.danger, fontSize: fontPx(FONT_XS) }"
+                        @tap="onDeleteFeed">{{ t('common.delete') }}</text>
+                    <view class="time-spacer"></view>
+                    <view class="more-btn" :style="{ backgroundColor: c.sectionGap }" @tap="onMoreTap">
+                        <text class="icomoon more-icon"
+                            :style="{ color: c.link, fontSize: iconPx(18) }">&#xf20b;</text>
+                    </view>
+                </view>
+
+                <!-- 点赞 + 评论区（灰底） -->
+                <view v-if="thumbups.length > 0 || textComments.length > 0" class="comment-area"
+                    :style="{ backgroundColor: c.sectionGap }">
+                    <view v-if="thumbups.length > 0" class="praise-row">
+                        <text class="icomoon praise-icon"
+                            :style="{ color: c.link, fontSize: iconPx(14) }">&#xf443;</text>
+                        <text class="praise-names"
+                            :style="{ color: c.link, fontSize: fontPx(FONT_BASE) }">{{ praiseNames }}</text>
+                    </view>
+
+                    <view v-if="thumbups.length > 0 && textComments.length > 0" class="comment-divider"
+                        :style="{ backgroundColor: c.hairline }"></view>
+
+                    <view v-for="(comment, index) in textComments" :key="index" class="comment-row"
+                        @tap="onCommentTap(comment)" @longpress="onCommentLongPress(comment)">
+                        <text class="comment-text" :style="{ fontSize: fontPx(FONT_BASE) }">
+                            <text :style="{ color: c.link }">{{ commentSenderName(comment) }}</text>
+                            <text v-if="comment.replyTo != ''"
+                                :style="{ color: c.textPrimary }">{{ t('moment.reply') }}</text>
+                            <text v-if="comment.replyTo != ''"
+                                :style="{ color: c.link }">{{ commentReplyToName(comment) }}</text>
+                            <text :style="{ color: c.textPrimary }">：{{ comment.text }}</text>
+                        </text>
+                    </view>
+                </view>
+            </view>
+        </view>
+
+        <view class="bottom-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+
+        <popup-menu v-model="showMoreMenu" :items="moreMenuItems" :target-x="menuX" :target-y="menuY"
+            :popup-width="170" :cross-axis-count="2" @select="onMoreMenuSelect" />
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 单条朋友圈（信息流页与详情页共用）。
+ * 对齐 flutter `moment/lib/src/widgets/feed_item_widget.dart` + `comment_widget.dart`
+ * —— dart 那边拆成两个 widget 只是文件组织，版式上是同一块内容，这里合成一个组件。
+ *
+ * ## 与 flutter 的三处刻意差异
+ *
+ * 1. **「··」菜单复用本项目的 [popup-menu](../popup-menu/popup-menu.uvue)**（深色卡片 + 图标网格，
+ *    这里是 2 列），不另写一种弹出形态。flutter 用的是 Material `showMenu` 改色。
+ * 2. **点赞人和评论用 text 嵌套排版，不是 Wrap**：uni-app x 没有 Wrap，
+ *    嵌套 `<text>` 是本项目里已验证能混排多色文字的写法（见会话页的引用气泡）。
+ *    代价是点赞人名字整体不可单独点击，改成点整行进不了个人页 —— 点赞行本来也没有强交互。
+ * 3. **评论的「回复/复制/删除」用 actionSheet**，不是 flutter 的 modal bottom sheet 列表；
+ *    本项目其他地方（消息菜单的删除二次选择）也是这个做法。
+ *
+ * ## 九宫格宽度是算出来的
+ *
+ * `aspect-ratio` 三端都不支持（见 §M3），方格边长只能由屏宽减去左右内边距、
+ * 头像和间距后除以列数得到，走 `:style` 下发。
+ */
+import { Comment, Feed, FeedEntry, WFMContentType } from '@/wfc/moment/momentModel.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, iconPx, FONT_LG, FONT_BASE, FONT_XS } from '@/common/layoutScale.uts'
+import { PopupMenuItem } from '@/common/popupMenu.uts'
+import { getPointerPoint } from '@/common/touch.uts'
+import { entryDisplayUrl, formatFeedTime, isVideoPath, momentDisplayName, momentPortrait } from '@/pages/moment/momentUi.uts'
+import { t } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'moment-feed-item'
+})
+
+const props = withDefaults(defineProps<{
+    feed: Feed | null
+    selfUserId?: string
+}>(), {
+    feed: null,
+    selfUserId: ''
+})
+
+const emit = defineEmits(['tapMedia', 'tapUser', 'toggleLike', 'comment', 'deleteComment', 'deleteFeed'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+// class 类型的 props 在模板里会被抹成 Any（见 §M4「android 编译的五条硬规则」第 1 条），
+// 所以下面所有字段都在 script 里 as 好再用 computed 暴露给模板
+const f = computed<Feed>((): Feed => (props.feed ?? new Feed()) as Feed)
+
+const feedText = computed<string>((): string => f.value.text)
+const feedExtra = computed<string>((): string => f.value.extra)
+const medias = computed<FeedEntry[]>((): FeedEntry[] => f.value.medias)
+const isLink = computed<boolean>((): boolean => f.value.type == WFMContentType.Link)
+const senderName = computed<string>((): string => momentDisplayName(f.value.sender))
+const senderPortrait = computed<string>((): string => momentPortrait(f.value.sender))
+const timeText = computed<string>((): string => formatFeedTime(f.value.serverTime))
+const isSelf = computed<boolean>((): boolean => f.value.sender == props.selfUserId)
+
+const thumbups = computed<Comment[]>((): Comment[] => f.value.thumbups())
+const textComments = computed<Comment[]>((): Comment[] => f.value.textComments())
+
+const likedBySelf = computed<boolean>((): boolean => {
+    const list = thumbups.value
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].sender == props.selfUserId) {
+            return true
+        }
+    }
+    return false
+})
+
+const praiseNames = computed<string>((): string => {
+    const list = thumbups.value
+    const names: string[] = []
+    for (let i = 0; i < list.length; i++) {
+        names.push(momentDisplayName(list[i].sender))
+    }
+    return names.join('，')
+})
+
+// ---- 九宫格尺寸 ----
+
+const GRID_SPACING = 4
+// 页面左右各 12 + 头像 42 + 头像与内容间距 10
+const CONTENT_INSET = 12 + 42 + 10 + 12
+
+const contentWidth = computed<number>((): number => {
+    return uni.getWindowInfo().windowWidth - CONTENT_INSET
+})
+
+const columnCount = computed<number>((): number => {
+    const count = medias.value.length
+    return count <= 3 ? count : 3
+})
+
+const cellSize = computed<number>((): number => {
+    const columns = columnCount.value
+    if (columns <= 0) {
+        return 0
+    }
+    return Math.floor((contentWidth.value - GRID_SPACING * (columns - 1)) / columns)
+})
+
+const cellMarginRight = (index: number): number => {
+    return (index + 1) % columnCount.value == 0 ? 0 : GRID_SPACING
+}
+
+// 单图：宽取内容区 60%（小图 50%），高按原比例，最高不超过内容区宽的 1.2 倍
+const singleWidth = computed<number>((): number => {
+    const list = medias.value
+    if (list.length == 0) {
+        return 0
+    }
+    const maxWidth = contentWidth.value
+    const w = list[0].mediaWidth
+    const h = list[0].mediaHeight
+    if (w <= 0 || h <= 0) {
+        return Math.floor(maxWidth * 0.6)
+    }
+    let width = w < 200 ? maxWidth * 0.5 : maxWidth * 0.6
+    const height = width * h / w
+    const maxHeight = maxWidth * 1.2
+    if (height > maxHeight) {
+        width = maxHeight * w / h
+    }
+    return Math.floor(width)
+})
+
+const singleHeight = computed<number>((): number => {
+    const list = medias.value
+    if (list.length == 0) {
+        return 0
+    }
+    const w = list[0].mediaWidth
+    const h = list[0].mediaHeight
+    if (w <= 0 || h <= 0) {
+        return Math.floor(singleWidth.value * 0.75)
+    }
+    return Math.floor(singleWidth.value * h / w)
+})
+
+const mediaUrl = (entry: FeedEntry): string => entryDisplayUrl(entry)
+const isVideo = (entry: FeedEntry): boolean => isVideoPath(entry.mediaUrl)
+
+const commentSenderName = (comment: Comment): string => momentDisplayName(comment.sender)
+const commentReplyToName = (comment: Comment): string => momentDisplayName(comment.replyTo)
+
+// ---- 交互 ----
+
+const tapSender = () => {
+    emit('tapUser', f.value.sender)
+}
+
+const tapMedia = (index: number) => {
+    emit('tapMedia', index)
+}
+
+const onDeleteFeed = () => {
+    emit('deleteFeed')
+}
+
+const showMoreMenu = ref<boolean>(false)
+const menuX = ref<number>(0)
+const menuY = ref<number>(0)
+
+const moreMenuItems = computed<PopupMenuItem[]>((): PopupMenuItem[] => {
+    const items: PopupMenuItem[] = []
+    items.push(new PopupMenuItem(likedBySelf.value ? t('moment.unlike') : t('moment.like'), 'like',
+        likedBySelf.value ? '' : ''))
+    items.push(new PopupMenuItem(t('moment.comment'), 'comment', ''))
+    return items
+})
+
+/**
+ * `@tap` 给的是 **UniPointerEvent**（只有 clientX/clientY/pageX/pageY），
+ * 没有 `touches`/`changedTouches`，之前按 UniTouchEvent 用 [getTouchPoint] 取点，
+ * 直接 `Cannot read property length of undefined` 崩在事件处理器里，菜单根本打不开。
+ * 改用 [getPointerPoint]：tap 的坐标本来就是逻辑像素，鸿蒙上**不能**再按 touch
+ * 那样除 pixelRatio，否则菜单会被压到屏幕左上角。
+ */
+const onMoreTap = (e: UniPointerEvent) => {
+    const point = getPointerPoint(e)
+    menuX.value = point.x
+    menuY.value = point.y
+    showMoreMenu.value = true
+}
+
+const onMoreMenuSelect = (item: PopupMenuItem) => {
+    if (item.tag == 'like') {
+        emit('toggleLike', likedBySelf.value)
+    } else {
+        emit('comment', null)
+    }
+}
+
+const onCommentTap = (comment: Comment) => {
+    if (comment.sender == props.selfUserId) {
+        showCommentActions(comment, true)
+    } else {
+        emit('comment', comment)
+    }
+}
+
+const onCommentLongPress = (comment: Comment) => {
+    showCommentActions(comment, comment.sender == props.selfUserId)
+}
+
+const showCommentActions = (comment: Comment, canDelete: boolean) => {
+    const itemList: string[] = [t('common.copy'), t('moment.reply')]
+    if (canDelete) {
+        itemList.push(t('common.delete'))
+    }
+    uni.showActionSheet({
+        itemList: itemList,
+        success: (res) => {
+            if (res.tapIndex == 0) {
+                if (comment.text != '') {
+                    uni.setClipboardData({ data: comment.text } as SetClipboardDataOptions)
+                }
+            } else if (res.tapIndex == 1) {
+                emit('comment', comment)
+            } else {
+                emit('deleteComment', comment)
+            }
+        },
+        fail: (err) => {
+            console.log('moment comment action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+</script>
+
+<style scoped>
+/* 组件默认样式隔离，吃不到 global.css 的 .icomoon（见 M0「写组件的两个静默坑」） */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.feed-item {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.body {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 12px 12px 0 12px;
+}
+
+.avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 4px;
+}
+
+.content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    margin-left: 10px;
+}
+
+.sender {
+    font-weight: 500;
+}
+
+.text {
+    margin-top: 3px;
+}
+
+.media-single {
+    position: relative;
+    margin-top: 6px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.media-grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+
+.media-cell {
+    position: relative;
+    margin-bottom: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.media-image {
+    width: 100%;
+    height: 100%;
+}
+
+.play-badge {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    color: #FFFFFFCC;
+    text-align: center;
+}
+
+.link-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 6px;
+    padding: 8px;
+}
+
+.link-icon {
+    margin-right: 8px;
+}
+
+.link-text {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.time-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.delete {
+    margin-left: 8px;
+}
+
+.time-spacer {
+    flex: 1;
+}
+
+.more-btn {
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.comment-area {
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 2px;
+}
+
+.praise-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.praise-icon {
+    margin-right: 4px;
+    margin-top: 1px;
+}
+
+.praise-names {
+    flex: 1;
+}
+
+.comment-divider {
+    height: 0.5px;
+    margin: 4px 0;
+}
+
+.comment-row {
+    padding: 2px 0;
+}
+
+.bottom-divider {
+    height: 0.5px;
+    margin-top: 12px;
+}
+</style>

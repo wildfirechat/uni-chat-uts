@@ -284,6 +284,12 @@ export function getMessagesV2(conversation: string, fromIndex: number, before: b
     clientModule.getMessagesV2(conversation, fromIndex.toInt(), before, count.toInt(), withUser, stringCallback(successCB), numberCallback(failCB))
 }
 
+// 按会话类型 + line + 消息状态跨会话取消息。朋友圈的评论/提醒消息都落在 line=1 的单聊会话里，
+// 取它们只能走这个接口（messageStatuses 传空数组 = 不限状态）。
+export function getMessagesEx2V2(conversationTypes: number[], lines: number[], messageStatuses: number[], fromIndex: number, before: boolean, count: number, withUser: string, successCB: StringCallback, failCB: FailCallback): void {
+    clientModule.getMessagesEx2V2(numberArrayToIntArray(conversationTypes), numberArrayToIntArray(lines), numberArrayToIntArray(messageStatuses), fromIndex.toInt(), before, count.toInt(), withUser, stringCallback(successCB), numberCallback(failCB))
+}
+
 export function getConversationRead(conversation: string): string {
     return clientModule.getConversationRead(conversation)
 }
@@ -564,6 +570,17 @@ export function sendFriendRequest(userId: string, reason: string, extra: string,
 
 export function sendMessage(conversation: string, messagePayload: string, toUsers: string[], expireDuration: number, prepareCB: (value: object) => void, progressCB: (value: object) => void, successCB: (value: object) => void, failCB: FailCallback): void {
     clientModule.sendMessage(conversation, messagePayload, toUsers, expireDuration.toInt(), prepareCB, progressCB, successCB, numberCallback(failCB))
+}
+
+// 朋友圈全部功能都走这一个通道：path 是朋友圈服务的路径，data 是 JSON 字符串。
+// TODO 当前 libs/uni-client-module-release.aar 里的 ClientModule 还没有导出这个方法
+//      （SDK 侧 ChatManager.sendMomentsRequest(path, byte[], GeneralCallbackBytes) 是有的），
+//      等 aar 更新后把下面这行换成：
+//      clientModule.sendMomentsRequest(path, data, stringCallback(successCB), numberCallback(failCB))
+//      注意 aar 侧要负责响应体解码：/moments_pb/feed/pull_one 用 decodeData(1, ..)、
+//      /moments_pb/feed/pull 用 decodeData(0, ..)、其余用 decodeData(..)，回调给 JS 的必须是 JSON 字符串。
+export function sendMomentsRequest(path: string, data: string, successCB: StringCallback, failCB: FailCallback): void {
+    failCB(254)
 }
 
 export function setBackupAddress(backupHost: string, backupPort: number): void {

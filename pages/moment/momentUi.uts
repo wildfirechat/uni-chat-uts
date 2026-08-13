@@ -1,0 +1,239 @@
+/**
+ * 朋友圈 UI 层的公共工具。合并了 flutter `moment/lib/src/` 下几个小文件：
+ * `moment_time.dart`（时间格式化）、`moment_upload.dart`（媒体上传）、
+ * `moment_media_picker.dart`（视频判定）、`moment_permission.dart`（默认可见范围）。
+ *
+ * 用户信息不做缓存层（flutter 有 `moment_user_cache.dart`）—— uni 侧
+ * `wfc.getUserInfo` 本身就读本地库并异步补拉，再包一层内存缓存收益不大。
+ */
+
+import wfc from '@/wfc/client/wfc.uts';
+import UserInfo from '@/wfc/model/userInfo.uts';
+import MessageContentMediaType from '@/wfc/messages/messageContentMediaType.uts';
+import Config from '@/config.uts';
+import { FeedEntry } from '@/wfc/moment/momentModel.uts';
+import { getItem, setItem } from '@/pages/util/storageHelper.uts';
+
+// ---------------------------------------------------------------- 可见范围
+
+/** 发布时的可见范围：0 公开 / 1 私密 / 2 部分可见 / 3 不给谁看 */
+export const SCOPE_PUBLIC = 0;
+export const SCOPE_PRIVATE = 1;
+export const SCOPE_INCLUDE = 2;
+export const SCOPE_EXCLUDE = 3;
+
+const SCOPE_MODE_KEY = 'moment_default_scope_mode';
+const SCOPE_USERS_KEY = 'moment_default_scope_users';
+
+export class VisibleScopeValue {
+    mode = SCOPE_PUBLIC;
+    users: string[] = [];
+}
+
+/** 发布页的默认可见范围（「我的 → 隐私 → 朋友圈权限」里存的那份，没设过就是公开） */
+export function loadDefaultScope(): VisibleScopeValue {
+    const value = new VisibleScopeValue();
+    const modeStr = getItem(SCOPE_MODE_KEY);
+    if (modeStr != '') {
+        value.mode = parseInt(modeStr);
+    }
+    const usersStr = getItem(SCOPE_USERS_KEY);
+    if (usersStr != '') {
+        value.users = usersStr.split(',');
+    }
+    return value;
+}
+
+export function saveDefaultScope(mode: number, users: string[]): void {
+    setItem(SCOPE_MODE_KEY, '' + mode);
+    setItem(SCOPE_USERS_KEY, users.join(','));
+}
+
+// ---------------------------------------------------------------- 用户展示
+
+export function momentUserInfo(userId: string): UserInfo {
+    return wfc.getUserInfo(userId, false, '');
+}
+
+export function momentDisplayName(userId: string): string {
+    if (userId == '') {
+        return '';
+    }
+    return wfc.getUserDisplayName(userId);
+}
+
+export function momentPortrait(userId: string): string {
+    if (userId == '') {
+        return Config.DEFAULT_PORTRAIT_URL;
+    }
+    const portrait = momentUserInfo(userId).portrait;
+    return portrait != '' ? portrait : Config.DEFAULT_PORTRAIT_URL;
+}
+
+// ---------------------------------------------------------------- 时间
+
+/** 服务端下发的是秒，本地消息是毫秒，两种都要认（与 flutter `MomentTime.toDateTime` 同规则） */
+function toMillis(serverTime: number): number {
+    return serverTime > 100000000000 ? serverTime : serverTime * 1000;
+}
+
+/** 信息流里那行时间：刚刚 / N分钟前 / N小时前 / 昨天 / N天前 / M月D日 / Y年M月D日 */
+export function formatFeedTime(serverTime: number): string {
+    if (serverTime <= 0) {
+        return '';
+    }
+    const dt = new Date(toMillis(serverTime));
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - dt.getTime()) / 60000);
+    const sameDay = dt.getFullYear() == now.getFullYear() && dt.getMonth() == now.getMonth() && dt.getDate() == now.getDate();
+
+    if (sameDay) {
+        if (diffMinutes < 1) {
+            return '刚刚';
+        }
+        if (diffMinutes < 60) {
+            return '' + diffMinutes + '分钟前';
+        }
+        return '' + Math.floor(diffMinutes / 60) + '小时前';
+    }
+
+    const yesterday = new Date(now.getTime() - 86400000);
+    if (dt.getFullYear() == yesterday.getFullYear() && dt.getMonth() == yesterday.getMonth() && dt.getDate() == yesterday.getDate()) {
+        return '昨天';
+    }
+
+    const diffDays = Math.floor(diffMinutes / 1440);
+    if (diffDays < 7) {
+        return '' + diffDays + '天前';
+    }
+    if (dt.getFullYear() == now.getFullYear()) {
+        return '' + (dt.getMonth() + 1) + '月' + dt.getDate() + '日';
+    }
+    return '' + dt.getFullYear() + '年' + (dt.getMonth() + 1) + '月' + dt.getDate() + '日';
+}
+
+function pad2(n: number): string {
+    return n < 10 ? ('0' + n) : ('' + n);
+}
+
+/** 消息列表里那行时间：HH:mm / 昨天 HH:mm / M月D日 HH:mm / Y年M月D日 HH:mm */
+export function formatMomentMessageTime(serverTime: number): string {
+    if (serverTime <= 0) {
+        return '';
+    }
+    const dt = new Date(toMillis(serverTime));
+    const now = new Date();
+    const hm = pad2(dt.getHours()) + ':' + pad2(dt.getMinutes());
+
+    if (dt.getFullYear() == now.getFullYear() && dt.getMonth() == now.getMonth() && dt.getDate() == now.getDate()) {
+        return hm;
+    }
+    const yesterday = new Date(now.getTime() - 86400000);
+    if (dt.getFullYear() == yesterday.getFullYear() && dt.getMonth() == yesterday.getMonth() && dt.getDate() == yesterday.getDate()) {
+        return '昨天 ' + hm;
+    }
+    if (dt.getFullYear() == now.getFullYear()) {
+        return '' + (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + hm;
+    }
+    return '' + dt.getFullYear() + '年' + (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + hm;
+}
+
+// ---------------------------------------------------------------- 媒体
+
+const VIDEO_EXTS: string[] = ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'flv', 'wmv', '3gp', 'webm'];
+
+/** 按扩展名判断是不是视频（九宫格据此叠播放角标） */
+export function isVideoPath(path: string): boolean {
+    const dot = path.lastIndexOf('.');
+    if (dot < 0 || dot >= path.length - 1) {
+        return false;
+    }
+    const ext = path.substring(dot + 1).toLowerCase();
+    return VIDEO_EXTS.indexOf(ext) >= 0;
+}
+
+/** 九宫格取图：优先缩略图，没有就用原图 */
+export function entryDisplayUrl(entry: FeedEntry): string {
+    return entry.thumbUrl != '' ? entry.thumbUrl : entry.mediaUrl;
+}
+
+/** 缩略图最长边，与 flutter `MomentUploader._thumbMaxSide` 一致 */
+const THUMB_MAX_SIDE = 400;
+
+/**
+ * 上传单个文件并回调远端 URL。
+ *
+ * 媒体类型用 [MessageContentMediaType.Moments]（8）而不是 Image/Video ——
+ * 与 android `momentclient` 一致（它上传时取的就是 `MessageContentMediaType.MOMENTS`）。
+ * flutter 那边传的是 IMAGE/VIDEO，会落到别的桶里，这里按 android 走。
+ */
+export function uploadMomentFile(path: string, successCB: (url: string) => void, failCB: (errorCode: number) => void): void {
+    wfc.uploadMediaFile(path, MessageContentMediaType.Moments, (remoteUrl: string) => {
+        successCB(remoteUrl);
+    }, (errorCode: number) => {
+        failCB(errorCode);
+    }, null);
+}
+
+/**
+ * 上传一张图片，回调带宽高和缩略图的 [FeedEntry]。
+ *
+ * 与 flutter 的差异：flutter 自己解码原图再编码 PNG 缩略图，uni 侧没有图像编解码 API，
+ * 改用 `uni.compressImage` 生成缩略图。取不到图片信息或压缩失败时**不阻断发布** ——
+ * 退化成只有原图（九宫格会直接显示原图），比整条发不出去好。
+ */
+export function uploadMomentImage(path: string, successCB: (entry: FeedEntry) => void, failCB: (errorCode: number) => void): void {
+    uni.getImageInfo({
+        src: path,
+        success: (info) => {
+            uploadImageWithSize(path, info.width, info.height, successCB, failCB);
+        },
+        fail: (_) => {
+            uploadImageWithSize(path, 0, 0, successCB, failCB);
+        }
+    } as GetImageInfoOptions);
+}
+
+function uploadImageWithSize(path: string, width: number, height: number, successCB: (entry: FeedEntry) => void, failCB: (errorCode: number) => void): void {
+    const entry = new FeedEntry();
+    entry.mediaWidth = width;
+    entry.mediaHeight = height;
+
+    uploadMomentFile(path, (mediaUrl: string) => {
+        entry.mediaUrl = mediaUrl;
+        const longSide = width > height ? width : height;
+        if (longSide <= THUMB_MAX_SIDE) {
+            // 本来就小，原图当缩略图用，省一次上传
+            successCB(entry);
+            return;
+        }
+        const scale = THUMB_MAX_SIDE / longSide;
+        uni.compressImage({
+            src: path,
+            compressedWidth: Math.round(width * scale),
+            compressedHeight: Math.round(height * scale),
+            quality: 80,
+            success: (res) => {
+                uploadMomentFile(res.tempFilePath, (thumbUrl: string) => {
+                    entry.thumbUrl = thumbUrl;
+                    successCB(entry);
+                }, (_) => {
+                    // 缩略图传失败不影响发布
+                    successCB(entry);
+                });
+            },
+            fail: (_) => {
+                successCB(entry);
+            }
+        } as CompressImageOptions);
+    }, failCB);
+}
+
+/** 上传一个视频（不生成缩略图，九宫格显示播放占位，与 flutter 一致） */
+export function uploadMomentVideo(path: string, successCB: (entry: FeedEntry) => void, failCB: (errorCode: number) => void): void {
+    uploadMomentFile(path, (mediaUrl: string) => {
+        const entry = new FeedEntry();
+        entry.mediaUrl = mediaUrl;
+        successCB(entry);
+    }, failCB);
+}

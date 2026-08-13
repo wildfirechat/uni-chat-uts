@@ -1,0 +1,35 @@
+/**
+ * 发布页与信息流页之间的跨页传参 / 回传。
+ *
+ * uni-app x 里 `navigateTo` 的 `events`（eventChannel）在本项目没有先例，
+ * 其他跨页回调（选人、转发）走的都是模块级暂存 —— 见 [common/picker.uts](../../common/picker.uts)，
+ * 这里沿用同一套写法：
+ *
+ * - 信息流页先选好图 → [setPublishMedias] → 打开发布页 → 发布页 [takePublishMedias] 取走
+ * - 发布成功 → [markPublished] → 信息流页 onShow 里 [consumePublished] 取一次，为 true 就重拉
+ */
+
+let pendingMedias: string[] = [];
+let published = false;
+
+/** 信息流页选完图后暂存，发布页打开时取走 */
+export function setPublishMedias(paths: string[]): void {
+    pendingMedias = paths;
+}
+
+/** 发布页读一次就清空，避免下次空手进来还带着上次的图 */
+export function takePublishMedias(): string[] {
+    const medias = pendingMedias;
+    pendingMedias = [];
+    return medias;
+}
+
+export function markPublished(): void {
+    published = true;
+}
+
+export function consumePublished(): boolean {
+    const value = published;
+    published = false;
+    return value;
+}

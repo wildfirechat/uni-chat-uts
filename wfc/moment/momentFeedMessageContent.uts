@@ -1,0 +1,81 @@
+import MessageContent from "../messages/messageContent.uts";
+import MessageContentType from "../messages/messageContentType.uts";
+import MessagePayload from '../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts';
+import { FeedEntry, WFMContentType } from './momentModel.uts';
+
+/**
+ * 朋友圈提醒消息（消息类型 501）。@了某人时，朋友圈服务端往被@的人的
+ * **line=1 单聊会话**里投这条消息。
+ *
+ * 报文格式以 android `cn.wildfirechat.moment.message.FeedMessageContent` 为准
+ * （已 javap 核对）：searchableContent=正文，binaryContent 里
+ * `feedId` / `t`(类型) / `s`(作者) / `c`(正文) / `ms`(媒体) / `to` / `ex` / `e`(extra)。
+ * flutter `moment/lib/client/moment_feed_content.dart` 与之一致。
+ */
+export default class MomentFeedMessageContent extends MessageContent {
+    feedId = 0;
+    feedType = WFMContentType.Text;
+    text = '';
+    medias: FeedEntry[] = [];
+    sender = '';
+    toUsers: string[] = [];
+    excludeUsers: string[] = [];
+
+    constructor() {
+        super(MessageContentType.MESSAGE_CONTENT_TYPE_FEED);
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.text;
+
+        const obj = {
+            feedId: this.feedId,
+            t: this.feedType,
+            s: this.sender
+        } as UTSJSONObject;
+        if (this.text != '') {
+            obj.set('c', this.text);
+        }
+        if (this.medias.length > 0) {
+            obj.set('ms', FeedEntry.listToArray(this.medias));
+        }
+        if (this.toUsers.length > 0) {
+            obj.set('to', this.toUsers);
+        }
+        if (this.excludeUsers.length > 0) {
+            obj.set('ex', this.excludeUsers);
+        }
+        if (this.extra != '') {
+            obj.set('e', this.extra);
+        }
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj == null) {
+            return;
+        }
+        this.feedId = obj.getNumber('feedId') ?? 0;
+        this.feedType = obj.getNumber('t') ?? WFMContentType.Text;
+        this.sender = obj.getString('s') ?? '';
+        this.text = obj.getString('c') ?? '';
+        this.medias = FeedEntry.listFromArray(obj.getArray<UTSJSONObject>('ms'));
+        this.toUsers = obj.getArray<string>('to') ?? ([] as string[]);
+        this.excludeUsers = obj.getArray<string>('ex') ?? ([] as string[]);
+        this.extra = obj.getString('e') ?? '';
+    }
+
+    /**
+     * 与 flutter / android 一致返回空串 —— 这条消息只在朋友圈的消息列表里渲染，
+     * 不在会话列表和会话页出现（会话列表拿到空摘要就不显示）。
+     */
+    override digest(message: any | null): string {
+        return '';
+    }
+}

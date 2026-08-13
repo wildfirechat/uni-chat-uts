@@ -1,6 +1,11 @@
 <template>
     <view class="discovery-container" :style="{ backgroundColor: c.primaryBackground }">
         <section-divider />
+        <form-card v-if="supportMoments">
+            <option-item :title="t('moment.entry')" left-image="/static/image/icon/ic_moment.png"
+                :desc="momentUnreadDesc" :show-bottom-divider="false" @tap="showMoments" />
+        </form-card>
+        <section-divider v-if="supportMoments" />
         <form-card>
             <option-item :title="t('discovery.chatroom')" left-image="/static/image/icon/ic_chatroom.png"
                 @tap="showChatroomList" />
@@ -24,6 +29,9 @@
 
 <script setup lang="uts">
 import store from "../../store.uts";
+import momentClient from "../../wfc/moment/momentClient.uts";
+import MomentCommentMessageContent from "../../wfc/moment/momentCommentMessageContent.uts";
+import MomentFeedMessageContent from "../../wfc/moment/momentFeedMessageContent.uts";
 import Conversation from "../../wfc/model/conversation.uts";
 import ConversationType from "../../wfc/model/conversationType.uts";
 import avEngineKit from "../../wfc/av/engine/avEngineKit.uts";
@@ -42,6 +50,41 @@ const supportConference = computed<boolean>((): boolean => {
 const showConferencePortal = () => {
     uni.navigateTo({
         url: '/pages/voip/conference/ConferencePortalPage',
+        fail: (e) => {
+            console.log(e)
+        }
+    } as NavigateToOptions);
+}
+
+// 朋友圈：对齐 flutter `Config.ENABLE_MOMENTS`，关掉时整行不出现
+const supportMoments = Config.ENABLE_MOMENTS
+
+// 朋友圈未读数（红点），从 line=1 的单聊会话里取
+const momentUnread = ref<number>(0)
+const momentUnreadDesc = computed<string>((): string => momentUnread.value > 0 ? ('' + momentUnread.value) : '')
+
+onLoad((_options: OnLoadOptions) => {
+    if (!supportMoments) {
+        return
+    }
+    // 挂上朋友圈消息监听，停在发现页时收到评论/@提醒红点也会跟着变
+    // （init 可重复调用，只会挂一次监听）
+    momentClient.init((_: MomentCommentMessageContent) => {
+        momentUnread.value = momentClient.getUnreadCount()
+    }, (_: MomentFeedMessageContent) => {
+        momentUnread.value = momentClient.getUnreadCount()
+    })
+})
+
+onShow(() => {
+    if (supportMoments) {
+        momentUnread.value = momentClient.getUnreadCount()
+    }
+})
+
+const showMoments = () => {
+    uni.navigateTo({
+        url: '/pages/moment/MomentFeedListPage',
         fail: (e) => {
             console.log(e)
         }

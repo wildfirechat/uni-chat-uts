@@ -71,6 +71,8 @@ import ConferenceCommandMessageContent from '../av/messages/conferenceCommandMes
 import VoipStubMessageContent from '../av/messages/voipStubMessageContent.uts';
 import PttSoundMessageContent from '../ptt/pttSoundMessageContent.uts';
 import PollMessageContent from "../messages/pollMessageContent.uts";
+import MomentFeedMessageContent from "../moment/momentFeedMessageContent.uts";
+import MomentCommentMessageContent from "../moment/momentCommentMessageContent.uts";
 
 export type MessageContentCreator = () => MessageContent
 
@@ -206,5 +208,9 @@ export default class MessageConfig {
         new MessageContentRegistry('leaveChannelChatMessageContent', PersistFlag.Transparent, MessageContentType.Leave_Channel_Chat, (): MessageContent => new LeaveChannelChatMessageContent()),
         new MessageContentRegistry('conferenceCommandMessageContent', PersistFlag.Transparent, MessageContentType.CONFERENCE_CONTENT_TYPE_COMMAND, (): MessageContent => new ConferenceCommandMessageContent()),
         new MessageContentRegistry('pollMessageContent', PersistFlag.Persist_And_Count, MessageContentType.Poll, (): MessageContent => new PollMessageContent()),
+        // 朋友圈的提醒/评论消息。落在 line=1 的单聊会话里，不进会话列表，只在朋友圈消息页渲染。
+        // flag 与 android momentclient / flutter 一致，都是 Persist_And_Count（未读数就是朋友圈红点的来源）
+        new MessageContentRegistry('momentFeedMessageContent', PersistFlag.Persist_And_Count, MessageContentType.MESSAGE_CONTENT_TYPE_FEED, (): MessageContent => new MomentFeedMessageContent()),
+        new MessageContentRegistry('momentCommentMessageContent', PersistFlag.Persist_And_Count, MessageContentType.MESSAGE_CONTENT_TYPE_COMMENT, (): MessageContent => new MomentCommentMessageContent()),
     ];
 }

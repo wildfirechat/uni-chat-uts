@@ -298,6 +298,12 @@ export function getMessagesV2(conversation: string, fromIndex: number, before: b
     clientModule.getMessagesV2(conversation, [], fromIndex, before, count, withUser, stringCallback(successCB), numberCallback(failCB))
 }
 
+// 按会话类型 + line + 消息状态跨会话取消息。朋友圈的评论/提醒消息都落在 line=1 的单聊会话里，
+// 取它们只能走这个接口（statuses 传空数组 = 不限状态）。
+export function getMessagesEx2V2(conversationTypes: number[], lines: number[], messageStatuses: number[], fromIndex: number, before: boolean, count: number, withUser: string, successCB: StringCallback, failCB: FailCallback): void {
+    clientModule.getMessagesEx2V2(conversationTypes, lines, messageStatuses, fromIndex, before, count, withUser, stringCallback(successCB), numberCallback(failCB))
+}
+
 export function getConversationRead(conversation: string): string {
     return clientModule.getConversationRead(conversation)
 }
@@ -620,6 +626,13 @@ export function sendMessage(conversation: string, messagePayload: string, toUser
         _notifyWfcEvent('onSendFail', msg);
         failCB(err)
     })
+}
+
+// 朋友圈全部功能都走这一个通道：path 是朋友圈服务的路径，data 是 JSON 字符串。
+// 响应体的解码（/moments_pb/feed/pull 系列是 protobuf）由原生侧的
+// WrapperMomentsRequestCallback 处理完再回调，这里拿到的一定是 JSON 字符串。
+export function sendMomentsRequest(path: string, data: string, successCB: StringCallback, failCB: FailCallback): void {
+    clientModule.sendMomentsRequest(path, data, stringCallback(successCB), numberCallback(failCB))
 }
 
 export function setBackupAddress(backupHost: string, backupPort: number): void {

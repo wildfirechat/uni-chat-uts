@@ -1,0 +1,186 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('moment.privacy_title')" :show-back="true" />
+
+        <scroll-view class="scroll" direction="vertical">
+            <section-divider />
+            <form-card>
+                <option-item :title="t('moment.block_them')" @tap="openBlockList(true)" />
+                <option-item :title="t('moment.hide_them')" :show-bottom-divider="false"
+                    @tap="openBlockList(false)" />
+            </form-card>
+
+            <section-divider />
+            <form-card>
+                <option-switch-item :title="t('moment.stranger_ten')" :value="strangerVisible"
+                    @change="onStrangerChanged" />
+                <option-item :title="t('moment.visible_range')" :desc="rangeText" @tap="pickVisibleRange" />
+                <option-item :title="t('moment.default_scope')" :desc="defaultScopeDesc" :show-bottom-divider="false"
+                    @tap="openDefaultScope" />
+            </form-card>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 朋友圈隐私设置。对齐 flutter `chat/lib/settings/moment_privacy_settings_screen.dart`
+ * 的移动端分支（`isDesktopShell` 那半边按 §1 不做）。
+ *
+ * 四项：
+ * - 不让他(她)看 / 不看他(她) —— 两份名单，语义相反，很容易看反：
+ *   「不让他看」改的是 blockList，「不看他」改的是 blackList（见 momentClient 的注释）
+ * - 陌生人可见十条 —— 开=10 条，关=0 条
+ * - 允许朋友查看的范围 —— 全部 / 最近三天 / 最近一个月 / 最近半年
+ * - 发布时的默认可见范围 —— flutter 是 `MomentPermission.openSettingsPage`，
+ *   它在 PC 端的账号与安全里，移动端没放入口；这里补到本页（发布页读的就是它）
+ *
+ * 与 flutter 的一处差异：「允许朋友查看的范围」用 actionSheet 而不是独立一页 ——
+ * 四个互斥选项，当前值已经显示在行右侧，独立页不多给信息（与 §M5 投票那几处同理）。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import momentClient from '@/wfc/moment/momentClient.uts'
+import { MomentProfiles, WFMUpdateUserProfileType, WFMVisibleScope } from '@/wfc/moment/momentModel.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { toast, toastSetSuccess } from '@/common/prompt.uts'
+import { loadDefaultScope, saveDefaultScope, SCOPE_PUBLIC, SCOPE_PRIVATE, SCOPE_INCLUDE, SCOPE_EXCLUDE } from '@/pages/moment/momentUi.uts'
+import { setVisibleScope, takeVisibleScopeResult } from '@/pages/moment/visibleScopeState.uts'
+import { setMomentBlockList } from '@/pages/me/momentBlockListState.uts'
+import { t, t1 } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'MomentPrivacySettingsPage'
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const profiles = ref<MomentProfiles>(new MomentProfiles())
+const defaultScopeMode = ref<number>(SCOPE_PUBLIC)
+const defaultScopeUsers = ref<string[]>([] as string[])
+
+const strangerVisible = computed<boolean>((): boolean => profiles.value.strangerVisibleCount > 0)
+
+const rangeText = computed<string>((): string => {
+    const scope = profiles.value.visibleScope
+    if (scope == WFMVisibleScope.ThreeDays) {
+        return t('moment.range_3days')
+    }
+    if (scope == WFMVisibleScope.OneMonth) {
+        return t('moment.range_1month')
+    }
+    if (scope == WFMVisibleScope.SixMonths) {
+        return t('moment.range_6months')
+    }
+    return t('moment.range_no_limit')
+})
+
+const defaultScopeDesc = computed<string>((): string => {
+    const count = defaultScopeUsers.value.length
+    if (defaultScopeMode.value == SCOPE_PRIVATE) {
+        return t('moment.scope_private')
+    }
+    if (defaultScopeMode.value == SCOPE_INCLUDE) {
+        return t('moment.scope_include') + (count > 0 ? ('(' + count + ')') : '')
+    }
+    if (defaultScopeMode.value == SCOPE_EXCLUDE) {
+        return t('moment.scope_exclude') + (count > 0 ? ('(' + count + ')') : '')
+    }
+    return t('moment.scope_public')
+})
+
+const loadProfiles = () => {
+    momentClient.getUserProfile('', (result: MomentProfiles) => {
+        profiles.value = result
+    }, (errorCode: number) => {
+        toast(t1('moment.load_failed', '' + errorCode))
+    })
+}
+
+onLoad((_options: OnLoadOptions) => {
+    loadProfiles()
+    const scope = loadDefaultScope()
+    defaultScopeMode.value = scope.mode
+    defaultScopeUsers.value = scope.users
+})
+
+// 名单页改完 / 可见范围页选完，回本页都要同步
+onShow(() => {
+    const result = takeVisibleScopeResult()
+    if (result != null) {
+        defaultScopeMode.value = result!.mode
+        defaultScopeUsers.value = result!.users
+        saveDefaultScope(result!.mode, result!.users)
+    }
+})
+
+const onStrangerChanged = (checked: boolean) => {
+    const oldCount = profiles.value.strangerVisibleCount
+    const newCount = checked ? 10 : 0
+    profiles.value.strangerVisibleCount = newCount
+    // class 实例的字段改了不触发重渲染，换个实例引用（见「class 实例装进数组不是响应式」）
+    profiles.value = profiles.value
+    momentClient.updateMyProfile(WFMUpdateUserProfileType.StrangerVisibleCount, '', newCount, () => {
+        toastSetSuccess()
+    }, (errorCode: number) => {
+        profiles.value.strangerVisibleCount = oldCount
+        loadProfiles()
+        toast(t1('moment.operate_failed', '' + errorCode))
+    })
+}
+
+const pickVisibleRange = () => {
+    const scopes: number[] = [WFMVisibleScope.NoLimit, WFMVisibleScope.ThreeDays, WFMVisibleScope.OneMonth, WFMVisibleScope.SixMonths]
+    uni.showActionSheet({
+        itemList: [t('moment.range_no_limit'), t('moment.range_3days'), t('moment.range_1month'), t('moment.range_6months')],
+        success: (res) => {
+            const scope = scopes[res.tapIndex]
+            momentClient.updateMyProfile(WFMUpdateUserProfileType.VisibleScope, '', scope, () => {
+                profiles.value.visibleScope = scope
+                loadProfiles()
+                toastSetSuccess()
+            }, (errorCode: number) => {
+                toast(t1('moment.operate_failed', '' + errorCode))
+            })
+        },
+        fail: (err) => {
+            console.log('moment visible range action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+const openBlockList = (isBlock: boolean) => {
+    const p = profiles.value
+    setMomentBlockList(isBlock, isBlock ? p.blockList : p.blackList)
+    uni.navigateTo({
+        url: '/pages/me/MomentBlockListPage',
+        fail: (err) => {
+            console.log('nav to moment block list fail', err)
+        }
+    } as NavigateToOptions)
+}
+
+const openDefaultScope = () => {
+    setVisibleScope(defaultScopeMode.value, defaultScopeUsers.value)
+    uni.navigateTo({
+        url: '/pages/moment/VisibleScopePage',
+        fail: (err) => {
+            console.log('nav to visible scope fail', err)
+        }
+    } as NavigateToOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+</style>

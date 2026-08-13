@@ -5,6 +5,8 @@
         <form-card>
             <option-item :title="t('setting.find_me_by')" @tap="open('/pages/me/PrivacyFindMePage')" />
             <option-item :title="t('setting.blacklist')" @tap="open('/pages/me/BlacklistPage')" />
+            <option-item v-if="supportMoments" :title="t('moment.privacy_title')"
+                @tap="open('/pages/me/MomentPrivacySettingsPage')" />
             <option-switch-item v-if="receiptEnabled" :title="t('setting.msg_receipt')" :value="receiptOn"
                 @change="onReceiptChange" />
             <option-switch-item v-if="onlineStateEnabled" :title="t('setting.online_status')" :value="showOnlineState"
@@ -24,9 +26,10 @@
  * 消息回执 / 在线状态两项**受服务端能力控制**：没开这两个能力时整行不展示，
  * 而不是展示一个点了没反应的开关。
  *
- * 朋友圈隐私入口按 FLUTTER_ALIGNMENT_TODO 归 M6，这里先不放。
+ * 朋友圈隐私入口（M6）已补，由 `Config.ENABLE_MOMENTS` 控制。
  */
 import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
 import { getItem, setItem } from "@/pages/util/storageHelper.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
@@ -39,6 +42,8 @@ defineOptions({
 const ONLINE_STATE_KEY = 'privacy_show_online_state'
 
 const c = computed<AppColors>((): AppColors => colors())
+
+const supportMoments = Config.ENABLE_MOMENTS
 
 const receiptEnabled = ref<boolean>(false)
 const receiptOn = ref<boolean>(false)

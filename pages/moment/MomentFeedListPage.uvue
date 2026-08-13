@@ -1,0 +1,596 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.surface }">
+        <!-- 个人页是普通标题栏，必须排在 scroll-view 前面：.page 是列向 flex，
+             scroll-view 占了 flex:1，写在后面会被挤到屏幕底部 -->
+        <NavBar v-if="!isHome" :title="pageTitle" :show-back="true" />
+
+        <scroll-view class="scroll" direction="vertical" :refresher-enabled="true" :refresher-triggered="triggered"
+            :refresher-threshold="45" @refresherrefresh="onRefresh" @refresherrestore="onRestore"
+            @refresherabort="onRestore" @scroll="onScroll" @scrolltolower="onScrollToLower">
+
+            <!-- 首页头部：封面 + 头像 + 未读消息条。个人页没有这一块 -->
+            <view v-if="isHome" class="header">
+                <view class="cover" :style="{ height: COVER_HEIGHT + 'px', backgroundColor: c.inputBg }"
+                    @tap="onTapCover">
+                    <image v-if="backgroundUrl != ''" class="cover-image" :src="backgroundUrl" mode="aspectFill" />
+                </view>
+                <view class="header-user">
+                    <text class="header-name" :style="{ fontSize: fontPx(FONT_LG) }">{{ selfName }}</text>
+                    <image class="header-avatar" :src="selfPortrait" :style="{ backgroundColor: c.inputBg }" />
+                </view>
+                <view v-if="unreadCount > 0" class="unread-bar" :style="{ backgroundColor: c.sectionGap }"
+                    @tap="openMessages">
+                    <text class="unread-text"
+                        :style="{ color: c.link, fontSize: fontPx(FONT_SM) }">{{ unreadText }}</text>
+                </view>
+                <view v-else class="header-gap"></view>
+            </view>
+
+            <moment-feed-item v-for="(feed, index) in feeds" :key="feed.feedId" :feed="feed"
+                :self-user-id="selfUserId" @tapUser="onTapUser" @tapMedia="(i: number) => onTapMedia(index, i)"
+                @toggleLike="(liked: boolean) => onToggleLike(index, liked)"
+                @comment="(replyTo: Comment | null) => onComment(index, replyTo)"
+                @deleteComment="(comment: Comment) => onDeleteComment(index, comment)"
+                @deleteFeed="onDeleteFeed(index)" />
+
+            <view class="footer">
+                <text class="footer-text"
+                    :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ footerText }}</text>
+            </view>
+        </scroll-view>
+
+        <!-- 首页的标题栏叠在封面上，随滚动由透明渐变为不透明（对齐 flutter/微信） -->
+        <view v-if="isHome" class="floating-bar" :style="{ backgroundColor: barBackground }">
+            <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+            <view class="bar-row">
+                <text class="bar-back" :style="{ color: barForeground }" @tap="goBack">‹</text>
+                <text class="bar-title" :style="{ color: barForeground, fontSize: px(17, ROW_CAP) }">{{ t('moment.title') }}</text>
+                <text class="icomoon bar-publish" :style="{ color: barForeground, fontSize: iconPx(22) }"
+                    @tap="onPublish">&#xf118;</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 朋友圈信息流页。对齐 flutter `moment/lib/src/feed_list_page.dart`。
+ *
+ * 一页两用：不带 `userId` 参数是「朋友圈」首页（封面 + 自己的头像 + 未读消息条 + 发布入口），
+ * 带 `userId` 是某个人的朋友圈主页（普通标题栏，没有封面和发布入口）。
+ *
+ * ## 与 flutter 的三处刻意差异
+ *
+ * 1. **封面上的标题栏用 `navigationStyle: custom` + 自绘**，没有 flutter 那套
+ *    `Color.lerp` 逐帧插值，只按滚动位置在透明/不透明之间线性过渡（scroll-view 的
+ *    `@scroll` 频率够用）。
+ * 2. **没有「长按发布按钮直接发纯文字」**：uni 侧 `@longpress` 和 `@tap` 在同一节点上
+ *    竞争，长按后仍会补一次 tap，行为不稳；改成点一下弹「从相册选择 / 发表文字」两项，
+ *    flutter 那边点击也是弹这个面板，只是多一条长按快捷路径。
+ * 3. **点封面直接进选图**，不像 flutter 先弹一个只有「更新背景」一项的菜单 ——
+ *    一项的菜单等于多一次点击。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import wfc from '@/wfc/client/wfc.uts'
+import momentClient from '@/wfc/moment/momentClient.uts'
+import { Comment, Feed, FeedEntry, WFMCommentType, WFMUpdateUserProfileType } from '@/wfc/moment/momentModel.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { px, fontPx, iconPx, ROW_CAP, FONT_LG, FONT_SM, FONT_XS } from '@/common/layoutScale.uts'
+import { showConfirmDialog, toast } from '@/common/prompt.uts'
+import { toLocalFilePath } from '@/common/filePath.uts'
+import { entryDisplayUrl, momentDisplayName, momentPortrait, uploadMomentFile } from '@/pages/moment/momentUi.uts'
+import { consumePublished, setPublishMedias } from '@/pages/moment/publishState.uts'
+import { t, t1 } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'MomentFeedListPage'
+})
+
+const PAGE_SIZE = 20
+const COVER_HEIGHT = 300
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const userId = ref<string>('')
+const isHome = computed<boolean>((): boolean => userId.value == '')
+const selfUserId = wfc.getUserId()
+
+const feeds = ref<Feed[]>([] as Feed[])
+const loading = ref<boolean>(false)
+const hasMore = ref<boolean>(false)
+const triggered = ref<boolean>(false)
+const unreadCount = ref<number>(0)
+const backgroundUrl = ref<string>('')
+const scrollTop = ref<number>(0)
+
+const statusBarHeight = ref<number>(uni.getSystemInfoSync().statusBarHeight)
+
+const selfName = computed<string>((): string => momentDisplayName(selfUserId))
+const selfPortrait = computed<string>((): string => momentPortrait(selfUserId))
+const pageTitle = computed<string>((): string => isHome.value ? t('moment.title') : momentDisplayName(userId.value))
+const unreadText = computed<string>((): string => t1('moment.unread_messages', '' + unreadCount.value))
+
+const footerText = computed<string>((): string => {
+    if (feeds.value.length == 0) {
+        return loading.value ? t('common.loading') : t('moment.empty')
+    }
+    return hasMore.value ? t('common.loading') : t('moment.no_more')
+})
+
+// 封面滚出视口的最后一个标题栏高度区间内，标题栏从透明渐变为不透明
+const barOpacity = computed<number>((): number => {
+    const fadeStart = COVER_HEIGHT - 88
+    const fadeEnd = COVER_HEIGHT - 44
+    const ratio = (scrollTop.value - fadeStart) / (fadeEnd - fadeStart)
+    if (ratio < 0) {
+        return 0
+    }
+    return ratio > 1 ? 1 : ratio
+})
+
+// App 平台没有 CSS 变量、也没有 color-mix，透明度只能自己拼 8 位色值
+function withAlpha(hex: string, opacity: number): string {
+    const alpha = Math.round(opacity * 255)
+    const hexAlpha = alpha < 16 ? ('0' + alpha.toString(16)) : alpha.toString(16)
+    // 主题色可能已经带 alpha（8 位），只取前 7 位
+    const base = hex.length > 7 ? hex.substring(0, 7) : hex
+    return base + hexAlpha
+}
+
+const barBackground = computed<string>((): string => withAlpha(c.value.surface, barOpacity.value))
+// 压在封面上时用白字，标题栏变实之后跟主题的主文字色
+const barForeground = computed<string>((): string => barOpacity.value > 0.5 ? c.value.textPrimary : '#FFFFFF')
+
+// ---------------------------------------------------------------- 数据
+
+const load = (refresh: boolean) => {
+    if (loading.value) {
+        return
+    }
+    loading.value = true
+    const list = feeds.value
+    const fromIndex = (refresh || list.length == 0) ? 0 : list[list.length - 1].feedId
+    momentClient.getFeeds(fromIndex, PAGE_SIZE, userId.value, (result: Feed[]) => {
+        loading.value = false
+        triggered.value = false
+        hasMore.value = result.length >= PAGE_SIZE
+        if (refresh) {
+            feeds.value = result
+        } else {
+            feeds.value = feeds.value.concat(result)
+        }
+    }, (errorCode: number) => {
+        loading.value = false
+        triggered.value = false
+        toast(t1('moment.load_failed', '' + errorCode))
+    })
+}
+
+/** 评论/点赞之后只重拉这一条，避免整页刷新把滚动位置顶掉 */
+const refreshFeed = (index: number) => {
+    const list = feeds.value
+    if (index < 0 || index >= list.length) {
+        return
+    }
+    const feedId = list[index].feedId
+    momentClient.getFeed(feedId, (feed: Feed) => {
+        const current = feeds.value
+        for (let i = 0; i < current.length; i++) {
+            if (current[i].feedId == feedId) {
+                current[i] = feed
+                // class 实例装进数组不是响应式的，换一次数组引用才会触发重渲染
+                feeds.value = current.slice(0)
+                break
+            }
+        }
+    }, (_: number) => { })
+}
+
+const loadProfile = () => {
+    momentClient.getUserProfile(userId.value, (profiles) => {
+        backgroundUrl.value = profiles.backgroundUrl
+    }, (_: number) => { })
+}
+
+const loadUnread = () => {
+    unreadCount.value = momentClient.getUnreadCount()
+}
+
+onLoad((options: OnLoadOptions) => {
+    const uid = options['userId']
+    if (uid != null) {
+        userId.value = '' + uid
+    }
+    // 先出缓存再拉网络，冷启动不至于白屏
+    const cached = momentClient.restoreCache(userId.value)
+    if (cached.length > 0) {
+        feeds.value = cached
+    }
+    load(true)
+    if (isHome.value) {
+        loadProfile()
+        loadUnread()
+    }
+})
+
+// 从发布页/消息页/详情页返回都要刷新
+onShow(() => {
+    if (consumePublished()) {
+        load(true)
+    }
+    if (isHome.value) {
+        loadUnread()
+    }
+})
+
+const onRefresh = () => {
+    triggered.value = true
+    load(true)
+    if (isHome.value) {
+        loadUnread()
+    }
+}
+
+const onRestore = () => {
+    triggered.value = false
+}
+
+const onScroll = (e: UniScrollEvent) => {
+    scrollTop.value = e.detail.scrollTop
+}
+
+const onScrollToLower = () => {
+    if (hasMore.value && !loading.value) {
+        load(false)
+    }
+}
+
+// ---------------------------------------------------------------- 交互
+
+const goBack = () => {
+    uni.navigateBack()
+}
+
+const onTapUser = (uid: string) => {
+    if (uid == '' || uid == userId.value) {
+        return
+    }
+    uni.navigateTo({
+        url: '/pages/moment/MomentFeedListPage?userId=' + uid,
+        fail: (err) => {
+            console.log('nav to moment page fail', err)
+        }
+    } as NavigateToOptions)
+}
+
+const onTapMedia = (feedIndex: number, mediaIndex: number) => {
+    const list = feeds.value
+    if (feedIndex < 0 || feedIndex >= list.length) {
+        return
+    }
+    previewMedias(list[feedIndex].medias, mediaIndex)
+}
+
+const onToggleLike = (index: number, liked: boolean) => {
+    const list = feeds.value
+    if (index < 0 || index >= list.length) {
+        return
+    }
+    const feed = list[index]
+    if (liked) {
+        // 取消赞：找到自己那条点赞记录删掉
+        const thumbups = feed.thumbups()
+        for (let i = 0; i < thumbups.length; i++) {
+            if (thumbups[i].sender == selfUserId) {
+                momentClient.deleteComment(thumbups[i].commentId, feed.feedId, () => {
+                    refreshFeed(index)
+                }, (errorCode: number) => {
+                    toast(t1('moment.operate_failed', '' + errorCode))
+                })
+                return
+            }
+        }
+    } else {
+        momentClient.postComment(WFMCommentType.Thumbup, feed.feedId, 0, '', '', '', (_: Comment) => {
+            refreshFeed(index)
+        }, (errorCode: number) => {
+            toast(t1('moment.operate_failed', '' + errorCode))
+        })
+    }
+}
+
+const onComment = (index: number, replyTo: Comment | null) => {
+    const list = feeds.value
+    if (index < 0 || index >= list.length) {
+        return
+    }
+    const feed = list[index]
+    const title = replyTo == null ? t('moment.comment') : (t('moment.reply') + ' ' + momentDisplayName((replyTo as Comment).sender))
+    uni.showModal({
+        title: title,
+        editable: true,
+        placeholderText: t('moment.comment_placeholder'),
+        success: (res) => {
+            if (!res.confirm) {
+                return
+            }
+            const text = (res.content ?? '').trim()
+            if (text == '') {
+                return
+            }
+            const replyCommentId = replyTo == null ? 0 : (replyTo as Comment).commentId
+            const replyToUser = replyTo == null ? '' : (replyTo as Comment).sender
+            momentClient.postComment(WFMCommentType.Comment, feed.feedId, replyCommentId, text, replyToUser, '', (_: Comment) => {
+                refreshFeed(index)
+            }, (errorCode: number) => {
+                toast(t1('moment.comment_failed', '' + errorCode))
+            })
+        }
+    } as ShowModalOptions)
+}
+
+const onDeleteComment = (index: number, comment: Comment) => {
+    const list = feeds.value
+    if (index < 0 || index >= list.length) {
+        return
+    }
+    momentClient.deleteComment(comment.commentId, list[index].feedId, () => {
+        refreshFeed(index)
+    }, (errorCode: number) => {
+        toast(t1('moment.delete_failed', '' + errorCode))
+    })
+}
+
+const onDeleteFeed = (index: number) => {
+    const list = feeds.value
+    if (index < 0 || index >= list.length) {
+        return
+    }
+    const feedId = list[index].feedId
+    showConfirmDialog(t('common.delete'), t('moment.confirm_delete_feed'), true, () => {
+        momentClient.deleteFeed(feedId, () => {
+            const current = feeds.value
+            const kept: Feed[] = []
+            for (let i = 0; i < current.length; i++) {
+                if (current[i].feedId != feedId) {
+                    kept.push(current[i])
+                }
+            }
+            feeds.value = kept
+        }, (errorCode: number) => {
+            toast(t1('moment.delete_failed', '' + errorCode))
+        })
+    })
+}
+
+const openMessages = () => {
+    uni.navigateTo({
+        url: '/pages/moment/MomentMessagesPage',
+        fail: (err) => {
+            console.log('nav to moment messages fail', err)
+        }
+    } as NavigateToOptions)
+}
+
+const previewMedias = (medias: FeedEntry[], index: number) => {
+    if (medias.length == 0) {
+        return
+    }
+    const entry = medias[index]
+    // 视频走视频预览页，图片走系统预览（与会话页的媒体预览一致，见 §M3「与 flutter 的刻意差异」）
+    if (entry.mediaUrl.length > 0 && isVideoEntry(entry)) {
+        uni.navigateTo({
+            url: '/pages/misc/PreviewVideoPage?url=' + encodeURIComponent(entry.mediaUrl),
+            fail: (err) => {
+                console.log('nav to video preview fail', err)
+            }
+        } as NavigateToOptions)
+        return
+    }
+    const urls: string[] = []
+    for (let i = 0; i < medias.length; i++) {
+        urls.push(medias[i].mediaUrl != '' ? medias[i].mediaUrl : entryDisplayUrl(medias[i]))
+    }
+    uni.previewImage({
+        urls: urls,
+        current: index
+    } as PreviewImageOptions)
+}
+
+function isVideoEntry(entry: FeedEntry): boolean {
+    const url = entry.mediaUrl.toLowerCase()
+    return url.endsWith('.mp4') || url.endsWith('.mov') || url.endsWith('.m4v') || url.endsWith('.3gp') || url.endsWith('.webm')
+}
+
+// ---------------------------------------------------------------- 发布
+
+const onPublish = () => {
+    uni.showActionSheet({
+        itemList: [t('moment.publish_media'), t('moment.publish_text')],
+        success: (res) => {
+            if (res.tapIndex == 0) {
+                chooseMediasThenPublish()
+            } else {
+                go2Publish()
+            }
+        },
+        fail: (err) => {
+            console.log('moment publish action sheet fail', err)
+        }
+    } as ShowActionSheetOptions)
+}
+
+const chooseMediasThenPublish = () => {
+    uni.chooseImage({
+        count: 9,
+        sourceType: ['album', 'camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            const paths: string[] = []
+            for (let i = 0; i < e.tempFilePaths.length; i++) {
+                paths.push(toLocalFilePath(e.tempFilePaths[i]))
+            }
+            setPublishMedias(paths)
+            go2Publish()
+        },
+        fail: (err) => {
+            console.log('moment choose image fail', err)
+        }
+    } as ChooseImageOptions)
+}
+
+const go2Publish = () => {
+    uni.navigateTo({
+        url: '/pages/moment/PublishFeedPage',
+        fail: (err) => {
+            console.log('nav to publish feed fail', err)
+        }
+    } as NavigateToOptions)
+}
+
+const onTapCover = () => {
+    if (!isHome.value) {
+        return
+    }
+    uni.chooseImage({
+        count: 1,
+        sourceType: ['album', 'camera'],
+        sizeType: ['original', 'compressed'],
+        success: (e) => {
+            if (e.tempFilePaths.length == 0) {
+                return
+            }
+            uni.showLoading({ title: t('moment.uploading') } as ShowLoadingOptions)
+            uploadMomentFile(toLocalFilePath(e.tempFilePaths[0]), (url: string) => {
+                momentClient.updateMyProfile(WFMUpdateUserProfileType.BackgroundUrl, url, 0, () => {
+                    uni.hideLoading()
+                    backgroundUrl.value = url
+                }, (errorCode: number) => {
+                    uni.hideLoading()
+                    toast(t1('moment.operate_failed', '' + errorCode))
+                })
+            }, (errorCode: number) => {
+                uni.hideLoading()
+                toast(t1('moment.upload_failed', '' + errorCode))
+            })
+        },
+        fail: (err) => {
+            console.log('moment choose cover fail', err)
+        }
+    } as ChooseImageOptions)
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+
+.header {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.cover {
+    width: 100%;
+}
+
+.cover-image {
+    width: 100%;
+    height: 100%;
+}
+
+/* 头像压在封面下沿，右对齐（对齐微信） */
+.header-user {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding-right: 12px;
+    margin-top: -22px;
+}
+
+.header-name {
+    color: #FFFFFF;
+    font-weight: 600;
+    margin-right: 8px;
+    margin-bottom: 18px;
+}
+
+.header-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 6px;
+    border-width: 2px;
+    border-style: solid;
+    border-color: #FFFFFF;
+}
+
+.unread-bar {
+    margin: 4px 90px;
+    padding: 7px 0;
+    border-radius: 3px;
+    align-items: center;
+}
+
+.unread-text {
+    text-align: center;
+}
+
+.header-gap {
+    height: 28px;
+}
+
+.footer {
+    padding: 16px 0;
+    align-items: center;
+}
+
+.footer-text {
+    text-align: center;
+}
+
+.floating-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.bar-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 44px;
+    padding: 0 12px;
+}
+
+.bar-back {
+    width: 40px;
+    font-size: 30px;
+    line-height: 30px;
+}
+
+.bar-title {
+    flex: 1;
+    text-align: center;
+    font-weight: 600;
+}
+
+.bar-publish {
+    width: 40px;
+    text-align: right;
+}
+</style>

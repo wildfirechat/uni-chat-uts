@@ -1279,6 +1279,20 @@ export class WfcManager {
         });
     }
 
+    /**
+     * 按会话类型 + line + 消息状态跨会话取消息。
+     *
+     * [messageStatuses] 传空数组表示不限状态。朋友圈的评论/提醒消息落在 line=1 的单聊会话里，
+     * 只能通过这个接口取（见 `wfc/moment/momentClient.uts` 的 getMessages）。
+     */
+    getMessagesByStatusEx(conversationTypes: number[], lines: number[], messageStatuses: number[], fromIndex: number, before: boolean, count: number, withUser: string, successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
+        native.getMessagesEx2V2(conversationTypes, lines, messageStatuses, fromIndex, before, count, withUser, (protoMsgsStr: string) => {
+            successCB?.(this._parseMessages(protoMsgsStr));
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
     getUserMessagesExV2(userId: string, conversationTypes: number[], lines: number[], fromIndex: number, before: boolean, count: number, contentTypes: number[], successCB: ((msgs: Message[]) => void) | null, failCB: ((err: number) => void) | null): void {
         native.getUserMessagesExV2(userId, conversationTypes, lines, fromIndex, before, count, contentTypes, (protoMsgsStr: string) => {
             successCB?.(this._parseMessages(protoMsgsStr));
@@ -1795,6 +1809,27 @@ export class WfcManager {
 
     sendConferenceRequestEx(sessionId: string, roomId: string, request: string, data: string, advance: boolean, callback: ((errorCode: number, resp: string | null) => void) | null): void {
         native.sendConferenceRequest(sessionId, roomId, request, data, advance,
+            (resp: string) => {
+                callback?.(0, resp);
+            },
+            (errorCode: number) => {
+                callback?.(errorCode, null)
+            });
+    }
+
+    /**
+     * 发送朋友圈相关请求
+     *
+     * 朋友圈没有独立的原生 SDK —— 全部功能（时间线、发布、评论、可见范围、隐私设置）
+     * 都通过这一个通道走：[path] 是朋友圈服务的路径，[data] 是 JSON 字符串，
+     * 回调拿到的 [resp] 也是 JSON 字符串（protobuf 响应由原生侧解码完再回调）。
+     * 业务层见 `wfc/moment/momentClient.uts`。
+     *
+     * ⚠️ 目前只有鸿蒙端可用。android / iOS 的原生插件尚未导出该方法，
+     * 会直接回调 [ErrorCode.kEcServerNotImplement]（254），等两端 SDK 更新后即可生效。
+     */
+    sendMomentsRequest(path: string, data: string, callback: ((errorCode: number, resp: string | null) => void) | null): void {
+        native.sendMomentsRequest(path, data,
             (resp: string) => {
                 callback?.(0, resp);
             },

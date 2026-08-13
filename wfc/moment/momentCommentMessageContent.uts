@@ -1,0 +1,104 @@
+import MessageContent from "../messages/messageContent.uts";
+import MessageContentType from "../messages/messageContentType.uts";
+import MessagePayload from '../messages/messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts';
+import { FeedEntry, WFMCommentType, WFMContentType } from './momentModel.uts';
+
+/**
+ * 朋友圈评论/点赞消息（消息类型 502）。别人评论或点赞我的朋友圈时，
+ * 朋友圈服务端往我的 **line=1 单聊会话**里投这条消息。
+ *
+ * 报文里除了评论本身，还冗余带了被评论那条朋友圈的摘要
+ * （`ftype` / `fsender` / `fcontent` / `fmedias`），
+ * 消息列表右侧那个缩略图就是从 `fmedias` 里取的，不用回查 feed。
+ *
+ * 对齐 flutter `moment/lib/client/moment_comment_content.dart`。
+ */
+export default class MomentCommentMessageContent extends MessageContent {
+    feedId = 0;
+    commentId = 0;
+    replyCommentId = 0;
+    sender = '';
+    commentType = WFMCommentType.Comment;
+    text = '';
+    replyTo = '';
+    serverTime = 0;
+
+    feedType = WFMContentType.Text;
+    feedText = '';
+    feedMedias: FeedEntry[] = [];
+    feedSender = '';
+
+    constructor() {
+        super(MessageContentType.MESSAGE_CONTENT_TYPE_COMMENT);
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.text;
+
+        const obj = {
+            feedId: this.feedId,
+            commentId: this.commentId,
+            type: this.commentType,
+            sender: this.sender,
+            serverTime: this.serverTime,
+            ftype: this.feedType,
+            fsender: this.feedSender
+        } as UTSJSONObject;
+        if (this.text != '') {
+            obj.set('text', this.text);
+        }
+        if (this.replyCommentId != 0) {
+            obj.set('replyId', this.replyCommentId);
+        }
+        if (this.replyTo != '') {
+            obj.set('replyTo', this.replyTo);
+        }
+        if (this.feedText != '') {
+            obj.set('fcontent', this.feedText);
+        }
+        if (this.feedMedias.length > 0) {
+            obj.set('fmedias', FeedEntry.listToArray(this.feedMedias));
+        }
+        if (this.extra != '') {
+            obj.set('e', this.extra);
+        }
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj == null) {
+            return;
+        }
+        this.feedId = obj.getNumber('feedId') ?? 0;
+        this.commentId = obj.getNumber('commentId') ?? 0;
+        this.replyCommentId = obj.getNumber('replyId') ?? 0;
+        this.serverTime = obj.getNumber('serverTime') ?? 0;
+        this.commentType = obj.getNumber('type') ?? WFMCommentType.Comment;
+        this.sender = obj.getString('sender') ?? '';
+        this.replyTo = obj.getString('replyTo') ?? '';
+        this.extra = obj.getString('e') ?? '';
+
+        this.feedType = obj.getNumber('ftype') ?? WFMContentType.Text;
+        this.feedSender = obj.getString('fsender') ?? '';
+        this.feedText = obj.getString('fcontent') ?? '';
+        this.feedMedias = FeedEntry.listFromArray(obj.getArray<UTSJSONObject>('fmedias'));
+
+        // 与 flutter 一致：正文以 searchableContent 为准（binaryContent 里的 text 只是备份）
+        this.text = payload.searchableContent != '' ? payload.searchableContent : (obj.getString('text') ?? '');
+    }
+
+    isThumbup(): boolean {
+        return this.commentType == WFMCommentType.Thumbup;
+    }
+
+    /** 同 [MomentFeedMessageContent.digest]：只在朋友圈消息列表里渲染，不进会话列表 */
+    override digest(message: any | null): string {
+        return '';
+    }
+}

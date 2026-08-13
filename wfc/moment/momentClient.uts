@@ -1,0 +1,457 @@
+/*
+ * 朋友圈客户端。移植自 flutter `moment/lib/client/momentclient.dart`（814 行）。
+ *
+ * 朋友圈**没有独立的原生 SDK** —— 全部功能（时间线、发布、评论、可见范围、隐私设置）
+ * 都通过 `wfc.sendMomentsRequest(path, data, cb)` 这一个通道走，请求和响应都是 JSON
+ * 字符串。所以这一层完全是 uts 写的，三端共用。
+ *
+ * ⚠️ **目前只有鸿蒙端能跑通** —— android / iOS 的原生插件还没导出 sendMomentsRequest，
+ * 会直接回调 254（kEcServerNotImplement）。见 §4 缺口台账。
+ *
+ * 路径与报文键已对照 android `momentclient-release.aar`（javap 反编译）核对：
+ * `/moments` 下是 feed/post、feed/recall、comment/post、comment/recall、
+ * profiles/pull、profiles/value/push、profiles/list/push；
+ * 拉取走 `/moments_pb` 下的 feed/pull、feed/pull_one（protobuf 响应，原生侧解码后回调 JSON）。
+ */
+
+import wfc from '../client/wfc.uts';
+import Message from '../messages/message.uts';
+import MessageStatus from '../messages/messageStatus.uts';
+import ConversationType from '../model/conversationType.uts';
+import EventType from '../client/wfcEvent.uts';
+import { getItem, setItem } from '@/pages/util/storageHelper.uts';
+import { Comment, Feed, FeedEntry, MomentProfiles } from './momentModel.uts';
+import MomentCommentMessageContent from './momentCommentMessageContent.uts';
+import MomentFeedMessageContent from './momentFeedMessageContent.uts';
+
+export type OnReceiveNewCommentCallback = (comment: MomentCommentMessageContent) => void
+export type OnReceiveMentionedFeedCallback = (feed: MomentFeedMessageContent) => void
+
+/** 朋友圈消息所在的会话 line。朋友圈的提醒/评论消息都落在单聊会话的 line 1 上 */
+const MOMENT_LINE = 1;
+
+/** 本地缓存上限：只保留最新 50 条，避免翻页后全量 JSON 重写越来越大（与 flutter 一致） */
+const MAX_CACHE_COUNT = 50;
+
+const LAST_READ_TIMESTAMP_KEY = 'wfc_moment_lastreadtime';
+
+class MomentClient {
+    private inited = false;
+    private newCommentCallback: OnReceiveNewCommentCallback | null = null;
+    private mentionedFeedCallback: OnReceiveMentionedFeedCallback | null = null;
+
+    /**
+     * 使用之前必须初始化。可以重复调用（只会挂一次监听），方便发现页和朋友圈页各自兜底。
+     *
+     * 消息类型 501/502 的注册在 `wfc/client/messageConfig.uts` 里，不在这儿做 ——
+     * uts 侧的注册表是静态的，不像 flutter 要运行时 registerMessageContent。
+     */
+    init(newCommentCallback: OnReceiveNewCommentCallback | null, mentionedFeedCallback: OnReceiveMentionedFeedCallback | null): void {
+        this.newCommentCallback = newCommentCallback;
+        this.mentionedFeedCallback = mentionedFeedCallback;
+        if (this.inited) {
+            return;
+        }
+        this.inited = true;
+
+        wfc.eventEmitter.on(EventType.ReceiveMessages, (args: Array<any | null>) => {
+            if (args.length == 0) {
+                return;
+            }
+            const msgs = args[0] as Message[];
+            for (let i = 0; i < msgs.length; i++) {
+                const msg = msgs[i];
+                if (msg.conversation.type != ConversationType.Single || msg.conversation.line != MOMENT_LINE) {
+                    continue;
+                }
+                if (msg.messageContent instanceof MomentCommentMessageContent) {
+                    this.newCommentCallback?.(msg.messageContent as MomentCommentMessageContent);
+                } else if (msg.messageContent instanceof MomentFeedMessageContent) {
+                    this.mentionedFeedCallback?.(msg.messageContent as MomentFeedMessageContent);
+                }
+            }
+        });
+    }
+
+    // ---- 路径构造 ----
+
+    private path(api: string): string {
+        return '/moments' + api;
+    }
+
+    private pbPath(api: string): string {
+        return '/moments_pb' + api;
+    }
+
+    // ---- 朋友圈 ----
+
+    /**
+     * 发布朋友圈。[toUsers] 非空表示「部分可见」，[excludeUsers] 非空表示「不给谁看」，
+     * 两者互斥（可见范围页只让选一种）。
+     */
+    postFeed(type: number, text: string, medias: FeedEntry[], toUsers: string[], excludeUsers: string[], mentionedUsers: string[], extra: string,
+        successCB: ((feed: Feed) => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const feed = new Feed();
+        feed.sender = wfc.getUserId();
+        feed.type = type;
+        feed.text = text;
+        feed.medias = medias;
+        feed.mentionedUsers = mentionedUsers;
+        feed.extra = extra;
+        feed.toUsers = toUsers;
+        feed.excludeUsers = excludeUsers;
+
+        wfc.sendMomentsRequest(this.path('/feed/post'), JSON.stringify(feed.toMap())!, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            const obj = JSON.parseObject(resp ?? '');
+            if (obj != null) {
+                feed.feedId = obj.getNumber('id') ?? 0;
+                feed.serverTime = obj.getNumber('timestamp') ?? 0;
+            }
+            successCB?.(feed);
+        });
+    }
+
+    /** 删除朋友圈，朋友圈必须属于当前用户才能删除 */
+    deleteFeed(feedId: number, successCB: (() => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const data = JSON.stringify({ id: feedId } as UTSJSONObject)!;
+        wfc.sendMomentsRequest(this.path('/feed/recall'), data, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            successCB?.();
+        });
+    }
+
+    /**
+     * 批量获取朋友圈。
+     *
+     * [fromIndex] 传 0 表示从最新一条开始，翻页时传上一页最后一条的 feedId；
+     * [user] 传 '' 表示拉时间线（好友的），传 uid 表示拉某个人的个人相册。
+     */
+    getFeeds(fromIndex: number, count: number, user: string, successCB: ((feeds: Feed[]) => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const dataDict = {} as UTSJSONObject;
+        if (fromIndex > 0) {
+            dataDict.set('feedId', fromIndex);
+        }
+        if (count > 0) {
+            dataDict.set('count', count);
+        }
+        if (user != '') {
+            dataDict.set('user', user);
+        }
+
+        wfc.sendMomentsRequest(this.pbPath('/feed/pull'), JSON.stringify(dataDict)!, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            const feeds = this.parseFeeds(resp ?? '');
+            // 首页覆盖缓存，翻页追加到缓存尾部（与 flutter 一致）
+            if (fromIndex == 0) {
+                this.storeCache(feeds, user);
+            } else {
+                const exist = this.restoreCache(user);
+                for (let i = 0; i < feeds.length; i++) {
+                    exist.push(feeds[i]);
+                }
+                this.storeCache(exist, user);
+            }
+            successCB?.(feeds);
+        });
+    }
+
+    /** 获取单条朋友圈（评论都在里面，详情页用） */
+    getFeed(feedId: number, successCB: ((feed: Feed) => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const data = JSON.stringify({ feedId: feedId } as UTSJSONObject)!;
+        wfc.sendMomentsRequest(this.pbPath('/feed/pull_one'), data, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            const obj = JSON.parseObject(resp ?? '');
+            if (obj == null) {
+                failCB?.(-1);
+                return;
+            }
+            successCB?.(Feed.fromMap(obj, wfc.getUserId()));
+        });
+    }
+
+    private parseFeeds(respStr: string): Feed[] {
+        const feeds: Feed[] = [];
+        const arr = JSON.parseArray(respStr);
+        if (arr == null) {
+            return feeds;
+        }
+        const myUid = wfc.getUserId();
+        for (let i = 0; i < arr.length; i++) {
+            const o = arr[i];
+            if (o instanceof UTSJSONObject) {
+                feeds.push(Feed.fromMap(o as UTSJSONObject, myUid));
+            }
+        }
+        return feeds;
+    }
+
+    // ---- 评论与点赞 ----
+
+    /**
+     * 发布评论或点赞。
+     *
+     * [replyCommentId] 传 0 表示直接评论朋友圈，非 0 表示回复某条评论；
+     * 点赞传 [WFMCommentType.Thumbup] + 空 text。
+     */
+    postComment(type: number, feedId: number, replyCommentId: number, text: string, replyTo: string, extra: string,
+        successCB: ((comment: Comment) => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const comment = new Comment();
+        comment.sender = wfc.getUserId();
+        comment.feedId = feedId;
+        comment.replyCommentId = replyCommentId;
+        comment.type = type;
+        comment.text = text;
+        comment.replyTo = replyTo;
+        comment.extra = extra;
+
+        wfc.sendMomentsRequest(this.path('/comment/post'), JSON.stringify(comment.toMap())!, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            const obj = JSON.parseObject(resp ?? '');
+            if (obj != null) {
+                comment.commentId = obj.getNumber('id') ?? 0;
+                comment.serverTime = obj.getNumber('timestamp') ?? 0;
+            }
+            successCB?.(comment);
+        });
+    }
+
+    /** 删除评论或取消点赞 */
+    deleteComment(commentId: number, feedId: number, successCB: (() => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const data = JSON.stringify({ id: commentId, id2: feedId } as UTSJSONObject)!;
+        wfc.sendMomentsRequest(this.path('/comment/recall'), data, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            successCB?.();
+        });
+    }
+
+    // ---- 消息（评论/提醒） ----
+
+    /**
+     * 获取朋友圈的评论/提醒消息。
+     *
+     * [isNew] 为 true 时只取未读的。这些消息落在 line=1 的单聊会话里，
+     * 跨会话取只能走 `getMessagesByStatusEx`（原生的 getMessagesEx2V2）。
+     */
+    getMessages(fromIndex: number, isNew: boolean, successCB: ((messages: Message[]) => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const statuses: number[] = isNew ? [MessageStatus.Unread] : ([] as number[]);
+        const types: number[] = [ConversationType.Single];
+        const lines: number[] = [MOMENT_LINE];
+        wfc.getMessagesByStatusEx(types, lines, statuses, fromIndex, true, 100, '', (msgs: Message[]) => {
+            const result: Message[] = [];
+            for (let i = 0; i < msgs.length; i++) {
+                const content = msgs[i].messageContent;
+                if (content instanceof MomentFeedMessageContent || content instanceof MomentCommentMessageContent) {
+                    result.push(msgs[i]);
+                }
+            }
+            successCB?.(result);
+        }, (errorCode: number) => {
+            failCB?.(errorCode);
+        });
+    }
+
+    /** 朋友圈消息未读数（发现页那个小红点） */
+    getUnreadCount(): number {
+        const types: number[] = [ConversationType.Single];
+        const lines: number[] = [MOMENT_LINE];
+        return wfc.getUnreadCount(types, lines).unread;
+    }
+
+    /**
+     * 清除朋友圈消息未读数。
+     *
+     * flutter 用的是 `clearConversationsUnreadStatus(types, lines)`，三端插件里只有鸿蒙的
+     * 原生有这个方法，android / iOS 都没有。所以这里改成先列出 line=1 的会话再逐个清 ——
+     * 语义等价，且三端现成的接口就够用，不用再欠一笔原生债。
+     */
+    clearUnreadStatus(): void {
+        const types: number[] = [ConversationType.Single];
+        const lines: number[] = [MOMENT_LINE];
+        const infos = wfc.getConversationList(types, lines);
+        for (let i = 0; i < infos.length; i++) {
+            wfc.clearConversationUnreadStatus(infos[i].conversation);
+        }
+    }
+
+    // ---- 本地缓存 ----
+
+    private cacheKey(userId: string): string {
+        return userId != '' ? ('feeds_' + userId) : ('feeds_all_' + wfc.getUserId());
+    }
+
+    /** 为用户缓存时间线，只留最新 [MAX_CACHE_COUNT] 条（feed 按时间倒序，截尾即可） */
+    storeCache(feeds: Feed[], userId: string = ''): void {
+        let list = feeds;
+        if (list.length > MAX_CACHE_COUNT) {
+            list = list.slice(0, MAX_CACHE_COUNT);
+        }
+        const arr: UTSJSONObject[] = [];
+        for (let i = 0; i < list.length; i++) {
+            arr.push(list[i].toMap());
+        }
+        setItem(this.cacheKey(userId), JSON.stringify(arr)!);
+    }
+
+    /** 取缓存的时间线，用于首屏先出内容再拉网络 */
+    restoreCache(userId: string = ''): Feed[] {
+        const str = getItem(this.cacheKey(userId));
+        if (str == '') {
+            return [] as Feed[];
+        }
+        return this.parseFeeds(str);
+    }
+
+    // ---- 朋友圈设置 ----
+
+    /**
+     * 获取朋友圈设置。
+     *
+     * 与 flutter 一致：本地有缓存会**先回调一次缓存**，再发请求拉最新的回调第二次，
+     * 所以 [successCB] 可能被调用两次，UI 侧要能承受重复刷新。
+     */
+    getUserProfile(userId: string, successCB: ((profiles: MomentProfiles) => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const targetUserId = userId != '' ? userId : wfc.getUserId();
+        const cached = this.profileFromStore(targetUserId);
+        if (cached != null) {
+            successCB?.(cached!);
+        }
+
+        const dataDict = { u: targetUserId } as UTSJSONObject;
+        if (cached != null) {
+            // 带上本地版本号，服务端没更新时会返回 5（kEcServerNotModified）
+            dataDict.set('d', cached!.updateDt);
+        }
+
+        wfc.sendMomentsRequest(this.path('/profiles/pull'), JSON.stringify(dataDict)!, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            const obj = JSON.parseObject(resp ?? '');
+            if (obj == null) {
+                failCB?.(-1);
+                return;
+            }
+            const profile = MomentProfiles.fromMap(obj);
+            successCB?.(profile);
+            this.profileToStore(targetUserId, profile);
+        });
+    }
+
+    /**
+     * 更新朋友圈设置。[updateProfileType] 见 [WFMUpdateUserProfileType]：
+     * 背景图传 [strValue]，陌生人可见条数 / 可见范围传 [intValue]。
+     */
+    updateMyProfile(updateProfileType: number, strValue: string, intValue: number, successCB: (() => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const dataDict = { t: updateProfileType } as UTSJSONObject;
+        if (strValue != '') {
+            dataDict.set('v', strValue);
+        }
+        if (intValue != 0) {
+            dataDict.set('i', intValue);
+        }
+
+        wfc.sendMomentsRequest(this.path('/profiles/value/push'), JSON.stringify(dataDict)!, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            // 设置变了，本地那份缓存的 updateDt 已经过期，直接丢掉让下次重拉
+            this.clearProfileStore(wfc.getUserId());
+            successCB?.();
+        });
+    }
+
+    /**
+     * 更新黑名单 / 不看名单。
+     *
+     * [isBlock] 为 true 改的是 blockList（不看他的朋友圈），false 改的是 blackList
+     * （不让他看我的朋友圈）—— 两者语义相反，很容易写反。
+     */
+    updateBlackOrBlockList(isBlock: boolean, addList: string[], removeList: string[], successCB: (() => void) | null, failCB: ((errorCode: number) => void) | null): void {
+        const dataDict = { b: isBlock } as UTSJSONObject;
+        if (addList.length > 0) {
+            dataDict.set('al', addList);
+        }
+        if (removeList.length > 0) {
+            dataDict.set('rl', removeList);
+        }
+
+        wfc.sendMomentsRequest(this.path('/profiles/list/push'), JSON.stringify(dataDict)!, (errorCode: number, resp: string | null) => {
+            if (errorCode != 0) {
+                failCB?.(errorCode);
+                return;
+            }
+            this.clearProfileStore(wfc.getUserId());
+            successCB?.();
+        });
+    }
+
+    private profileStoreKey(userId: string): string {
+        return 'moment_profile_' + userId;
+    }
+
+    private profileFromStore(userId: string): MomentProfiles | null {
+        const str = getItem(this.profileStoreKey(userId));
+        if (str == '') {
+            return null;
+        }
+        const obj = JSON.parseObject(str);
+        if (obj == null) {
+            return null;
+        }
+        const profile = MomentProfiles.fromMap(obj);
+        // updateDt 为 0 的缓存没有版本号，带不上 'd'，等于没缓存
+        return profile.updateDt != 0 ? profile : null;
+    }
+
+    private profileToStore(userId: string, profile: MomentProfiles): void {
+        if (profile.updateDt == 0) {
+            return;
+        }
+        setItem(this.profileStoreKey(userId), JSON.stringify(profile.toMap())!);
+    }
+
+    private clearProfileStore(userId: string): void {
+        setItem(this.profileStoreKey(userId), '');
+    }
+
+    // ---- 最后阅读时间 ----
+
+    /** 记录最后阅读时间（秒），信息流页退出时调用 */
+    updateLastReadTimestamp(): void {
+        const timestamp = Math.floor(new Date().getTime() / 1000);
+        setItem(LAST_READ_TIMESTAMP_KEY, '' + timestamp);
+    }
+
+    /** 获取最后阅读时间（秒），0 表示从来没看过 */
+    getLastReadTimestamp(): number {
+        const str = getItem(LAST_READ_TIMESTAMP_KEY);
+        if (str == '') {
+            return 0;
+        }
+        return parseFloat(str);
+    }
+}
+
+const self = new MomentClient();
+export default self;

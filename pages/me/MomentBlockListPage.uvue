@@ -1,0 +1,127 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="title" :show-back="true" :right-text="t('common.add')" @rightTextTap="addMembers" />
+
+        <scroll-view class="scroll" direction="vertical">
+            <view v-if="users.length == 0" class="empty">
+                <text class="empty-text"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ t('moment.no_member') }}</text>
+            </view>
+
+            <member-row v-for="(user, index) in users" :key="user.uid" :user="user" :subtitle="user.uid"
+                :action-label="t('common.remove')" :show-bottom-divider="index < users.length - 1"
+                @actionTap="removeMember(user)" />
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 朋友圈名单页，「不让他(她)看」和「不看他(她)」共用。
+ * 对齐 flutter `moment_privacy_settings_screen.dart` 里的 `MomentBlockListScreen`。
+ *
+ * 入参走 [momentBlockListState.uts](./momentBlockListState.uts)。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import wfc from '@/wfc/client/wfc.uts'
+import momentClient from '@/wfc/moment/momentClient.uts'
+import UserInfo from '@/wfc/model/userInfo.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, FONT_LG } from '@/common/layoutScale.uts'
+import { showConfirmDialog, toast } from '@/common/prompt.uts'
+import { pickUsers, PickUsersOptions } from '@/common/picker.uts'
+import { currentMomentBlockList } from '@/pages/me/momentBlockListState.uts'
+import { t, t1 } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'MomentBlockListPage'
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const isBlock = ref<boolean>(true)
+const userIds = ref<string[]>([] as string[])
+const users = ref<UserInfo[]>([] as UserInfo[])
+
+const title = computed<string>((): string => isBlock.value ? t('moment.block_them') : t('moment.hide_them'))
+
+const loadUsers = () => {
+    const ids = userIds.value
+    if (ids.length == 0) {
+        users.value = [] as UserInfo[]
+        return
+    }
+    users.value = wfc.getUserInfos(ids, '')
+}
+
+onLoad((_options: OnLoadOptions) => {
+    const param = currentMomentBlockList()
+    isBlock.value = param.isBlock
+    userIds.value = param.userIds
+    loadUsers()
+})
+
+const addMembers = () => {
+    const options = new PickUsersOptions()
+    options.title = title.value
+    options.successCB = (picked: UserInfo[]): void => {
+        const addList: string[] = []
+        for (let i = 0; i < picked.length; i++) {
+            if (userIds.value.indexOf(picked[i].uid) < 0) {
+                addList.push(picked[i].uid)
+            }
+        }
+        if (addList.length == 0) {
+            return
+        }
+        momentClient.updateBlackOrBlockList(isBlock.value, addList, [] as string[], () => {
+            userIds.value = userIds.value.concat(addList)
+            loadUsers()
+        }, (errorCode: number) => {
+            toast(t1('moment.operate_failed', '' + errorCode))
+        })
+    }
+    pickUsers(options)
+}
+
+const removeMember = (user: UserInfo) => {
+    showConfirmDialog(t('common.remove'), t1('moment.confirm_remove_member', wfc.getUserDisplayNameEx(user)), true, () => {
+        momentClient.updateBlackOrBlockList(isBlock.value, [] as string[], [user.uid], () => {
+            const kept: string[] = []
+            for (let i = 0; i < userIds.value.length; i++) {
+                if (userIds.value[i] != user.uid) {
+                    kept.push(userIds.value[i])
+                }
+            }
+            userIds.value = kept
+            loadUsers()
+        }, (errorCode: number) => {
+            toast(t1('moment.operate_failed', '' + errorCode))
+        })
+    })
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+
+.empty {
+    padding: 60px 0;
+    align-items: center;
+}
+
+.empty-text {
+    text-align: center;
+}
+</style>

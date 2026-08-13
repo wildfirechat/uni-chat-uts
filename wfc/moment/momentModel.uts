@@ -1,0 +1,313 @@
+/*
+ * 朋友圈数据模型。
+ *
+ * 对齐 flutter `moment/lib/client/momentclient.dart` 顶部的枚举与四个模型类
+ * （`Feed` / `Comment` / `FeedEntry` / `MomentProfiles`），并把它那些散在
+ * `MomentClientImpl` 里的 `_feedFromMap` / `_feed2Map` 之类收进各自的模型上。
+ *
+ * 与 flutter 的两处写法差异（语义等价）：
+ * 1. flutter 的字段是可空的（`int? feedId`），uts 侧统一用**零值代表未设置**
+ *    （number 用 0、string 用 ''、可见范围用 -1），encode 时按「非零才写」判断，
+ *    与 flutter 的「非 null 才写」等价。这样模型里不用到处 `!`，也避开了
+ *    android 端 `Int` / `Number` 装箱比较的坑。
+ * 2. 枚举写成静态常量类 —— uts 的 enum 在三端行为不一致，本项目一律用
+ *    `MessageContentType` 那种静态类（见 wfc/messages/messageContentType.uts）。
+ */
+
+/** 朋友圈内容类型，对应 flutter `WFMContentType`（按 index 上线，顺序不能改） */
+export class WFMContentType {
+    static Text = 0;
+    static Image = 1;
+    static Video = 2;
+    static Link = 3;
+}
+
+/** 评论类型，对应 flutter `WFMCommentType` */
+export class WFMCommentType {
+    static Comment = 0;
+    static Thumbup = 1;
+}
+
+/** 修改朋友圈设置的属性，对应 flutter `WFMUpdateUserProfileType`，值即 `/profiles/value/push` 的 `t` */
+export class WFMUpdateUserProfileType {
+    static BackgroundUrl = 0;
+    static StrangerVisibleCount = 1;
+    static VisibleScope = 2;
+}
+
+/** 朋友圈可见范围，对应 flutter `WFMVisiableScope` */
+export class WFMVisibleScope {
+    static NoLimit = 0;
+    static ThreeDays = 1;
+    static OneMonth = 2;
+    static SixMonths = 3;
+}
+
+/** 朋友圈媒体条目。报文里的键 `m` / `t` / `w` / `h` 与 android momentclient 一致 */
+export class FeedEntry {
+    mediaUrl = '';
+    thumbUrl = '';
+    mediaWidth = 0;
+    mediaHeight = 0;
+
+    static fromMap(o: UTSJSONObject): FeedEntry {
+        const entry = new FeedEntry();
+        entry.mediaUrl = o.getString('m') ?? '';
+        entry.thumbUrl = o.getString('t') ?? '';
+        entry.mediaWidth = o.getNumber('w') ?? 0;
+        entry.mediaHeight = o.getNumber('h') ?? 0;
+        return entry;
+    }
+
+    toMap(): UTSJSONObject {
+        const o = { m: this.mediaUrl } as UTSJSONObject;
+        if (this.thumbUrl != '') {
+            o.set('t', this.thumbUrl);
+        }
+        if (this.mediaWidth != 0) {
+            o.set('w', this.mediaWidth);
+        }
+        if (this.mediaHeight != 0) {
+            o.set('h', this.mediaHeight);
+        }
+        return o;
+    }
+
+    static listFromArray(arr: UTSJSONObject[] | null): FeedEntry[] {
+        const list: FeedEntry[] = [];
+        if (arr == null) {
+            return list;
+        }
+        for (let i = 0; i < arr.length; i++) {
+            list.push(FeedEntry.fromMap(arr[i]));
+        }
+        return list;
+    }
+
+    static listToArray(entries: FeedEntry[]): UTSJSONObject[] {
+        const arr: UTSJSONObject[] = [];
+        for (let i = 0; i < entries.length; i++) {
+            arr.push(entries[i].toMap());
+        }
+        return arr;
+    }
+}
+
+/** 朋友圈评论/点赞 */
+export class Comment {
+    feedId = 0;
+    commentId = 0;
+    replyCommentId = 0;
+    sender = '';
+    type = WFMCommentType.Comment;
+    text = '';
+    replyTo = '';
+    serverTime = 0;
+    extra = '';
+
+    static fromMap(o: UTSJSONObject, defaultSender: string): Comment {
+        const comment = new Comment();
+        comment.text = o.getString('text') ?? '';
+        comment.serverTime = o.getNumber('serverTime') ?? 0;
+        comment.type = o.getNumber('type') ?? WFMCommentType.Comment;
+        comment.feedId = o.getNumber('feedId') ?? 0;
+        comment.commentId = o.getNumber('commentId') ?? 0;
+        comment.sender = o.getString('sender') ?? defaultSender;
+        comment.extra = o.getString('extra') ?? '';
+        comment.replyTo = o.getString('replyTo') ?? '';
+        comment.replyCommentId = o.getNumber('replyId') ?? 0;
+        return comment;
+    }
+
+    toMap(): UTSJSONObject {
+        const o = {
+            feedId: this.feedId,
+            sender: this.sender,
+            type: this.type
+        } as UTSJSONObject;
+        if (this.commentId != 0) {
+            o.set('commentId', this.commentId);
+        }
+        if (this.replyCommentId != 0) {
+            o.set('replyId', this.replyCommentId);
+        }
+        if (this.text != '') {
+            o.set('text', this.text);
+        }
+        if (this.replyTo != '') {
+            o.set('replyTo', this.replyTo);
+        }
+        if (this.serverTime != 0) {
+            o.set('serverTime', this.serverTime);
+        }
+        if (this.extra != '') {
+            o.set('extra', this.extra);
+        }
+        return o;
+    }
+
+    static listFromArray(arr: UTSJSONObject[] | null, defaultSender: string): Comment[] {
+        const list: Comment[] = [];
+        if (arr == null) {
+            return list;
+        }
+        for (let i = 0; i < arr.length; i++) {
+            list.push(Comment.fromMap(arr[i], defaultSender));
+        }
+        return list;
+    }
+
+    static listToArray(comments: Comment[]): UTSJSONObject[] {
+        const arr: UTSJSONObject[] = [];
+        for (let i = 0; i < comments.length; i++) {
+            arr.push(comments[i].toMap());
+        }
+        return arr;
+    }
+
+    isThumbup(): boolean {
+        return this.type == WFMCommentType.Thumbup;
+    }
+}
+
+/** 一条朋友圈 */
+export class Feed {
+    feedId = 0;
+    sender = '';
+    type = WFMContentType.Text;
+    text = '';
+    medias: FeedEntry[] = [];
+    mentionedUsers: string[] = [];
+    toUsers: string[] = [];
+    excludeUsers: string[] = [];
+    serverTime = 0;
+    extra = '';
+    comments: Comment[] = [];
+    /** 服务端还有更多评论没下发（评论超过一页时） */
+    hasMoreComments = false;
+
+    static fromMap(o: UTSJSONObject, defaultSender: string): Feed {
+        const feed = new Feed();
+        feed.text = o.getString('text') ?? '';
+        feed.serverTime = o.getNumber('timestamp') ?? 0;
+        feed.type = o.getNumber('type') ?? WFMContentType.Text;
+        feed.feedId = o.getNumber('feedId') ?? 0;
+        feed.sender = o.getString('sender') ?? defaultSender;
+        feed.medias = FeedEntry.listFromArray(o.getArray<UTSJSONObject>('medias'));
+        feed.toUsers = o.getArray<string>('to') ?? ([] as string[]);
+        feed.excludeUsers = o.getArray<string>('ex') ?? ([] as string[]);
+        feed.mentionedUsers = o.getArray<string>('mu') ?? ([] as string[]);
+        feed.extra = o.getString('extra') ?? '';
+        feed.comments = Comment.listFromArray(o.getArray<UTSJSONObject>('comments'), defaultSender);
+        // JSON 接口返回 bool，protobuf 解码（/moments_pb）返回 0/1，两种形态都要认
+        const hasMoreBool = o.getBoolean('hasMore');
+        if (hasMoreBool != null) {
+            feed.hasMoreComments = hasMoreBool!;
+        } else {
+            feed.hasMoreComments = (o.getNumber('hasMore') ?? 0) != 0;
+        }
+        return feed;
+    }
+
+    toMap(): UTSJSONObject {
+        const o = {
+            sender: this.sender,
+            type: this.type,
+            hasMore: this.hasMoreComments
+        } as UTSJSONObject;
+        if (this.feedId != 0) {
+            o.set('feedId', this.feedId);
+        }
+        if (this.text != '') {
+            o.set('text', this.text);
+        }
+        if (this.medias.length > 0) {
+            o.set('medias', FeedEntry.listToArray(this.medias));
+        }
+        if (this.mentionedUsers.length > 0) {
+            o.set('mu', this.mentionedUsers);
+        }
+        if (this.toUsers.length > 0) {
+            o.set('to', this.toUsers);
+        }
+        if (this.excludeUsers.length > 0) {
+            o.set('ex', this.excludeUsers);
+        }
+        if (this.serverTime != 0) {
+            o.set('timestamp', this.serverTime);
+        }
+        if (this.extra != '') {
+            o.set('extra', this.extra);
+        }
+        if (this.comments.length > 0) {
+            o.set('comments', Comment.listToArray(this.comments));
+        }
+        return o;
+    }
+
+    /** 点赞列表（用于信息流里那一行「XX、YY 觉得很赞」） */
+    thumbups(): Comment[] {
+        const list: Comment[] = [];
+        for (let i = 0; i < this.comments.length; i++) {
+            if (this.comments[i].type == WFMCommentType.Thumbup) {
+                list.push(this.comments[i]);
+            }
+        }
+        return list;
+    }
+
+    /** 文字评论列表 */
+    textComments(): Comment[] {
+        const list: Comment[] = [];
+        for (let i = 0; i < this.comments.length; i++) {
+            if (this.comments[i].type == WFMCommentType.Comment) {
+                list.push(this.comments[i]);
+            }
+        }
+        return list;
+    }
+}
+
+/** 朋友圈设置（背景图、黑名单、不看谁、陌生人可见条数、可见范围） */
+export class MomentProfiles {
+    backgroundUrl = '';
+    /** 不让他看我的朋友圈 */
+    blackList: string[] = [];
+    /** 不看他的朋友圈 */
+    blockList: string[] = [];
+    /** 陌生人可见的朋友圈条数，0 表示未设置 */
+    strangerVisibleCount = 0;
+    /** 见 [WFMVisibleScope]，-1 表示未设置 */
+    visibleScope = -1;
+    updateDt = 0;
+
+    static fromMap(o: UTSJSONObject): MomentProfiles {
+        const profiles = new MomentProfiles();
+        profiles.backgroundUrl = o.getString('bgUrl') ?? '';
+        profiles.blackList = o.getArray<string>('blackList') ?? ([] as string[]);
+        profiles.blockList = o.getArray<string>('blockList') ?? ([] as string[]);
+        profiles.strangerVisibleCount = o.getNumber('svc') ?? 0;
+        profiles.visibleScope = o.getNumber('visiableScope') ?? -1;
+        profiles.updateDt = o.getNumber('updateDt') ?? 0;
+        return profiles;
+    }
+
+    toMap(): UTSJSONObject {
+        const o = {} as UTSJSONObject;
+        if (this.backgroundUrl != '') {
+            o.set('bgUrl', this.backgroundUrl);
+        }
+        o.set('blackList', this.blackList);
+        o.set('blockList', this.blockList);
+        if (this.strangerVisibleCount != 0) {
+            o.set('svc', this.strangerVisibleCount);
+        }
+        if (this.visibleScope >= 0) {
+            o.set('visiableScope', this.visibleScope);
+        }
+        if (this.updateDt != 0) {
+            o.set('updateDt', this.updateDt);
+        }
+        return o;
+    }
+}

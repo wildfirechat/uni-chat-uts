@@ -3,7 +3,7 @@
 > **基线**：`../flutter-chat` 的移动端形态（`chat/lib` 去掉 `pc/` 目录 + `moment/` 模块）。
 > **本文档取代** `FEATURE_GAP_TODO.md`（那份以 `../android-chat` 为基线，已不适用，可删除）。
 > **最后核对**：2026-08-05，对照 flutter-chat 分支当前状态。
-> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除三项（创建/搜索频道、登录页补齐、外部域，见 M4 小节）；M5 投票代码侧完成（真机验证待做），接龙 / 网盘 / 发现页未开工。
+> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除三项（创建/搜索频道、登录页补齐、外部域，见 M4 小节）；M5 投票代码侧完成（真机验证待做），接龙 / 网盘未开工；**M6 朋友圈代码侧完成（真机验证待做），但只有鸿蒙端能跑 —— android / iOS 的 `sendMomentsRequest` 等原生插件更新**。
 
 ---
 
@@ -596,13 +596,100 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 
 **成本比看上去低。** flutter 的 `moment/` 是**纯 Dart 实现**（`momentclient.dart:100` 注释明确说明），底层只通过一个通道 API `Imclient.sendMomentsRequest(path, data, cb)` 收发。所以 uni 侧只要门面补这一个方法，业务全部可以用 uts 写。
 
-- [ ] **门面补 `sendMomentsRequest`** `[SDK❌]` — 三端原生 SDK 均有对应方法，工作量小，见 §8
-- [ ] **朋友圈客户端层** — 移植 `moment/lib/client/momentclient.dart`（814 行）为 `wfc/moment/momentClient.uts`
-- [ ] **信息流页** — `moment/lib/src/feed_list_page.dart`（637 行），九宫格图片 `nine_grid_view.dart`
-- [ ] **发布页** — `publish_feed_page.dart`（341 行）
-- [ ] **详情页 / 消息列表 / 可见范围** — `feed_detail_page.dart`、`feed_messages_page.dart`、`visible_scope_page.dart`
-- [ ] **朋友圈隐私设置** — `settings/moment_privacy_settings_screen.dart`（431 行）+ 黑名单
-- [ ] **入口** — 发现页 + 用户详情页
+**代码侧已全部完成，`check-uvue-css` + 三端编译通过，真机验证待做。**
+⚠️ **只有鸿蒙端能真跑** —— android / iOS 的原生插件还没导出 `sendMomentsRequest`，见下面第一项。
+
+- [x] **门面补 `sendMomentsRequest`** `[SDK❌→鸿蒙已通]`
+  - 鸿蒙：`harmony-configs/libs/marswrapper.har` **换成了 `../hongmeng_sdk` 里 8/6 那次构建的产物**
+    —— 项目里原来那份的 `libmarswrapper.so` 是 5/29 编的，NAPI 导出表里**根本没有 `sendMomentsRequest`**
+    （har 里没有 `.d.ets`，缺方法编译期无感，只会在运行时报 undefined）。
+    新 har 是**纯增量**：项目实际调用的 166 个 `clientModule.*` 方法一个不少，另外还补上了
+    `getDomainInfo` / `getFirstUnreadMessageId` / `getGroupMemberIds` / `isGlobalSlient` /
+    `setJoinGroupRequestUpdateCallback` 等（正好覆盖 §4 里还欠的几项，后面做那些不用再换 har）
+  - android / iOS：`ClientModule`（aar / xcframework）里都还没有这个方法，
+    插件里先按 `ErrorCode.kEcServerNotImplement`（254）返回，SDK 更新后把 TODO 注释里那行换上即可
+  - 顺带把 `getMessagesEx2V2` 三端都导出了（朋友圈消息落在 line=1 的单聊会话里，跨会话取只能走它）
+    —— 这个方法三端 `ClientModule` 本来就有，只是插件没导出
+- [x] **朋友圈客户端层** — [wfc/moment/momentClient.uts](wfc/moment/momentClient.uts) ← `momentclient.dart`（814 行）
+  - 模型拆到 [momentModel.uts](wfc/moment/momentModel.uts)（Feed / Comment / FeedEntry / MomentProfiles + 四个枚举）
+  - 消息类型 501/502：[momentFeedMessageContent.uts](wfc/moment/momentFeedMessageContent.uts) /
+    [momentCommentMessageContent.uts](wfc/moment/momentCommentMessageContent.uts)，已在 `messageConfig.uts` 注册
+  - **路径与报文键是对着 android `momentclient-release.aar` 反编译核对的**（按 §七 的规矩，
+    消息层不以 flutter 为准）：501 的键 `feedId`/`t`/`s`/`c`/`ms`/`to`/`ex`/`e`，
+    媒体是 `m`/`t`/`w`/`h`；接口路径 `/moments/{feed,comment,profiles}/*` + `/moments_pb/feed/pull{,_one}` —— 与 flutter 一致
+- [x] **信息流页** — [MomentFeedListPage](pages/moment/MomentFeedListPage.uvue) ← `feed_list_page.dart`
+  - 一页两用：不带参数是朋友圈首页（封面 + 头像 + 未读条 + 发布入口），带 `userId` 是某人的朋友圈
+  - 单条渲染抽成 [moment-feed-item](components/moment-feed-item/moment-feed-item.uvue)
+    ← `feed_item_widget.dart` + `comment_widget.dart` + `nine_grid_view.dart`（详情页复用）
+- [x] **发布页** — [PublishFeedPage](pages/moment/PublishFeedPage.uvue) ← `publish_feed_page.dart`
+- [x] **详情页 / 消息列表 / 可见范围** — [FeedDetailPage](pages/moment/FeedDetailPage.uvue) /
+  [MomentMessagesPage](pages/moment/MomentMessagesPage.uvue) / [VisibleScopePage](pages/moment/VisibleScopePage.uvue)
+- [x] **朋友圈隐私设置** — [MomentPrivacySettingsPage](pages/me/MomentPrivacySettingsPage.uvue) +
+  [MomentBlockListPage](pages/me/MomentBlockListPage.uvue) ← `settings/moment_privacy_settings_screen.dart`
+- [x] **入口** — 发现页（带未读红点，`Config.ENABLE_MOMENTS` 控制）+ 用户详情页 + 隐私设置页
+- [x] i18n 三语各 55 条
+
+#### 顺带补的公共件
+
+| 产出 | 说明 |
+| --- | --- |
+| [pages/moment/momentUi.uts](pages/moment/momentUi.uts) | 时间格式化、媒体上传（含缩略图）、视频判定、默认可见范围存取 —— 合并了 flutter `moment_time.dart` / `moment_upload.dart` / `moment_media_picker.dart` / `moment_permission.dart` |
+| [publishState.uts](pages/moment/publishState.uts) / [visibleScopeState.uts](pages/moment/visibleScopeState.uts) / [momentBlockListState.uts](pages/me/momentBlockListState.uts) | 跨页传参/回传，沿用 `common/picker.uts` 那套模块级暂存（本项目没有用过 eventChannel） |
+| `wfc.getMessagesByStatusEx` | 按会话类型 + line + 消息状态跨会话取消息（原生的 `getMessagesEx2V2`） |
+| `Config.ENABLE_MOMENTS` | 对齐 flutter 的同名开关，关掉时两个入口都不出现 |
+
+#### 与 flutter 的刻意差异
+
+- **上传用 `MessageContentMediaType.Moments`(8) 而不是 Image/Video** —— 与 android `momentclient` 一致
+  （它取的就是 `MessageContentMediaType.MOMENTS`）；flutter 传的是 IMAGE/VIDEO，会落到别的桶
+- **缩略图用 `uni.compressImage` 生成**，不是 flutter 那套自己解码再编 PNG；
+  取不到图片信息或压缩失败**不阻断发布**，退化成只有原图
+- **评论输入用 `showModal({editable:true})`**，不是 flutter 的底部输入面板 —— 少一个组件，
+  键盘避让交给系统（会话页那套手动避让是因为输入框常驻，这里是一次性弹窗）
+- **「··」菜单复用 [popup-menu](components/popup-menu/popup-menu.uvue)**（2 列图标网格），不另写一种弹出形态
+- **清未读用「列出 line=1 的会话再逐个清」**，不是 flutter 的 `clearConversationsUnreadStatus(types, lines)`
+  —— 那个方法只有鸿蒙原生有，android/iOS 的 `ClientModule` 没导出；换成现成接口，不再欠一笔原生债
+- **点赞人/评论用嵌套 `<text>` 混排**，不是 Wrap（uni-app x 没有）。代价是点赞人名字不能单独点击
+- **「允许朋友查看的范围」用 actionSheet**，不是独立一页
+- **发布时的默认可见范围入口放在朋友圈隐私设置页** —— flutter 把 `MomentPermission.openSettingsPage`
+  放在 PC 端的账号与安全里，移动端根本没入口，但发布页又要读它
+- **不做「长按发布按钮直接发纯文字」**：uni 侧同一节点上 `@longpress` 后仍会补一次 `@tap`，行为不稳
+
+#### M6 真机验证清单（鸿蒙优先）
+
+前置：**用装了新 `marswrapper.har` 的鸿蒙包**（android/iOS 上所有朋友圈操作都会提示失败 254，属预期）；
+服务端要开朋友圈服务。
+
+1. **入口**：发现页第一行是「朋友圈」；有人评论/点赞后回到发现页，行右侧出现未读数；
+   `Config.ENABLE_MOMENTS` 置 false 重编，发现页和用户详情页都**不应有**这一行
+2. **首页**：封面顶到状态栏之下，标题栏压在封面上是**白字**；往下滚，标题栏渐变成不透明、字变深色；
+   自己的头像+昵称压在封面右下角
+3. **发布纯文字**：右上角相机图标 → 「发表文字」→ 填字 →「发表」→ 返回后列表第一条就是它
+4. **发布图片**：右上角 →「从相册选择」→ 选 3~9 张 → 发布页能看到九宫格 + 右上角 × 删单张 +
+   「+」继续加（最多 9 张）→「发表」→ 上传进度是「上传中(2/5)」这种 → 列表里九宫格**是正方形**
+5. **单图**：只发一张图，气泡里那张图**按原图比例**显示（不是正方形，也不是被拉伸的）
+6. **视频**：发一个视频（相册里选到 .mp4），九宫格上有播放角标，点开进视频预览页
+7. **点赞/评论**：点「··」→ 深色两列菜单（赞 / 评论），**图标不能是豆腐块方框**；
+   点赞后灰底区出现「❤ 你」；再点「··」第一项变「取消」；
+   评论弹输入框，发出去后灰底区出现「你：xxx」
+8. **回复与删除评论**：点别人的评论 → 直接弹回复输入框；点自己的评论 / 长按任意评论 →
+   actionSheet（复制 / 回复 /（自己的才有）删除）
+9. **删除朋友圈**：自己发的那条时间右边有红色「删除」→ 二次确认 → 列表里消失
+10. **翻页**：滚到底继续加载；一条都没有时显示「暂无朋友圈」而不是白屏
+11. **消息列表**：有未读时首页出现「您有 N 条未读消息」条 → 点进去；
+    每行是 头像 + 名字 + 「赞了你的朋友圈」/评论正文 + 时间 + 右侧 56×56 缩略（有图显示图，没图显示正文）；
+    **进过一次后回首页，未读条应消失**；点某行进详情页
+12. **@提醒**：A 发朋友圈时「提醒谁看」选 B，B 的消息列表里应出现「在评论中提到了你」
+13. **可见范围**：发布页「谁可以看」→ 四项都能选，选「部分可见/不给谁看」会拉起选人页；
+    选完行右侧显示「部分可见(3)」；用不在范围里的账号看，**看不到这条**
+14. **个人朋友圈**：用户详情页 →「朋友圈」→ 只有那个人的动态，标题是他的名字，**没有封面和发布入口**
+15. **隐私设置**：我的 → 隐私 → 朋友圈 —— 五项都在；
+    「不看他(她)」/「不让他(她)看」加人、移除都生效（注意两份名单语义相反）；
+    「允许陌生人查看十条朋友圈」拨完**杀进程重进保持**；
+    「允许朋友查看朋友圈的范围」选完行右侧 desc 跟着变
+16. **服务不可用**：把服务端朋友圈服务停掉，各页面应给出「加载失败(N)」而不是白屏卡住
+17. **深色模式 + 最大字号**：把上面每页再扫一遍，重点看**九宫格**（定宽方格 + 动态字号）
+    和**灰底评论区**（多条评论 + 长名字最容易撑破）
 
 ---
 
@@ -641,9 +728,10 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 | API | 用于 | 优先级 |
 | --- | --- | --- |
 | `getJoinGroupRequests` / `handleJoinGroupRequest` / `clearJoinGroupRequest` / `clearJoinGroupRequestUnread` | M2 入群申请审批 + 会话页提示条 | 高 |
-| `sendMomentsRequest(path, data, cb)` | M6 朋友圈全部功能 | 中 |
-| `getDomainInfo` | M4 外部域 | 低 |
-| `getFirstUnreadMessageId` | 精确定位首条未读（现用「按未读数反推」的近似方案） | 低 |
+| ~~`sendMomentsRequest(path, data, cb)`~~ | M6 朋友圈全部功能。**鸿蒙已通**（换了 marswrapper.har，见 M6）；android / iOS 的 `ClientModule` 还没导出，插件里先返回 254 | 高（只剩两端） |
+| ~~`getMessagesEx2V2`~~ | 跨会话按状态取消息（M6 朋友圈消息列表）。三端 `ClientModule` 本来就有，M6 已把插件导出补上 | 已完成 |
+| `getDomainInfo` | M4 外部域。**鸿蒙侧新 har 已经有这个 NAPI 方法了**，只差插件导出 | 低 |
+| `getFirstUnreadMessageId` | 精确定位首条未读（现用「按未读数反推」的近似方案）。同上，鸿蒙新 har 已有 | 低 |
 | `getMessagesV2` 支持 `contentTypes` | 三端插件都把它写死成空数组。M3 用 `searchMessageByTypesAndTimes` 传空关键字绕过去了，够用，但语义上绕 | 低 |
 | `cancelSendingMessage` | flutter 有此 API 但菜单未用，可不做 | 忽略 |
 
@@ -695,10 +783,14 @@ M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`
 - **选人**：多选页（标题栏「完成(n)」、已选头像内嵌搜索框、字母索引、maxSelected、从组织架构选择）
 - **PC**：在线设备列表 + 踢下线、扫码登录确认
 - **群投票**：发起 / 参与 / 详情 / 我的投票 / 结束 / 删除 / 导出明细、投票消息气泡、群聊扩展面板入口
+- **朋友圈**（仅鸿蒙可跑）：时间线 / 个人朋友圈 / 发布（文字·图片·视频）/ 点赞 / 评论 / 回复 / 删除 /
+  可见范围 / 提醒谁看 / 消息列表 / 封面 / 隐私设置（两份名单、陌生人十条、可见范围）、消息类型 501·502
 
 ### 渲染器差距（22 vs 17）
 
 flutter 有而 uni 没有的 cell_builder：`collection_cell_builder`（随 M5 接龙）、`raw_call_start_cell_builder`。
+朋友圈的 501/502 两条消息**不需要 cell_builder** —— 它们落在 line=1 的会话里、`digest` 返回空串，
+只在朋友圈消息页渲染，不进会话列表和会话页（与 android / flutter 一致）。
 `poll_cell_builder` 已随 M5 投票补上。其余已对齐。
 
 > `raw_call_start_cell_builder` **不用补**：那是 flutter 在没集成 avenginekit 时，

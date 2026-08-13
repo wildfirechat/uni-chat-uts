@@ -1,0 +1,40 @@
+/**
+ * 「谁可以看」选择页的入参与回传。
+ *
+ * 与 [publishState.uts](./publishState.uts) 同一套模块级暂存的做法：
+ * 打开前 [setVisibleScope] 写入当前值，页面里 [currentVisibleScope] 读，
+ * 点「完成」时 [finishVisibleScope] 写回，调用方在 onShow 里 [takeVisibleScopeResult] 取一次。
+ *
+ * 「我的 → 隐私 → 朋友圈权限」和发布页共用这一页，所以结果不能直接写进某一方的状态。
+ */
+
+import { VisibleScopeValue } from './momentUi.uts';
+
+let pending: VisibleScopeValue | null = null;
+let result: VisibleScopeValue | null = null;
+
+export function setVisibleScope(mode: number, users: string[]): void {
+    const value = new VisibleScopeValue();
+    value.mode = mode;
+    value.users = users;
+    pending = value;
+    result = null;
+}
+
+export function currentVisibleScope(): VisibleScopeValue {
+    return pending ?? new VisibleScopeValue();
+}
+
+export function finishVisibleScope(mode: number, users: string[]): void {
+    const value = new VisibleScopeValue();
+    value.mode = mode;
+    value.users = users;
+    result = value;
+}
+
+/** 读一次就清空，避免下次进来还带着上次的结果 */
+export function takeVisibleScopeResult(): VisibleScopeValue | null {
+    const value = result;
+    result = null;
+    return value;
+}

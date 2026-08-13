@@ -1,0 +1,167 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('moment.who_can_see')" :show-back="true" :right-text="t('common.done')"
+            @rightTextTap="done" />
+
+        <scroll-view class="scroll" direction="vertical">
+            <section-divider />
+            <form-card>
+                <view v-for="(option, index) in options" :key="option.mode" class="option-row"
+                    :style="{ backgroundColor: c.surface, minHeight: rowPx(56) }" :hover-class="pressedClass"
+                    hover-stay-time="80" @tap="select(option.mode)">
+                    <view class="option-texts">
+                        <text class="option-title"
+                            :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ option.title }}</text>
+                        <text class="option-subtitle"
+                            :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ option.subtitle }}</text>
+                    </view>
+                    <text v-if="mode == option.mode" class="icomoon check"
+                        :style="{ color: c.accent, fontSize: iconPx(20) }">&#xf122;</text>
+                    <view v-if="index < options.length - 1" class="divider"
+                        :style="{ backgroundColor: c.hairlineSoft }"></view>
+                </view>
+            </form-card>
+
+            <view v-if="users.length > 0" class="selected-tip">
+                <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ selectedTip }}</text>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 「谁可以看」选择页：公开 / 私密 / 部分可见 / 不给谁看。
+ * 对齐 flutter `moment/lib/src/visible_scope_page.dart`。
+ *
+ * 发布页和「我的 → 隐私 → 朋友圈权限」共用这一页，出入参走
+ * [visibleScopeState.uts](./visibleScopeState.uts)。
+ *
+ * 与 flutter 的一处差异：flutter 用 `RadioListTile`，这里按本项目的列表行版式
+ * （标题 + 副标题 + 右侧对勾），与「谁可以找到我」等设置页一致。
+ */
+import NavBar from '@/pages/common/NavBar.uvue'
+import UserInfo from '@/wfc/model/userInfo.uts'
+import { colors, AppColors, pressedRowClass } from '@/common/theme.uts'
+import { fontPx, iconPx, rowPx, FONT_LG, FONT_XS } from '@/common/layoutScale.uts'
+import { pickUsers, PickUsersOptions } from '@/common/picker.uts'
+import { SCOPE_PUBLIC, SCOPE_PRIVATE, SCOPE_INCLUDE, SCOPE_EXCLUDE } from '@/pages/moment/momentUi.uts'
+import { currentVisibleScope, finishVisibleScope } from '@/pages/moment/visibleScopeState.uts'
+import { t, t1 } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'VisibleScopePage'
+})
+
+class ScopeOption {
+    mode = SCOPE_PUBLIC
+    title = ''
+    subtitle = ''
+
+    constructor(mode: number, title: string, subtitle: string) {
+        this.mode = mode
+        this.title = title
+        this.subtitle = subtitle
+    }
+}
+
+const c = computed<AppColors>((): AppColors => colors())
+const pressedClass = computed<string>((): string => pressedRowClass())
+
+const mode = ref<number>(SCOPE_PUBLIC)
+const users = ref<string[]>([] as string[])
+
+const options = computed<ScopeOption[]>((): ScopeOption[] => {
+    return [
+        new ScopeOption(SCOPE_PUBLIC, t('moment.scope_public'), t('moment.scope_public_desc')),
+        new ScopeOption(SCOPE_PRIVATE, t('moment.scope_private'), t('moment.scope_private_desc')),
+        new ScopeOption(SCOPE_INCLUDE, t('moment.scope_include'), t('moment.scope_include_desc')),
+        new ScopeOption(SCOPE_EXCLUDE, t('moment.scope_exclude'), t('moment.scope_exclude_desc'))
+    ] as ScopeOption[]
+})
+
+const selectedTip = computed<string>((): string => t1('moment.n_persons_selected', '' + users.value.length))
+
+onLoad((_options: OnLoadOptions) => {
+    const value = currentVisibleScope()
+    mode.value = value.mode
+    users.value = value.users
+})
+
+const select = (target: number) => {
+    if (target != SCOPE_INCLUDE && target != SCOPE_EXCLUDE) {
+        mode.value = target
+        users.value = [] as string[]
+        return
+    }
+    const pickOptions = new PickUsersOptions()
+    pickOptions.title = target == SCOPE_INCLUDE ? t('moment.scope_include') : t('moment.scope_exclude')
+    pickOptions.successCB = (picked: UserInfo[]): void => {
+        const ids: string[] = []
+        for (let i = 0; i < picked.length; i++) {
+            ids.push(picked[i].uid)
+        }
+        // 一个人都没选就不切模式，避免留下一个「部分可见(0)」的空范围
+        if (ids.length == 0) {
+            return
+        }
+        mode.value = target
+        users.value = ids
+    }
+    pickUsers(pickOptions)
+}
+
+const done = () => {
+    finishVisibleScope(mode.value, users.value)
+    uni.navigateBack()
+}
+</script>
+
+<style scoped>
+.page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+.scroll {
+    flex: 1;
+    width: 100%;
+}
+
+.option-row {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+}
+
+.option-texts {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.option-subtitle {
+    margin-top: 2px;
+}
+
+.check {
+    margin-left: 12px;
+}
+
+.divider {
+    position: absolute;
+    left: 16px;
+    right: 0;
+    bottom: 0;
+    height: 0.5px;
+}
+
+.selected-tip {
+    padding: 12px 16px;
+}
+</style>

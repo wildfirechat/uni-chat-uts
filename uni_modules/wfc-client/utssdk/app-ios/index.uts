@@ -247,6 +247,12 @@ export function getMessagesV2(conversation: string, fromIndex: number, before: b
     clientModule.getMessagesV2(conversation, from=fromIndex.toInt32(), before=before, count=count.toInt32(), withUser=withUser, success=stringCallback(successCB), error=numberCallback(failCB))
 }
 
+// 按会话类型 + line + 消息状态跨会话取消息。朋友圈的评论/提醒消息都落在 line=1 的单聊会话里，
+// 取它们只能走这个接口（messageStatuses 传空数组 = 不限状态）。
+export function getMessagesEx2V2(conversationTypes: number[], lines: number[], messageStatuses: number[], fromIndex: number, before: boolean, count: number, withUser: string,  @escaping successCB: StringCallback,  @escaping failCB: FailCallback): void {
+    clientModule.getMessagesEx2V2(conversationTypes, lines=lines, messageStatuses=messageStatuses, fromIndex=fromIndex.toInt32(), before=before, count=count.toInt32(), withUser=withUser, success=stringCallback(successCB), error=numberCallback(failCB))
+}
+
 export function getConversationRead(conversation: string): string {
     return clientModule.getConversationRead(conversation)
 }
@@ -527,6 +533,15 @@ export function sendFriendRequest(userId: string, reason: string, extra: string,
 
 export function sendMessage(conversation: string, messagePayload: string, toUsers: string[], expireDuration: number, prepareCB: (value: any) => void, progressCB: (value: any) => void,  @escaping successCB: (value: any) => void,  @escaping failCB: FailCallback): void {
     clientModule.sendMessage(conversation, messagePayload=messagePayload, toUsers=toUsers, expireDuration=expireDuration.toInt32(), prepared=prepareCB, progress=progressCB, success=successCB, error=numberCallback(failCB))
+}
+
+// 朋友圈全部功能都走这一个通道：path 是朋友圈服务的路径，data 是 JSON 字符串。
+// TODO 当前 Frameworks/WFClientUniPlugin.xcframework 里的 ClientModule 还没有导出这个方法，
+//      等 framework 更新后把下面这行换成：
+//      clientModule.sendMomentsRequest(path, data=data, success=stringCallback(successCB), error=numberCallback(failCB))
+//      注意 framework 侧要负责响应体解码，回调给 JS 的必须是 JSON 字符串。
+export function sendMomentsRequest(path: string, data: string,  @escaping successCB: StringCallback,  @escaping failCB: FailCallback): void {
+    failCB(254)
 }
 
 export function setBackupAddress(backupHost: string, backupPort: number): void {

@@ -71,6 +71,12 @@ export default class Config {
     // 是否启用音视频通话功能
     static ENABLE_VOIP = true;
 
+    // 是否启用朋友圈功能。对齐 flutter `Config.ENABLE_MOMENTS` —— 关掉时发现页和用户详情页
+    // 都不出现朋友圈入口。
+    // ⚠️ 朋友圈依赖 `wfc.sendMomentsRequest`，目前只有鸿蒙端的原生插件导出了它，
+    // android / iOS 的插件更新之前，那两端开着也会返回 254。
+    static ENABLE_MOMENTS = true;
+
     // ---- 对讲(PTT) 相关配置，透传给 wfc-ptt-client 插件的 initClient ----
     // 是否支持双工模式，双工模式下，说话的时候，允许收听其他人的说话
     static PTT_ENABLE_FULL_DUPLEX = false;
