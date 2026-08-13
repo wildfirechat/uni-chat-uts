@@ -25,7 +25,7 @@
 
 import { NativeEventListener } from '../interface.uts'
 import { buildVideoView } from './videoBuilder.ets'
-import { dispatchProtoMessages } from './messageBridge.ets'
+import { dispatchProtoMessages, emitConferenceEvent } from './messageBridge.ets'
 
 import avengineKitImpl from '@wfc/avenginekit'
 import WfcAVEngineKit from '@wfc/avenginekit/src/main/ets/wfc/av/engine/avenginekit'
@@ -783,4 +783,16 @@ export function dispatchReceivedMessages(messagesJson: string, hasMore: boolean)
         return
     }
     dispatchProtoMessages(context(), messagesJson, hasMore)
+}
+
+/**
+ * 由应用层 avEngineKit.uts 在收到 EventType.ConferenceEvent 时调用，把会议事件转给引擎。
+ * 高级版 avenginekit 的媒体订阅依赖这条通道，缺了它接通后订阅不到对方的音视频流，
+ * 详见 messageBridge.ets#emitConferenceEvent。Android/iOS 上是空实现。
+ */
+export function dispatchConferenceEvent(event: string): void {
+    if (!initialized) {
+        return
+    }
+    emitConferenceEvent(context(), event)
 }

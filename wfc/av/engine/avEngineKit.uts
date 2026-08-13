@@ -86,6 +86,12 @@ class AVEngineKit {
         wfc.eventEmitter.on(EventType.ReceiveProtoMessages, (args: Array<any | null>) => {
             native.dispatchReceivedMessages(argString(args, 0), argBoolean(args, 1))
         })
+        // 同理，会议事件（janus videoroom 事件）也收不到。高级版（会议版）音视频 SDK 的所有通话
+        // 都走 SFU，远端流要显式订阅，而「谁发布了流」正是从这条通道来的；不转发的表现是通话能接通、
+        // 但看不到对方画面也听不到声音。多人版不监听这个事件，转发了也不影响。
+        wfc.eventEmitter.on(EventType.ConferenceEvent, (args: Array<any | null>) => {
+            native.dispatchConferenceEvent(argString(args, 0))
+        })
     }
 
     setSessionCallback(cb: CallSessionCallback | null): void {

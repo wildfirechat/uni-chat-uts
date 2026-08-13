@@ -64,3 +64,23 @@ export function dispatchProtoMessages(context: common.UIAbilityContext, messages
         context.eventHub.emit(EventType.ReceiveMessage, msgs, hasMore);
     }
 }
+
+/**
+ * 把会议事件（janus videoroom 事件的原始 JSON 文本）emit 到 ability 的 eventHub 上。
+ *
+ * 高级版（会议版）avenginekit 在 setup() 时除了 EventType.ReceiveMessage，还监听了
+ * EventType.ConferenceEvent（多人版不监听，所以之前只转发消息也能跑），媒体订阅全靠它：
+ * 高级版所有通话（含单人/多人）都走 janus SFU，远端流必须显式 join_sub 订阅，而
+ * 「谁发布了流」只有两个来源 —— join_pub 应答里的 publishers 列表，以及这条事件通道里的
+ * data.publishers。发布是加入房间之后才完成的异步动作，双方几乎同时入会时两边的 publishers
+ * 都是空，缺了这条通道就谁也不会去订阅谁，表现为接通后看不到对方画面（音频同理）。
+ * 另外静音状态（mute）、离开/被踢（leaving/kicked）、观众列表（joining/attendees）也走这里。
+ *
+ * 事件体不解析，引擎的 onConferenceEvent 自己认字符串（内部 typeof === 'string' 时 JSON.parse）。
+ */
+export function emitConferenceEvent(context: common.UIAbilityContext, event: string): void {
+    if (!event) {
+        return;
+    }
+    context.eventHub.emit(EventType.ConferenceEvent, event);
+}

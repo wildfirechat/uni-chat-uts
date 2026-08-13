@@ -437,3 +437,7 @@ export function setParticipantVideoType(callId: string, userId: string, screenSh
 // iOS 的 WFAVEngineKit 自己就挂在 SDK 的消息回调上，这里空实现即可。
 export function dispatchReceivedMessages(messagesJson: string, hasMore: boolean): void {
 }
+
+// 同上，仅鸿蒙需要：高级版音视频引擎靠会议事件知道谁发布了媒体流，进而去订阅。
+export function dispatchConferenceEvent(event: string): void {
+}
