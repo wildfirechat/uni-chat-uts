@@ -7,11 +7,11 @@
         </view>
         <view v-else class="conversation-content-container" :style="{ backgroundColor: c.conversationBg }">
             <view class="message-list-container">
-                <scroll-view class="message-list" direction="vertical" :scroll-top="scrollTop"
+                <scroll-view ref="messageListEl" class="message-list" direction="vertical"
                     :scroll-into-view="scrollIntoView" :refresher-enabled="true" :refresher-triggered="triggered"
                     :refresher-threshold="45" @refresherrefresh="onRefresh" @refresherrestore="onRestore"
                     @refresherabort="onAbort" @scrolltolower="onScrollToLower" @touchstart="onTouchStart"
-                    @touchmove="onTouchMove">
+                    @touchmove="onTouchMove" @tap="hideKeyboardAndPanel">
                     <view v-for="(message, index) in messageList" :id="'id-' + message.messageId" :key="index"
                         class="message-item"
                         :style="{ backgroundColor: message.messageId == highlightMessageId ? c.messageHighlight : 'transparent' }"
@@ -112,7 +112,6 @@ const contextMenuItems = ref<PopupMenuItem[]>([] as PopupMenuItem[])
 const contextMenuMessage = ref<Message | null>(null)
 
 const keyboardHeight = ref<number>(0)
-const scrollTop = ref<number>(0)
 const scrollIntoView = ref<string>('')
 const triggered = ref<boolean>(false)
 const freshing = ref<boolean>(false)
@@ -133,6 +132,8 @@ const closingConversationInfo = ref<ConversationInfo | null>(null)
 const closingMessageList = ref<Message[]>([] as Message[])
 
 const messageInputView = ref<ComponentPublicInstance | null>(null)
+// 消息列表 scroll-view 的原生元素，scrollToBottom 要读它的真实 scrollHeight/offsetHeight
+const messageListEl = ref<UniElement | null>(null)
 
 const conversationInfo = computed<ConversationInfo | null>((): ConversationInfo | null => {
     return closing.value ? closingConversationInfo.value : conversationState.currentConversationInfo
@@ -283,15 +284,31 @@ const currentVoiceMessage = computed<Message | null>((): Message | null => {
     return voice;
 })
 
+/**
+ * 滚到底部。
+ *
+ * 这里**不能**用「把 scroll-top 设成 999999 这种魔法大数，指望框架帮忙截断」的写法：
+ * 鸿蒙上它根本不截断，999999 会被原样当成滚动偏移应用下去。手指还按在列表上时，
+ * 过卷不会被立刻收回，列表整片滚出可视区 —— 表现就是「消息列表消失了、右侧滚动条
+ * 缩成一点吊在右下角」；等抬手之后才由 Spring 回弹动画花几百毫秒一路弹回来，
+ * 看着就像「触发了加载更多，列表从下往上弹出来」。
+ *
+ * 改成按真实内容高度算精确的底部偏移：scrollHeight(内容总高) - offsetHeight(可视区高)。
+ * 这个值就是最大可滚动偏移，不会过卷，也就没有回弹。
+ */
 const scrollToBottom = () => {
-    setTimeout(() => {
-        scrollTop.value = scrollTop.value == 999999 ? 999998 : 999999;
-    }, 200)
+    const doScrollToBottom = () => {
+        const el = messageListEl.value
+        if (el == null) {
+            return
+        }
+        const maxScrollTop = el.scrollHeight - el.offsetHeight
+        el.scrollTo(0, maxScrollTop > 0 ? maxScrollTop : 0)
+    }
+    setTimeout(doScrollToBottom, 200)
     // 图片/视频/语音等消息没有输入法弹出带来的额外滚动机会，且内容排版比纯文本慢，
     // 200ms 时可能还没排版完成，这里再兜底滚动一次
-    setTimeout(() => {
-        scrollTop.value = scrollTop.value == 999999 ? 999998 : 999999;
-    }, 600)
+    setTimeout(doScrollToBottom, 600)
 }
 
 watch(messageList, (_newList: Message[], _old: Message[]) => {
@@ -478,6 +495,16 @@ const multiSelect = (message: Message) => {
     store.toggleMessageMultiSelection(message);
 }
 
+// 点击/滑动消息列表时，收起软键盘以及表情/更多这类占用键盘位置的面板，
+// 面板收起由 MessageInputView 自己的 minimizeMessageInputView 负责（之前定义了但没人调用）
+const hideKeyboardAndPanel = () => {
+    uni.hideKeyboard();
+    const inputView = messageInputView.value
+    if (inputView != null) {
+        (inputView as ComponentPublicInstance).$callMethod('minimizeMessageInputView');
+    }
+}
+
 const onTouchStart = (e: UniTouchEvent) => {
     isScroll.value = false
     if (e.touches.length > 0) {
@@ -487,7 +514,7 @@ const onTouchStart = (e: UniTouchEvent) => {
 }
 
 const onTouchMove = (e: UniTouchEvent) => {
-    uni.hideKeyboard();
+    hideKeyboardAndPanel();
     if (e.touches.length > 0) {
         const delX = e.touches[0].clientX - touchStartX.value
         const delY = e.touches[0].clientY - touchStartY.value
@@ -763,7 +790,11 @@ onMounted(() => {
         }
         // 键盘收起(height == 0)也要通知，输入框需要据此撤掉顶起用的 padding
         notifyKeyboardHeight(res.height);
-        scrollToBottom();
+        // 只在键盘弹出时顶到底部；键盘收起（含点/滑消息列表触发的 hideKeyboard）不该把
+        // 正在往上翻看历史消息的用户强制拽回最新消息
+        if (res.height > 0) {
+            scrollToBottom();
+        }
     });
 
     eventBus.$on('openMessageContextMenu', onOpenMessageContextMenu);
