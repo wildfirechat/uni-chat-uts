@@ -2,7 +2,7 @@
     <view>
         <view class="wf-message-input-container"
             :style="{ paddingBottom: inputPaddingBottom + 'px', backgroundColor: c.bottomBarBg }">
-            <view class="wf-message-input-toolbar" :style="{ borderTopColor: c.hairline, borderBottomColor: c.hairline }">
+            <view class="wf-message-input-toolbar" :style="{ borderTopColor: c.hairline, borderBottomColor: c.hairline, alignItems: toolbarAlignItems }">
                 <text class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
                 <text v-if="isPttEnable" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
                 <view class="wf-input-voice-container" v-if="showVoice">
@@ -15,7 +15,7 @@
                     <view class="wf-input-text-container" :style="{ backgroundColor: c.surface }">
                         <textarea class="wf-input-textarea" :style="{ backgroundColor: c.surface, color: c.textPrimary }" @focus="onInputFocus" @input="onInput" :value="text"
                             placeholder="" :hold-keyboard="true" confirm-type="send" @confirm="send" :maxlength="-1"
-                            :auto-height="true" :adjust-position="adjustPosition" />
+                            :auto-height="true" :adjust-position="adjustPosition" @linechange="onLineChange" />
                     </view>
                     <view v-if="quotedMessage != null" class="quote-message-container" :style="{ backgroundColor: c.bubbleQuoted }">
                         <text class="quoted-message single-line" :style="{ fontSize: fontPx(13), color: c.bubbleQuotedText }">{{ quotedMessageDigest }}</text>
@@ -155,6 +155,8 @@ const extList = computed<ExtItem[]>((): ExtItem[] => {
 const showExt = ref<boolean>(false)
 const showEmoji = ref<boolean>(false)
 const text = ref<string>('')
+// 输入框当前行数，由 textarea 的 linechange 事件维护，用来决定工具栏是居中还是底部对齐
+const inputLineCount = ref<number>(1)
 const keyboardHeight = ref<number>(300)
 const currentKeyboardHeight = ref<number>(0)
 const mentions = ref<UserInfo[]>([] as UserInfo[])
@@ -191,6 +193,25 @@ const quotedMessageDigest = computed<string>((): string => {
     }
     return quotedMsg.messageContent.digest(quotedMsg)
 })
+
+// linechange 只在用户输入导致行数变化时触发，代码里直接改 value（恢复草稿、插入表情/@）不一定会触发，
+// 所以再用文本里的换行符兜底
+const isMultiLineInput = computed<boolean>((): boolean => {
+    return inputLineCount.value > 1 || text.value.indexOf('\n') >= 0
+})
+
+// 单行且没有引用消息时，输入框和两侧按钮等高，工具栏各项垂直居中最好看；
+// 一旦换行或带上引用条，输入区变高，各项就得靠底部对齐，否则发送按钮会浮在半空
+const toolbarAlignItems = computed<string>((): string => {
+    if (isMultiLineInput.value || conversationState.quotedMessage != null) {
+        return 'flex-end'
+    }
+    return 'center'
+})
+
+const onLineChange = (event: UniTextareaLineChangeEvent) => {
+    inputLineCount.value = event.detail.lineCount
+}
 
 const restoreDraft = () => {
     const conversationInfo = props.conversationInfo as ConversationInfo
@@ -335,6 +356,8 @@ const send = () => {
 
         wfc.sendConversationMessage(conversationInfo.conversation, textMessageContent);
         text.value = '';
+        // 清空后 textarea 不一定回调 linechange，手动复位，否则工具栏会一直保持底部对齐
+        inputLineCount.value = 1;
         mentions.value = [];
         Draft.setConversationDraft(conversationInfo.conversation, '', null);
     }
@@ -585,9 +608,9 @@ const chooseFile = () => {
 
 const onClickExt = (ext: ExtItem) => {
     console.log('onClick ext', ext.tag);
-    // 选择相册/拍摄/文件等会离开当前面板去挑选内容，提前收起，避免面板一直占据底部空间，
-    // 导致发送后消息列表可视区域变小，看起来像“没有滚动到底部”
-    showExt.value = false;
+    // 点扩展项后**不收起**面板，和 emoji 面板点表情后一样保持展开：连着发几张图/几个文件时
+    // 不用每次重新点「+」。（之前这里收起面板是想让发完消息后消息列表看着滚到了底，
+    // 但滚到底本来就由会话页 messageList 的 watch → scrollToBottom 负责，与面板开合无关。）
     switch (ext.tag) {
         case 'image':
             chooseImage();
@@ -713,7 +736,8 @@ defineExpose({
     margin: 0 6px;
     min-height: 38px;
     border-radius: 12px;
-    padding-top: 9px;
+    padding-top: 8px;
+    padding-bottom: 4px;
     max-height: 113px;
 }
 
@@ -756,10 +780,12 @@ defineExpose({
     border-radius: 6px;
     border-width: 1px;
     border-style: solid;
+    align-items: center;
 }
 
 .wf-input-button-icon {
     font-size: 32px;
+    align-items: center;
 }
 
 .wf-stickers-container {
