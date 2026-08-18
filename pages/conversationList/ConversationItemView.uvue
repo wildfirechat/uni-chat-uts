@@ -9,7 +9,7 @@
             <view class="header">
                 <image class="avatar" :src="portrait" mode="aspectFill" :style="{ backgroundColor: c.inputBg }" />
                 <text v-if="unread > 0" class="badge" :class="{ silent: isSilent }"
-                    :style="{ color: c.onAccent, backgroundColor: c.badge }">{{ unread > 99 ? '99' : '' + unread }}</text>
+                    :style="{ color: c.onAccent, backgroundColor: c.badge }">{{ isSilent ? '' : (unread > 99 ? '99' : '' + unread) }}</text>
             </view>
             <view class="content-container">
                 <view class="title-time-container">
@@ -219,6 +219,8 @@ const unreadMention = computed<number>((): number => {
 .badge.silent {
     width: 8px;
     height: 8px;
+    right: 4px;
+    top: 8px;
     font-size: 0;
     line-height: 8px;
 }
