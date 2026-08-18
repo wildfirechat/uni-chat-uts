@@ -45,7 +45,7 @@
             <popup-menu v-model="showContextMenu" :items="contextMenuItems" @select="onContextMenuItemSelect"
                 :targetX="contextMenuX" :targetY="contextMenuY" />
             <MessageInputView v-if="!enableMessageMultiSelection" :conversationInfo="conversationInfo"
-                class="message-input-container" ref="messageInputView" />
+                class="message-input-container" ref="messageInputView" @panelShow="scrollToBottom" />
             <MultiSelectActionView v-if="enableMessageMultiSelection" />
         </view>
     </view>

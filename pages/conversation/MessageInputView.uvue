@@ -125,6 +125,10 @@ const props = defineProps<{
     conversationInfo: ConversationInfo
 }>()
 
+// 表情/更多面板弹出时通知会话页把消息列表滚到底部 —— 这两个面板和软键盘一样会占掉底部空间，
+// 但它们不触发 onKeyboardHeightChange，所以得自己发一次事件，否则最新消息会被面板顶出可视区。
+const emit = defineEmits(['panelShow'])
+
 const emojiStickerList = ref<EmojiStickerCategory[]>(emojiStickerConfig as EmojiStickerCategory[])
 const currentEmojiStickerIndex = ref<number>(0)
 const hideSendButton = ref<boolean>((Config.getWFCPlatform() == 1 || Config.getWFCPlatform() == 8) as boolean)
@@ -372,6 +376,9 @@ const toggleEmoji = () => {
     showExt.value = false;
     showVoice.value = false;
     showPtt.value = false;
+    if (showEmoji.value) {
+        emit('panelShow');
+    }
 }
 
 const toggleExt = () => {
@@ -380,6 +387,9 @@ const toggleExt = () => {
     showEmoji.value = false;
     showVoice.value = false;
     showPtt.value = false;
+    if (showExt.value) {
+        emit('panelShow');
+    }
 }
 
 /** 群投票入口：发起投票 / 我的投票，对齐 flutter `PollHomeScreen.show` */
