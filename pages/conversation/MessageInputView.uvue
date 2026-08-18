@@ -482,10 +482,11 @@ const pickUserCard = () => {
     options.users = users
     options.showCategoryLabel = false
     options.successCB = (user: UserInfo) => {
-        // 不加延时的话，选人页面关闭动画和弹窗会互相干扰
+        // 选人页面 navigateBack 的关闭转场动画约 300ms，弹窗过早弹出会被动画吞掉/盖住，
+        // 导致用户看不到确认框、点不到"确定"，名片消息也就发不出去。延时对齐 ConversationPage 的 onShow 定位消息逻辑。
         setTimeout((): void => {
             confirmSendUserCard(user)
-        }, 50)
+        }, 300)
     }
     pickUser(options)
 }
