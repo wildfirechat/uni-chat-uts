@@ -45,6 +45,9 @@ let pickUsersOptions: PickUsersOptions | null = null
 let pickUserOptions: PickUserOptions | null = null
 
 export function pickUsers(options: PickUsersOptions): void {
+    if (options.users.length > 0) {
+        options.showOrganizationEntry = false
+    } 
     if (options.users.length == 0) {
         options.users = contactState.favContactList.concat(contactState.friendList)
     }
