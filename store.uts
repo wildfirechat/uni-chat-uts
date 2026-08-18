@@ -2147,6 +2147,20 @@ class Store {
         this._loadFavGroupList();
     }
 
+    /**
+     * 星标朋友（收藏用户）。收藏关系存在 user setting 里，服务端事后会回 SettingUpdate 事件
+     * 带动 favContactList 重载，但自己这一端操作时该事件到达时机不定，通讯录的「星标朋友」
+     * 分组会滞后。这里成功后主动重载一次，和 setFavGroup + reloadFavGroupList 的处理一致。
+     */
+    setFavUser(userId: string, fav: boolean, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
+        wfc.setFavUser(userId, fav, () => {
+            this._loadFavContactList();
+            successCB?.();
+        }, (err: number) => {
+            failCB?.(err);
+        });
+    }
+
     setCurrentFriendRequest(friendRequest: FriendRequest | null): void {
         contactState.currentFriendRequest = friendRequest;
         contactState.currentFriend = null;
