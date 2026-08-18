@@ -2000,6 +2000,43 @@ export class WfcManager {
     }
 
     chooseFile(type: string, successCB: ((res: UTSJSONObject) => void) | null, failCB: ((err: number) => void) | null): void {
+        // #ifdef APP-HARMONY
+        // 鸿蒙插件侧没有实现 chooseFile，改用框架的 uni.chooseFile(uni-app x 4.61+)：
+        // 内部走 DocumentViewPicker，返回 file://docs/... 形式的 uri，marswrapper 发送前会 fs.copy 进 cacheDir，
+        // 所以 uri 原样传下去即可(见 common/filePath.uts)。
+        // 注意 uni.chooseFile 在 uni-app x 的 iOS 端不支持，所以只在鸿蒙走这条分支。
+        const options = {
+            // 不传 count 时框架默认 100，会变成多选，这里与 android/ios 的单选行为保持一致
+            count: 1,
+            type: 'all',
+            success: (res) => {
+                if (res.tempFiles.length == 0) {
+                    failCB?.(-1);
+                    return
+                }
+                const f = res.tempFiles[0];
+                successCB?.({
+                    path: f.path,
+                    name: f.name,
+                    size: f.size,
+                } as UTSJSONObject);
+            },
+            fail: (err) => {
+                console.error('uni.chooseFile fail', err.errMsg);
+                failCB?.(err.errCode);
+            }
+        } as ChooseFileOptions;
+        // options.type 是字面量联合类型，不能直接塞进来的 string 形参
+        if (type == 'image') {
+            options.type = 'image';
+        } else if (type == 'video') {
+            options.type = 'video';
+        } else if (type == 'audio') {
+            options.type = 'audio';
+        }
+        uni.chooseFile(options);
+        // #endif
+        // #ifndef APP-HARMONY
         native.chooseFile(type, (res: string) => {
             const obj = JSON.parseObject(res);
             if (obj != null) {
@@ -2008,6 +2045,7 @@ export class WfcManager {
         }, (err: number) => {
             failCB?.(err);
         });
+        // #endif
     }
 
     /**

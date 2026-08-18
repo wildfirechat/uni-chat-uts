@@ -782,10 +782,11 @@ export function setGroupRemark(groupId:string, remark:string, successCB: VoidCal
 }
 
 /*
-export function chooseFile()
-export function notify(title, content);
-
-
+ * 未实现的接口：
+ * export function notify(title, content);
+ *
+ * chooseFile 不在这里补：鸿蒙端已由框架的 uni.chooseFile(DocumentViewPicker) 覆盖，
+ * app 层在 wfc/client/wfc.uts#chooseFile 里按 APP-HARMONY 条件编译走框架实现。
  */
 
 function voidCallback(cb: VoidCallback): (value: object) => void {
