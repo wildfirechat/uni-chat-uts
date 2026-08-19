@@ -18,7 +18,12 @@ onLoad((options: OnLoadOptions) => {
 })
 
 onReady(() => {
-    const webviewContext = uni.createWebviewContext('workspace-webview', getCurrentInstance()!.proxy!)
+    // FYI https://doc.dcloud.net.cn/uni-app-x/api/create-webview-context.html
+    //早期，本API的大小写不规范，createWebviewContext的view的首字母v没有大写。
+    // 目前不规范的API已经废弃，推荐使用上方的uni.createWebViewContext。
+    // app-android 平台在蒸汽模式下仅支持V大写的方式 ，不再支持向下兼容写法。
+    // 非蒸汽模式时，可能需要改成小写版本
+    const webviewContext = uni.createWebViewContext('workspace-webview', getCurrentInstance()!.proxy!)
     bridge.value.init(webviewContext);
 })
 
