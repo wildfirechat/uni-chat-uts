@@ -44,11 +44,11 @@
  * 内部的文字改用静态 class 切档：
  *
  * ```vue
- * <text class="user-name" :class="fs16">{{ name }}</text>
+ * <text class="user-name" :class="fontClass(16)">{{ name }}</text>
  * ```
- * ```uts
- * const fs16 = computed<string>((): string => fontClass(16))
- * ```
+ *
+ * 直接在模板里调用即可，不用再包一层 `computed` —— 渲染时读到的 [fontSizeIndex] 本身
+ * 就是响应式的，换档位照样重渲染。
  *
  * class 本体（`.fs-16-0` … `.fs-16-4`）定义在 [global.css]，**页面默认吃得到，组件必须
  * `defineOptions({ styleIsolation: 'app' })`**，否则是个空类、静默不生效。
