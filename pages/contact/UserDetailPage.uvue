@@ -341,7 +341,7 @@ const editDisplayName = () => {
     showEditDialog(t('user.modify_nickname'), friend.displayName, t('user.input_nickname'), (value: string) => {
         wfc.modifyMyInfo([new ModifyMyInfoEntry(ModifyMyInfoType.Modify_DisplayName, value)], () => {
             toast(t('common.operate_success'))
-            wfc.getUserInfo(friend.uid, true)
+            user.value.displayName = value
         }, (err: number) => {
             toastError(err)
         })
@@ -356,7 +356,7 @@ const editAlias = () => {
     showEditDialog(t('user.set_alias'), friend.friendAlias, t('user.input_alias'), (value: string) => {
         wfc.setFriendAlias(friend.uid, value, () => {
             toast(t('common.operate_success'))
-            wfc.getUserInfo(friend.uid, true)
+            user.value.friendAlias = value
         }, (err: number) => {
             toastError(err)
         })
