@@ -150,6 +150,6 @@ export const rowPx = (base: number): string => {
  * 传别的值会拼出一个不存在的类名，静默不生效 —— 要新基准值先去 global.css 补五行。
  * 那五行的像素值必须等于 `base * SCALES[i]`，改 [SCALES] 记得同步。
  */
-export function fontClass(base: number): string {
+export const fontClass = (base: number): string => {
     return 'fs-' + base + '-' + _index.value
 }

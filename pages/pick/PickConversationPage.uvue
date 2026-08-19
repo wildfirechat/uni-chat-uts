@@ -6,7 +6,7 @@
                     :hover-class="pressedClass" hover-stay-time="80" @tap="pick(info)">
                     <image class="portrait" :src="portraitOf(info)" mode="aspectFill"
                         :style="{ backgroundColor: c.inputBg }" />
-                    <text class="title" :class="fs16" :style="{ color: c.textPrimary }">{{ titleOf(info) }}</text>
+                    <text class="title" :class="fontClass(16)" :style="{ color: c.textPrimary }">{{ titleOf(info) }}</text>
                 </view>
             </list-item>
         </list-view>
@@ -38,9 +38,6 @@ defineOptions({
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs16 = computed<string>((): string => fontClass(16))
 
 const conversations = computed<ConversationInfo[]>((): ConversationInfo[] => {
     return conversationState.conversationInfoList

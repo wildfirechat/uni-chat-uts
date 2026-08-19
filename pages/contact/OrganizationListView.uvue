@@ -3,7 +3,7 @@
         <view class="organization-item" :hover-class="pressedClass" hover-stay-time="80"
             @tap="showOrganization(organization)">
             <image class="avatar" :src="portraitOf(organization)" :style="{ backgroundColor: c.inputBg }" />
-            <text class="org-name single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ organization.getString('name') ?? '' }}</text>
+            <text class="org-name single-line" :class="fontClass(14)" :style="{ color: c.textPrimary }">{{ organization.getString('name') ?? '' }}</text>
         </view>
     </list-item>
 </template>
@@ -23,9 +23,6 @@ defineOptions({
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs14 = computed<string>((): string => fontClass(14))
 const rootOrganizations = ref<UTSJSONObject[]>([] as UTSJSONObject[])
 
 onMounted(() => {

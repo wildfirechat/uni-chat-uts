@@ -9,10 +9,10 @@
                 <view class="row" :style="{ backgroundColor: c.surface, borderBottomColor: c.hairlineSoft }">
                     <image class="portrait" :src="portraitOf(user)" :style="{ backgroundColor: c.inputBg }" />
                     <view class="texts">
-                        <text class="name" :class="fs16" :style="{ color: c.textPrimary }">{{ user._displayName }}</text>
-                        <text class="uid" :class="fs12" :style="{ color: c.textSecondary }">{{ user.name }}</text>
+                        <text class="name" :class="fontClass(16)" :style="{ color: c.textPrimary }">{{ user._displayName }}</text>
+                        <text class="uid" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ user.name }}</text>
                     </view>
-                    <text class="remove" :class="fs14" :style="{ color: c.danger }"
+                    <text class="remove" :class="fontClass(14)" :style="{ color: c.danger }"
                         @tap="confirmRemove(user)">{{ t('setting.blacklist_remove') }}</text>
                 </view>
             </list-item>
@@ -42,11 +42,6 @@ defineOptions({
 })
 
 const c = computed<AppColors>((): AppColors => colors())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs12 = computed<string>((): string => fontClass(12))
-const fs14 = computed<string>((): string => fontClass(14))
-const fs16 = computed<string>((): string => fontClass(16))
 
 const users = ref<UserInfo[]>([] as UserInfo[])
 

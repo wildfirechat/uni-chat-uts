@@ -18,8 +18,8 @@
                     :hover-class="pressedClass" hover-stay-time="80" @tap="showActions(file)">
                     <image class="file-icon" :src="'/static/image/filetypes/' + file._fileIconName" />
                     <view class="texts">
-                        <text class="name" :class="[fs14, nameMaxHeight]" :style="{ color: c.textPrimary }">{{ file.name }}</text>
-                        <text class="meta" :class="fs12" :style="{ color: c.textSecondary }">{{ metaOf(file) }}</text>
+                        <text class="name" :class="[fontClass(14), nameMaxHeight]" :style="{ color: c.textPrimary }">{{ file.name }}</text>
+                        <text class="meta" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ metaOf(file) }}</text>
                     </view>
                     <text v-if="canDelete(file)" class="delete" :style="{ color: c.danger }"
                         @tap.stop="confirmDelete(file)">&#xf37f;</text>
@@ -27,7 +27,7 @@
             </list-item>
             <list-item v-if="hasMore" class="footer-item">
                 <view class="footer">
-                    <text class="footer-text" :class="fs13" :style="{ color: c.textTertiary }">{{ t('common.loading') }}</text>
+                    <text class="footer-text" :class="fontClass(13)" :style="{ color: c.textTertiary }">{{ t('common.loading') }}</text>
                 </view>
             </list-item>
         </list-view>
@@ -68,11 +68,6 @@ const PAGE_SIZE = 20
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs12 = computed<string>((): string => fontClass(12))
-const fs13 = computed<string>((): string => fontClass(13))
-const fs14 = computed<string>((): string => fontClass(14))
 const nameMaxHeight = computed<string>((): string => 'name-mh-' + fontSizeIndex())
 
 const files = ref<FileRecord[]>([] as FileRecord[])

@@ -13,14 +13,14 @@
             </view>
             <view class="content-container">
                 <view class="title-time-container">
-                    <text class="title single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ conversationTitle }}</text>
-                    <text class="time" :class="fs10" :style="{ color: c.textSecondary }">{{ timeStr }}</text>
+                    <text class="title single-line" :class="fontClass(14)" :style="{ color: c.textPrimary }">{{ conversationTitle }}</text>
+                    <text class="time" :class="fontClass(10)" :style="{ color: c.textSecondary }">{{ timeStr }}</text>
                 </view>
                 <view class="content">
-                    <text class="draft single-line" :class="fs13" v-if="shouldShowDraft" :style="{ color: c.textPrimary }"><text
-                            class="draft-label" :class="fs13" :style="{ color: c.danger }">[草稿]</text>{{ draft }}</text>
-                    <text v-if="unreadMention > 0" class="mention" :class="fs13" :style="{ color: c.danger }">[有人@我]</text>
-                    <text v-if="!shouldShowDraft" class="last-message-desc single-line" :class="fs13"
+                    <text class="draft single-line" :class="fontClass(13)" v-if="shouldShowDraft" :style="{ color: c.textPrimary }"><text
+                            class="draft-label" :class="fontClass(13)" :style="{ color: c.danger }">[草稿]</text>{{ draft }}</text>
+                    <text v-if="unreadMention > 0" class="mention" :class="fontClass(13)" :style="{ color: c.danger }">[有人@我]</text>
+                    <text v-if="!shouldShowDraft" class="last-message-desc single-line" :class="fontClass(13)"
                         :style="{ color: c.textTertiary }">{{ lastMessageContent }}</text>
                     <text v-if="isSilent" class="icomoon silent-icon"
                         :style="{ color: c.textTertiary }">&#xf39a;</text>
@@ -58,12 +58,6 @@ defineOptions({
 // 和置顶态用 :class 切类是同一个套路，不碰 :style。
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// 行高 70px 不跟着放大：最大档下 20.3 + 18.85 = 39.15px，仍在 50px 的文字区里放得下，
-// 而给复用渲染的 item 改高度风险远大于收益。
-const fs14 = computed<string>((): string => fontClass(14))
-const fs13 = computed<string>((): string => fontClass(13))
-const fs10 = computed<string>((): string => fontClass(10))
 
 const props = defineProps<{
     conversationInfo: ConversationInfo
@@ -179,6 +173,8 @@ const unreadMention = computed<number>((): number => {
     margin-left: 65px;
 }
 
+/* 行高 70px 不跟着字号档位放大：最大档下 20.3 + 18.85 = 39.15px，仍在 50px 的文字区里放得下，
+ * 而给复用渲染的 item 改高度风险远大于收益。 */
 .conversation-item {
     width: 100%;
     height: 70px;

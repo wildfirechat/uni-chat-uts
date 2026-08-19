@@ -20,17 +20,17 @@
                     <image v-if="thumbOf(item) != ''" class="thumb" :src="thumbOf(item)" mode="aspectFill"
                         :style="{ backgroundColor: c.inputBg }" />
                     <view v-else class="thumb thumb-placeholder" :style="{ backgroundColor: c.inputBg }">
-                        <text class="thumb-tag" :class="fs11" :style="{ color: c.textSecondary }">{{ tagOf(item) }}</text>
+                        <text class="thumb-tag" :class="fontClass(11)" :style="{ color: c.textSecondary }">{{ tagOf(item) }}</text>
                     </view>
                     <view class="texts">
-                        <text class="title" :class="[fs14, titleMaxHeight]" :style="{ color: c.textPrimary }">{{ titleOf(item) }}</text>
-                        <text class="meta" :class="fs12" :style="{ color: c.textSecondary }">{{ metaOf(item) }}</text>
+                        <text class="title" :class="[fontClass(14), titleMaxHeight]" :style="{ color: c.textPrimary }">{{ titleOf(item) }}</text>
+                        <text class="meta" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ metaOf(item) }}</text>
                     </view>
                 </view>
             </list-item>
             <list-item v-if="hasMore" class="footer-item">
                 <view class="footer">
-                    <text class="footer-text" :class="fs13" :style="{ color: c.textTertiary }">{{ t('common.loading') }}</text>
+                    <text class="footer-text" :class="fontClass(13)" :style="{ color: c.textTertiary }">{{ t('common.loading') }}</text>
                 </view>
             </list-item>
         </list-view>
@@ -94,12 +94,6 @@ class CategoryTab {
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs11 = computed<string>((): string => fontClass(11))
-const fs12 = computed<string>((): string => fontClass(12))
-const fs13 = computed<string>((): string => fontClass(13))
-const fs14 = computed<string>((): string => fontClass(14))
 const titleMaxHeight = computed<string>((): string => 'title-mh-' + fontSizeIndex())
 
 const items = ref<FavoriteItem[]>([] as FavoriteItem[])

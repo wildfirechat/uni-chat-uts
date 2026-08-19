@@ -2,7 +2,7 @@
     <list-item v-for="(item, itemIndex) in visibleFlatItems" :key="itemIndex" :id="item.anchorId"
         class="checkable-user-row-item">
         <view v-if="item.isLabel" class="label" :style="{ paddingLeft: paddingLeft, backgroundColor: c.sectionGap }">
-            <text class="label-text" :class="fs13" :style="{ color: c.textSecondary, paddingRight: paddingRight }">{{ item.category.toUpperCase() }}</text>
+            <text class="label-text" :class="fontClass(13)" :style="{ color: c.textSecondary, paddingRight: paddingRight }">{{ item.category.toUpperCase() }}</text>
         </view>
         <view v-else class="content" :style="{ paddingLeft: paddingLeft, paddingRight: paddingRight, backgroundColor: c.surface }"
             :class="{ disabled: isUserUncheckable(item.user as UserInfo) }"
@@ -10,11 +10,11 @@
             @tap="clickUserItem(item.user as UserInfo)">
             <round-checkbox class="checkbox" :disabled="isUserUncheckable(item.user as UserInfo)" :checked="isUserChecked(item.user as UserInfo)" />
             <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
-            <text class="user-name single-line" :class="fs14" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
+            <text class="user-name single-line" :class="fontClass(14)" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
         </view>
     </list-item>
     <list-item v-if="hasMore" class="loading-row" @appear="appendNextBatch" @tap="appendNextBatch">
-        <text class="loading-text" :class="fs12" :style="{ color: c.textSecondary }">加载中...</text>
+        <text class="loading-text" :class="fontClass(12)" :style="{ color: c.textSecondary }">加载中...</text>
     </list-item>
 </template>
 
@@ -41,11 +41,6 @@ defineOptions({
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs12 = computed<string>((): string => fontClass(12))
-const fs13 = computed<string>((): string => fontClass(13))
-const fs14 = computed<string>((): string => fontClass(14))
 const props = withDefaults(defineProps<{
     users: UserInfo[]
     initialCheckedUsers?: UserInfo[]

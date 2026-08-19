@@ -7,8 +7,8 @@
                 <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showNewFriends">
                     <image class="category-icon" src="/static/image/icon/ic_new_friend.png" />
                     <view class="category-item">
-                        <text class="title" :class="fs14" :style="{ color: c.textPrimary }">新的朋友</text>
-                        <text class="desc" :class="fs14" :style="{ color: c.danger }" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
+                        <text class="title" :class="fontClass(14)" :style="{ color: c.textPrimary }">新的朋友</text>
+                        <text class="desc" :class="fontClass(14)" :style="{ color: c.danger }" v-if="unreadFriendRequestCount > 0">{{ unreadFriendRequestCount }}</text>
                     </view>
                 </view>
             </list-item>
@@ -16,8 +16,8 @@
                 <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showGroups">
                     <image class="category-icon" src="/static/image/icon/ic_group_chat.png" />
                     <view class="category-item">
-                        <text class="title" :class="fs14" :style="{ color: c.textPrimary }">群聊</text>
-                        <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ favGroupCount }}</text>
+                        <text class="title" :class="fontClass(14)" :style="{ color: c.textPrimary }">群聊</text>
+                        <text class="desc" :class="fontClass(14)" :style="{ color: c.textPrimary }">{{ favGroupCount }}</text>
                     </view>
                 </view>
             </list-item>
@@ -25,8 +25,8 @@
                 <view class="category-row" :hover-class="pressedClass" hover-stay-time="80" @tap="showChannels">
                     <image class="category-icon" src="/static/image/icon/ic_channel_1.png" />
                     <view class="category-item">
-                        <text class="title" :class="fs14" :style="{ color: c.textPrimary }">频道</text>
-                        <text class="desc" :class="fs14" :style="{ color: c.textPrimary }">{{ channelCount }}</text>
+                        <text class="title" :class="fontClass(14)" :style="{ color: c.textPrimary }">频道</text>
+                        <text class="desc" :class="fontClass(14)" :style="{ color: c.textPrimary }">{{ channelCount }}</text>
                     </view>
                 </view>
             </list-item>
@@ -34,7 +34,7 @@
             <template v-if="expandFriendList">
                 <list-item v-for="(item, itemIndex) in contactListItems" :id="item.anchorId" :key="itemIndex" class="contact-user-row">
                     <view v-if="item.isLabel" class="user-label" :style="{ paddingLeft: '10px', backgroundColor: c.sectionGap }">
-                        <text class="user-label-text" :class="fs13" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
+                        <text class="user-label-text" :class="fontClass(13)" :style="{ color: c.textSecondary }">{{ item.category.toUpperCase() }}</text>
                     </view>
                     <view v-else class="user-item" :style="{ backgroundColor: c.surface }">
                         <view class="user-item-content"
@@ -43,8 +43,8 @@
                             @tap="showUserDetail(item.user as UserInfo)">
                             <image class="avatar" :src="(item.user as UserInfo).portrait" :style="{ backgroundColor: c.inputBg }" />
                             <view class="name-container">
-                                <text class="single-line user-name" :class="fs15" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
-                                <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :class="fs10" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
+                                <text class="single-line user-name" :class="fontClass(15)" :style="{ color: c.textPrimary }">{{ displayNameOf(item.user as UserInfo) }}</text>
+                                <text v-if="(item.user as UserInfo)._userOnlineStatusDesc != ''" class="single-line user-online-status" :class="fontClass(10)" :style="{ color: c.textSecondary }">{{ (item.user as UserInfo)._userOnlineStatusDesc }}</text>
                             </view>
                         </view>
                         <!-- 分隔线做成兄弟节点、左边留出头像宽度：border-bottom 只能整行通铺，避不开头像 -->
@@ -52,7 +52,7 @@
                     </view>
                 </list-item>
                 <list-item v-if="hasMoreContacts" class="contact-loading-row">
-                    <text class="contact-loading-text" :class="fs12" :style="{ color: c.textSecondary }">加载更多联系人...</text>
+                    <text class="contact-loading-text" :class="fontClass(12)" :style="{ color: c.textSecondary }">加载更多联系人...</text>
                 </list-item>
             </template>
         </list-view>
@@ -83,13 +83,6 @@ const NAV_BAR_HEIGHT = 44
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => pressedRowClass())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs10 = computed<string>((): string => fontClass(10))
-const fs12 = computed<string>((): string => fontClass(12))
-const fs13 = computed<string>((): string => fontClass(13))
-const fs14 = computed<string>((): string => fontClass(14))
-const fs15 = computed<string>((): string => fontClass(15))
 const searchIcon = ref<string>('\ue636')
 const plusIcon = ref<string>('\ue657')
 

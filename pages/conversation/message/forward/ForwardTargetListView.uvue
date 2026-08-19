@@ -6,24 +6,24 @@
             <view class="create-group-icon-box" :style="{ backgroundColor: c.accent }">
                 <text class="icomoon create-group-icon" :style="{ color: c.onAccent }">&#xf39f;</text>
             </view>
-            <text class="create-group-label" :class="fs16" :style="{ color: c.textPrimary }">{{ item.label }}</text>
+            <text class="create-group-label" :class="fontClass(16)" :style="{ color: c.textPrimary }">{{ item.label }}</text>
         </view>
 
         <!-- 分段标题（最近聊天 / 好友 / 群组） -->
         <view v-else-if="item.kind == KIND_SECTION" class="section" :style="{ backgroundColor: c.sectionGap }">
-            <text class="section-label" :class="fs12" :style="{ color: c.textSecondary }">{{ item.label }}</text>
+            <text class="section-label" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ item.label }}</text>
         </view>
 
         <!-- 搜索无结果 -->
         <view v-else-if="item.kind == KIND_EMPTY" class="empty">
-            <text class="empty-label" :class="fs14" :style="{ color: c.textSecondary }">{{ item.label }}</text>
+            <text class="empty-label" :class="fontClass(14)" :style="{ color: c.textSecondary }">{{ item.label }}</text>
         </view>
 
         <!-- 会话行 -->
         <view v-else class="row-wrapper" :style="{ backgroundColor: c.surface }" @tap="onRowTap(item)">
             <view class="row">
                 <image class="portrait" mode="aspectFill" :src="portraitOf(item)" :style="{ backgroundColor: c.inputBg }" />
-                <text class="title" :class="fs16" :style="{ color: c.textPrimary }">{{ titleOf(item) }}</text>
+                <text class="title" :class="fontClass(16)" :style="{ color: c.textPrimary }">{{ titleOf(item) }}</text>
                 <round-checkbox v-if="item.showCheckbox" :checked="isItemSelected(item)" />
             </view>
             <view v-if="item.showDivider" class="row-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
@@ -79,11 +79,6 @@ defineOptions({
 })
 
 const c = computed<AppColors>((): AppColors => colors())
-
-// list-item 内部字号只能切静态 class，不能走 :style，见 common/layoutScale.uts
-const fs12 = computed<string>((): string => fontClass(12))
-const fs14 = computed<string>((): string => fontClass(14))
-const fs16 = computed<string>((): string => fontClass(16))
 
 const props = withDefaults(defineProps<{
     conversationInfos: ConversationInfo[]
