@@ -1902,20 +1902,13 @@ export class WfcManager {
     }
 
     getAuthCode(appId: string, appType: number, host: string, successCB: ((authCode: string) => void) | null, failCB: ((err: number) => void) | null): void {
-        // #ifdef APP-ANDROID
-        native.getAuthCode(appId, appType.toInt(), host, (authCode: string) => {
-            successCB?.(authCode);
-        }, (err: number) => {
-            failCB?.(err);
-        })
-        // #endif
-        // #ifndef APP-ANDROID
+        console.log('getAuthCode', appId, appType, host)
         native.getAuthCode(appId, appType, host, (authCode: string) => {
+            console.log('getAuthCode success', authCode)
             successCB?.(authCode);
         }, (err: number) => {
             failCB?.(err);
         })
-        // #endif
     }
 
     configApplication(appId: string, appType: number, timestamp: number, nonceStr: string, signature: string, successCB: (() => void) | null, failCB: ((err: number) => void) | null): void {
@@ -2038,6 +2031,7 @@ export class WfcManager {
         // #endif
         // #ifndef APP-HARMONY
         native.chooseFile(type, (res: string) => {
+            console.log('chooseFile success', res);
             const obj = JSON.parseObject(res);
             if (obj != null) {
                 successCB?.(obj);
