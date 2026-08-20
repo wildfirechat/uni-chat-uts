@@ -1,43 +1,327 @@
 <template>
-    <view class="page-body" :style="{ backgroundColor: c.surface }">
-        <text class="login-type-title" :style="{ fontSize: fontPx(24), color: c.textPrimary }">验证码登录</text>
-        <view class="mobile-container">
-            <text class="input-label" :style="{ fontSize: fontPx(16), color: c.textPrimary }">请输入手机号</text>
-            <view class="mobile-input-container">
-                <input class="input" @input="bindPhoneInput" type="number" placeholder="手机号"
-                    :style="{ fontSize: fontPx(14), color: c.textPrimary, borderBottomColor: c.hairline }" />
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.surface }">
+        <view class="content">
+            <text class="headline" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ headline }}</text>
+
+            <view class="field" :style="{ backgroundColor: c.inputBg, height: rowPx(44) }">
+                <input class="field-input" type="number" :value="phone" :placeholder="t('login.phone_hint')"
+                    :placeholder-style="placeholderStyle" :maxlength="11"
+                    :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }" @input="onPhoneInput" />
+            </view>
+
+            <view class="code-row">
+                <view class="field field-code" :style="{ backgroundColor: c.inputBg, height: rowPx(44) }">
+                    <input class="field-input" type="text" :password="passwordLogin" :value="codeOrPwd"
+                        :placeholder="codePlaceholder" :placeholder-style="placeholderStyle"
+                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }" @input="onCodeInput" />
+                </view>
+                <view v-if="!passwordLogin" class="code-gap"></view>
+                <view v-if="!passwordLogin" class="send-code-button" :hover-class="sendCodeHoverClass" hover-stay-time="80"
+                    :style="{ backgroundColor: canSendCode ? c.accent : c.buttonSecondaryBg, height: rowPx(36) }"
+                    @tap="onSendCodeTap">
+                    <text :style="{ color: canSendCode ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_BASE) }">{{ sendCodeText }}</text>
+                </view>
+            </view>
+
+            <!-- 协议勾选。整行不做点击：点行的任意位置都会误触协议链接，所以只有勾选框和两个链接可点 -->
+            <view class="agreement-row">
+                <view class="checkbox-hit" @tap="toggleAgreement">
+                    <round-checkbox :checked="agreementChecked" />
+                </view>
+                <view class="agreement-text">
+                    <text :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">{{ t('login.read_and_agree') }}</text>
+                    <text :style="{ color: c.link, fontSize: fontPx(FONT_BASE) }"
+                        @tap="openAgreement(USER_AGREEMENT_URL)">{{ t('login.user_agreement') }}</text>
+                    <text :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">{{ t('login.and') }}</text>
+                    <text :style="{ color: c.link, fontSize: fontPx(FONT_BASE) }"
+                        @tap="openAgreement(PRIVACY_AGREEMENT_URL)">{{ t('login.privacy_policy') }}</text>
+                </view>
+            </view>
+
+            <view class="login-button" :hover-class="loginHoverClass" hover-stay-time="80"
+                :style="{ backgroundColor: canSubmit ? c.accent : c.buttonSecondaryBg, height: rowPx(44) }"
+                @tap="onLoginTap">
+                <text :style="{ color: canSubmit ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('login.login') }}</text>
+            </view>
+
+            <view class="toggle-button" @tap="toggleLoginMode">
+                <text :style="{ color: c.link, fontSize: fontPx(FONT_BASE) }">{{ toggleText }}</text>
             </view>
         </view>
 
-        <view class="auth-code-container">
-            <text class="input-label" :style="{ fontSize: fontPx(16), color: c.textPrimary }">请输入验证码</text>
-            <view class="auth-code-input-container">
-                <input class="auth-code-input" @input="bindCodeInput" type="number" placeholder="验证码"
-                    :style="{ fontSize: fontPx(14), color: c.textPrimary, borderBottomColor: c.hairline }" />
-                <button size="mini" :disabled="phone.length != 11" @tap="bindAuthCodeTap">获取验证码</button>
-            </view>
-        </view>
-
-        <button :disabled="!(phone.length > 0 && code.length > 0)" class="confirm-button" @tap="bindLoginTap">登录</button>
-    </view>
+        <slide-verify-dialog v-model="verifyVisible" @success="onVerifySuccess" @loadFailed="onVerifyDialogClosed" />
+    </scroll-view>
 </template>
 
 <script setup lang="uts">
-import wfc from "../../wfc/client/wfc.uts";
-import Config from '../../config.uts';
-import { setItem } from "../util/storageHelper.uts";
-import appServerApi, { LoginResult } from "../../api/appServerApi.uts";
+/**
+ * 登录页。对齐 `../flutter-chat/chat/lib/login_screen.dart` +
+ * `login/login_form_controller.dart`（flutter 把表单逻辑抽成 controller 是为了给桌面扫码页
+ * 复用，uni 侧没有桌面端，就都放在页面里）。
+ *
+ * 具备：手机号 + 验证码/密码两种登录、60s 重发倒计时、用户协议/隐私政策勾选、滑块验证。
+ *
+ * ## 滑块验证什么时候弹（与 flutter 完全一致）
+ *
+ * - `Config.ENABLE_SLIDE_VERIFY` 关：从不弹，所有请求都不带 slideVerifyToken
+ * - 发验证码：先弹，通过后带 token 调 `/send_code`，并记住「本轮已验证过」
+ * - 验证码登录：发码阶段验过就**不再弹、也不带 token**（服务端只认发码那次的验证，
+ *   token 是一次性的），否则弹一次并带 token；登录失败后清掉标记，下次重新验
+ * - 密码登录：每次提交都弹，带 token 调 `/login_pwd`
+ *
+ * ## 找回密码为什么没有
+ *
+ * flutter 移动端没有这个页面（`sendResetCode` / `resetPassword` 全项目零调用方），
+ * 对齐 flutter 就不做，见 FLUTTER_ALIGNMENT_TODO M4 的核对表。
+ *
+ * ## 与 flutter 的两处刻意差异
+ *
+ * - 协议那行 flutter 用 RichText + TapGestureRecognizer 让两个链接可单独点；uni-app x 里
+ *   嵌套 `<text>` 的子节点点不了（见 moment-feed-item 的注释），所以改成同一行里的并列
+ *   `<text>` + `flex-wrap`，长文案折行而不是省略。
+ * - 输入框用本项目的填充式圆角框（`inputBg` 底），不是 flutter 的 CupertinoTextField
+ *   （白底细边框）—— 后者在深色模式下要另配一套边框色，收益不大。
+ *
+ * 另有一处 flutter 自身的小毛病没有照抄：它的重发按钮显示的是**已过去**的秒数
+ * （`waitResendCount` 从 1 数到 60），这里按本项目 DestroyAccountPage 的做法显示**还剩**几秒。
+ */
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import { setItem } from "@/pages/util/storageHelper.uts";
+import appServerApi, { LoginResult } from "@/api/appServerApi.uts";
+import { appServerErrorMessage } from "@/api/appServerError.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx } from "@/common/layoutScale.uts";
+import { fontPx, rowPx, FONT_BASE, FONT_LG, FONT_XL } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "LoginPage"
+})
+
+/** 重发验证码的等待秒数，对齐 flutter 的 60。 */
+const RESEND_SECONDS = 60
+/** 滑块验证通过后要干的事 */
+const ACTION_SEND_CODE = 'send_code'
+const ACTION_LOGIN = 'login'
+
+const USER_AGREEMENT_URL = Config.USER_AGREEMENT_URL
+const PRIVACY_AGREEMENT_URL = Config.PRIVACY_AGREEMENT_URL
 
 const c = computed<AppColors>((): AppColors => colors())
-const focus = ref<boolean>(false)
+
 const phone = ref<string>('')
-const code = ref<string>('')
+const codeOrPwd = ref<string>('')
+const passwordLogin = ref<boolean>(Config.PREFER_PASSWORD_LOGIN)
+const agreementChecked = ref<boolean>(false)
+/** 距离可以重发还剩几秒，0 = 可以重发 */
+const resendCountdown = ref<number>(0)
+/** 发码时已过滑块验证，登录时不用再弹（登录失败后清掉） */
+const slideVerifiedForCode = ref<boolean>(false)
+
+const verifyVisible = ref<boolean>(false)
+const pendingAction = ref<string>('')
+
+// 0 = 没有在跑的定时器，与本项目其他倒计时页面（DestroyAccountPage）一致
+let resendTimer = 0
+
+const headline = computed<string>((): string => {
+    return passwordLogin.value ? t('login.login_with_password') : t('login.login_with_phone')
+})
+
+const codePlaceholder = computed<string>((): string => {
+    return passwordLogin.value ? t('login.input_password') : t('login.input_auth_code')
+})
+
+const toggleText = computed<string>((): string => {
+    return passwordLogin.value ? t('login.login_with_phone_code') : t('login.login_with_password')
+})
+
+const sendCodeText = computed<string>((): string => {
+    // 前面拼一个空串强制走字符串拼接，直接 number + string 在 Kotlin 侧不成立
+    return resendCountdown.value > 0 ? ('' + resendCountdown.value + ' s') : t('login.send_code')
+})
+
+const phoneValid = computed<boolean>((): boolean => phone.value.length == 11)
+const canSendCode = computed<boolean>((): boolean => phoneValid.value && resendCountdown.value == 0)
+const canSubmit = computed<boolean>((): boolean => phoneValid.value && codeOrPwd.value.length > 0)
+
+// 按不动的时候就别给按下态：hover-class 传 'none' 是关掉它的写法
+const sendCodeHoverClass = computed<string>((): string => canSendCode.value ? 'button-pressed' : 'none')
+const loginHoverClass = computed<string>((): string => canSubmit.value ? 'button-pressed' : 'none')
+
+// 占位符颜色只能通过 placeholder-style 传字符串（同 form-text-row），拿不到 :style 对象
+const placeholderStyle = computed<string>((): string => {
+    return 'color:' + colors().textTertiary + ';font-size:' + fontPx(FONT_BASE)
+})
+
+const toast = (title: string) => {
+    uni.showToast({
+        title: title,
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
+const onPhoneInput = (e: UniInputEvent) => {
+    phone.value = e.detail.value
+}
+
+const onCodeInput = (e: UniInputEvent) => {
+    codeOrPwd.value = e.detail.value
+}
+
+const toggleAgreement = () => {
+    agreementChecked.value = !agreementChecked.value
+}
+
+const openAgreement = (url: string) => {
+    uni.navigateTo({
+        url: '/pages/misc/WebViewPage?url=' + encodeURIComponent(url)
+    } as NavigateToOptions)
+}
+
+const stopResendTimer = () => {
+    if (resendTimer != 0) {
+        clearInterval(resendTimer)
+        resendTimer = 0
+    }
+}
+
+const startResendCountdown = () => {
+    stopResendTimer()
+    resendCountdown.value = RESEND_SECONDS
+    resendTimer = setInterval((): void => {
+        resendCountdown.value = resendCountdown.value - 1
+        if (resendCountdown.value <= 0) {
+            stopResendTimer()
+        }
+    }, 1000)
+}
+
+/** 切换验证码/密码登录，清空第二个输入框与验证状态（同 flutter toggleLoginMode）。 */
+const toggleLoginMode = () => {
+    passwordLogin.value = !passwordLogin.value
+    codeOrPwd.value = ''
+    slideVerifiedForCode.value = false
+    if (passwordLogin.value) {
+        stopResendTimer()
+        resendCountdown.value = 0
+    }
+}
+
+const go2ConversationList = () => {
+    uni.switchTab({
+        url: '/pages/conversationList/ConversationListPage',
+        fail: (e) => {
+            console.log('to conversation list error', e)
+        }
+    } as SwitchTabOptions)
+}
+
+const onLoginSuccess = (result: LoginResult) => {
+    wfc.connect(result.userId, result.token)
+    setItem('userId', result.userId)
+    setItem('token', result.token)
+    toast(t('login.login_success'))
+    go2ConversationList()
+}
+
+const onLoginFail = (e: any) => {
+    console.log('login failed', e)
+    // 失败后重走滑动验证，与 flutter 一致
+    slideVerifiedForCode.value = false
+    toast(t1('login.login_fail', appServerErrorMessage(e, t('login.network_error'))))
+}
+
+const doSendCode = (slideVerifyToken: string) => {
+    appServerApi.requestAuthCode(phone.value, slideVerifyToken)
+        .then((_): void => {
+            if (slideVerifyToken != '') {
+                slideVerifiedForCode.value = true
+            }
+            toast(t('login.send_code_success'))
+            startResendCountdown()
+        })
+        .catch((e): void => {
+            console.log('requestAuthCode failed', e)
+            toast(t1('login.send_code_fail', appServerErrorMessage(e, t('login.network_error'))))
+        })
+}
+
+const doLogin = (slideVerifyToken: string) => {
+    const request: Promise<LoginResult> = passwordLogin.value
+        ? appServerApi.loginWithPassword(phone.value, codeOrPwd.value, slideVerifyToken)
+        : appServerApi.loginWithAuthCode(phone.value, codeOrPwd.value, slideVerifyToken)
+    request
+        .then((result: LoginResult): void => {
+            onLoginSuccess(result)
+        })
+        .catch((e): void => {
+            onLoginFail(e)
+        })
+}
+
+const showSlideVerify = (action: string) => {
+    pendingAction.value = action
+    verifyVisible.value = true
+}
+
+const onVerifySuccess = (token: string) => {
+    const action = pendingAction.value
+    pendingAction.value = ''
+    if (action == ACTION_SEND_CODE) {
+        doSendCode(token)
+    } else if (action == ACTION_LOGIN) {
+        doLogin(token)
+    }
+}
+
+const onVerifyDialogClosed = () => {
+    pendingAction.value = ''
+}
+
+const onSendCodeTap = () => {
+    if (!canSendCode.value) {
+        return
+    }
+    if (!Config.ENABLE_SLIDE_VERIFY) {
+        doSendCode('')
+        return
+    }
+    showSlideVerify(ACTION_SEND_CODE)
+}
+
+const onLoginTap = () => {
+    if (!canSubmit.value) {
+        return
+    }
+    if (!agreementChecked.value) {
+        toast(t('login.agree_policy_first'))
+        return
+    }
+    if (!Config.ENABLE_SLIDE_VERIFY) {
+        doLogin('')
+        return
+    }
+    if (passwordLogin.value) {
+        showSlideVerify(ACTION_LOGIN)
+        return
+    }
+    // 与既有服务端约定一致：发码阶段已滑动验证过，登录请求不再携带 verify token
+    if (slideVerifiedForCode.value) {
+        doLogin('')
+        return
+    }
+    showSlideVerify(ACTION_LOGIN)
+}
+
+onLoad(() => {
+    uni.setNavigationBarTitle({
+        title: t('login.page_title')
+    } as SetNavigationBarTitleOptions)
+})
 
 onShow(() => {
-    console.log('login onShow');
     if ((Config.APP_SERVER.indexOf('wildfirechat') >= 0 && Config.IM_SERVER_HOST.indexOf('wildfirechat') == -1)
         || (Config.APP_SERVER.indexOf('wildfirechat') == -1 && Config.IM_SERVER_HOST.indexOf('wildfirechat') >= 0)) {
         console.error('!!!! 严重错误!!!! Config.APP_SERVER 和 Config.IM_SERVER_HOST要一起修改，不能一个用官方服务，一个用自己部署的服务');
@@ -48,125 +332,123 @@ onShow(() => {
     }
 })
 
-const go2ConversationList = () => {
-    uni.switchTab({
-        url: '/pages/conversationList/ConversationListPage',
-        success: (_) => {
-            console.log('to conversation list success');
-        },
-        fail: (e) => {
-            console.log('to conversation list error', e);
-        },
-        complete: (_) => {
-            console.log('switch tab complete')
-        }
-    } as SwitchTabOptions);
-}
-
-const login = (phone: string, code: string) => {
-    console.log('login', wfc.getClientId(), Config.getWFCPlatform());
-    appServerApi.loginWithAuthCode(phone, code)
-        .then((result: LoginResult) => {
-            console.log('login result', result.userId);
-            const userId = result.userId;
-            const token = result.token;
-            wfc.connect(userId, token);
-            setItem('userId', userId);
-            setItem('token', token)
-
-            go2ConversationList();
-        })
-        .catch((r) => {
-            console.log('login failed', r)
-            uni.showToast({
-                title: '登录失败',
-                icon: 'none',
-            } as ShowToastOptions);
-        });
-}
-
-const authCode = (phone: string) => {
-    appServerApi.requestAuthCode(phone)
-        .then((result) => {
-            uni.showToast({
-                title: '发送验证码成功',
-                icon: 'none',
-            } as ShowToastOptions);
-        })
-        .catch((reason) => {
-            uni.showToast({
-                title: '发送验证码失败',
-                icon: 'none',
-            } as ShowToastOptions);
-        })
-}
-
-const bindPhoneInput = (e: UniInputEvent) => {
-    phone.value = e.detail.value;
-}
-
-const bindCodeInput = (e: UniInputEvent) => {
-    code.value = e.detail.value;
-}
-
-const bindLoginTap = () => {
-    console.log(phone.value);
-    login(phone.value, code.value);
-}
-
-const bindAuthCodeTap = () => {
-    console.log(phone.value);
-    authCode(phone.value);
-}
+onUnload(() => {
+    stopResendTimer()
+})
 </script>
+
 <style>
-.page-body {
-    padding: 20rpx;
+.page {
+    width: 100%;
     flex: 1;
 }
 
-.login-type-title {
-    margin-top: 120rpx;
-    margin-bottom: 50rpx;
+.content {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
 }
 
-.mobile-container {
-    margin-top: 20rpx;
+.headline {
+    font-weight: bold;
+    margin-left: 8px;
+    margin-top: 40px;
+    margin-bottom: 10px;
 }
 
-.mobile-input-container {
+.field {
+    width: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    height: 40px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 6px;
 }
 
-.input {
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
+/* 撑满外框由 input 自己纵向居中文字：给外框 justify-content 再让 input 自然高，
+ * 最大字号档下文字会被外框的固定高裁掉 */
+.field-input {
+    width: 100%;
+    height: 100%;
 }
 
-.auth-code-container {
-    margin-top: 30rpx;
-}
-
-.auth-code-input-container {
+.code-row {
+    width: 100%;
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    height: 40px;
 }
 
-.auth-code-input {
+.field-code {
     flex: 1;
-    margin-right: 5px;
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
 }
 
-.confirm-button {
-    margin-top: 40px;
+.code-gap {
+    width: 8px;
+}
+
+.send-code-button {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: 6px;
+}
+
+.agreement-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+/* 勾选框只有 22px，直接点很难中，外面套一圈可点区域 */
+.checkbox-hit {
+    padding: 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.agreement-text {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.login-button {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    margin-top: 8px;
+    border-radius: 6px;
+}
+
+.button-pressed {
+    opacity: 0.7;
+}
+
+.toggle-button {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    margin-top: 4px;
 }
 </style>

@@ -10,3 +10,20 @@ export default class AppServerError extends Error {
         return this.errorCode + '-' + this.message;
     }
 }
+
+/**
+ * 把 catch 到的东西转成能显示给用户的一句话。
+ *
+ * app server 的业务错误（`{code, message}`）都被包成 [AppServerError] reject 出来，
+ * 这里取它的 message；网络层错误没有可读文案，交给调用方给一个兜底 [fallback]。
+ * 对齐 flutter 那边 `errorCallback(map['message'] ?? '网络错误')` 的效果。
+ */
+export function appServerErrorMessage(e: any, fallback: string): string {
+    if (e instanceof AppServerError) {
+        const message = (e as AppServerError).message
+        if (message != '') {
+            return message
+        }
+    }
+    return fallback
+}

@@ -13,6 +13,32 @@ export class LoginResult {
 }
 
 /**
+ * 滑块验证码。对齐 flutter `widget/slide_verify_dialog.dart` 的 `SlideVerifyData`。
+ *
+ * 两张图都是 app server 直接返回的 `data:image/png;base64,...`，可以原样喂给 `<image src>`，
+ * 不用像 flutter 那样先 base64 解码成字节（那是 `Image.memory` 的要求）。
+ *
+ * 坐标系是**背景图原始像素**（app server 固定 300x150，滑块 50x50，见
+ * `SlideVerifyService`），[y] 是滑块在背景图里的纵坐标，校验时回传的 x 也要换算回这个坐标系。
+ */
+export class SlideVerifyData {
+    token = ''
+    /** 背景图（带缺口），data URI */
+    backgroundImage = ''
+    /** 滑块图，data URI */
+    sliderImage = ''
+    /** 滑块在背景图中的 y（原始像素） */
+    y = 0
+}
+
+/** 滑块验证的背景图原始宽度，与 app server `SlideVerifyService.IMAGE_WIDTH` 一致。 */
+export const SLIDE_VERIFY_IMAGE_WIDTH: number = 300
+/** 背景图原始高度，同上。 */
+export const SLIDE_VERIFY_IMAGE_HEIGHT: number = 150
+/** 滑块原始边长（服务端画的是 50x50 正方形）。 */
+export const SLIDE_VERIFY_SLIDER_SIZE: number = 50
+
+/**
  * 从响应头里取 app server 的 authToken。
  *
  * 注意：鸿蒙端 res.header 只是个普通对象，并不是 UTSJSONObject 实例，调用 getString 会直接抛
@@ -46,26 +72,84 @@ function getAuthTokenFromHeader(header: UTSJSONObject | null): string | null {
 
 export class AppServerApi {
 
-    requestAuthCode(mobile: string): Promise<UTSJSONObject | null> {
-        return this._post('/send_code', { mobile: mobile } as UTSJSONObject)
+    /**
+     * 请求登录短信验证码。
+     *
+     * [slideVerifyToken] 传空表示不带滑块验证凭证 —— 服务端 `forceSlideVerify` 关着时才允许，
+     * 开着时会直接返回 `ERROR_SLIDE_VERIFY_NOT_PASS`。是否先过滑块由调用方按
+     * `Config.ENABLE_SLIDE_VERIFY` 决定，对齐 flutter `LoginFormController.sendCode`。
+     */
+    requestAuthCode(mobile: string, slideVerifyToken: string = ''): Promise<UTSJSONObject | null> {
+        const data = { mobile: mobile } as UTSJSONObject
+        if (slideVerifyToken != '') {
+            data['slideVerifyToken'] = slideVerifyToken
+        }
+        return this._post('/send_code', data)
     }
 
-    loginWithPassword(mobile: string, password: string): Promise<LoginResult> {
-        return this._login('/login_pwd', {
+    loginWithPassword(mobile: string, password: string, slideVerifyToken: string = ''): Promise<LoginResult> {
+        const data = {
             mobile: mobile,
             password: password,
             platform: Config.getWFCPlatform(),
             clientId: wfc.getClientId()
-        } as UTSJSONObject)
+        } as UTSJSONObject
+        if (slideVerifyToken != '') {
+            data['slideVerifyToken'] = slideVerifyToken
+        }
+        return this._login('/login_pwd', data)
     }
 
-    loginWithAuthCode(mobile: string, authCode: string): Promise<LoginResult> {
-        return this._login('/login', {
+    loginWithAuthCode(mobile: string, authCode: string, slideVerifyToken: string = ''): Promise<LoginResult> {
+        const data = {
             mobile: mobile,
             code: authCode,
             platform: Config.getWFCPlatform(),
             clientId: wfc.getClientId()
-        } as UTSJSONObject)
+        } as UTSJSONObject
+        if (slideVerifyToken != '') {
+            data['slideVerifyToken'] = slideVerifyToken
+        }
+        return this._login('/login', data)
+    }
+
+    /**
+     * 生成一张滑块验证码。对齐 flutter `AppServer.generateSlideVerifyCode`。
+     *
+     * 注意这个接口**不需要登录态**（登录页本来就还没登录），`_post` 带上的空 authToken
+     * 服务端会忽略。
+     */
+    generateSlideVerifyCode(): Promise<SlideVerifyData> {
+        return new Promise<SlideVerifyData>((resolve, reject) => {
+            this._post('/slide_verify/generate', {} as UTSJSONObject)
+                .then((result: UTSJSONObject | null): void => {
+                    if (result == null) {
+                        reject(new AppServerError(-1, '验证码数据不完整'))
+                        return
+                    }
+                    const data = new SlideVerifyData()
+                    data.token = result.getString('token') ?? ''
+                    data.backgroundImage = result.getString('backgroundImage') ?? ''
+                    data.sliderImage = result.getString('sliderImage') ?? ''
+                    data.y = result.getNumber('y') ?? 0
+                    if (data.token == '' || data.backgroundImage == '' || data.sliderImage == '') {
+                        reject(new AppServerError(-1, '验证码数据不完整'))
+                        return
+                    }
+                    resolve(data)
+                })
+                .catch((e): void => {
+                    reject(e)
+                })
+        })
+    }
+
+    /**
+     * 校验滑块位置。[x] 是**背景图原始像素**坐标系里的横坐标（服务端容差 10px）。
+     * 校验不通过时 `_post` 会 reject，调用方按失败处理。
+     */
+    verifySlideCode(token: string, x: number): Promise<UTSJSONObject | null> {
+        return this._post('/slide_verify/verify', { token: token, x: x } as UTSJSONObject)
     }
 
     changePassword(oldPassword: string, newPassword: string): Promise<UTSJSONObject | null> {

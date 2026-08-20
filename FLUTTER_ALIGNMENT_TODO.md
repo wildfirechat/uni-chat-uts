@@ -3,7 +3,7 @@
 > **基线**：`../flutter-chat` 的移动端形态（`chat/lib` 去掉 `pc/` 目录 + `moment/` 模块）。
 > **本文档取代** `FEATURE_GAP_TODO.md`（那份以 `../android-chat` 为基线，已不适用，可删除）。
 > **最后核对**：2026-08-05，对照 flutter-chat 分支当前状态。
-> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除三项（创建/搜索频道、登录页补齐、外部域，见 M4 小节）；M5 投票代码侧完成（真机验证待做），接龙 / 网盘未开工；**M6 朋友圈代码侧完成（真机验证待做），但只有鸿蒙端能跑 —— android / iOS 的 `sendMomentsRequest` 等原生插件更新**。
+> **进度**：M0 完成；M1 / M3 代码侧完成（真机验证待做）；M2 代码侧完成除入群申请审批一项（群二维码已随 M4 补上）；M4 代码侧完成除两项（创建/搜索频道、外部域，见 M4 小节）；M5 投票代码侧完成（真机验证待做），接龙 / 网盘未开工；**M6 朋友圈代码侧完成（真机验证待做），但只有鸿蒙端能跑 —— android / iOS 的 `sendMomentsRequest` 等原生插件更新**。
 
 ---
 
@@ -382,7 +382,7 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 ### M4 · 通讯录、用户、登录
 
 **大部分代码侧已完成**（`check-uvue-css` + 三端 `cli publish` 全通过），**真机验证待做**。
-剩余三项见本节末尾「本轮没做的」。
+剩余两项见本节末尾「本轮没做的」。
 
 排期时对 flutter 的几处判断在落地核对时被推翻了，先记在这里，后面的条目按修正后的范围写：
 
@@ -427,6 +427,16 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
   - [GroupInfoPage](pages/conversation/GroupInfoPage.uvue) ← `group/group_info_screen.dart`，扫群码后的加群预览页
   - [ChannelDetailPage](pages/contact/ChannelDetailPage.uvue) ← `channel/channel_info_widget.dart`，频道详情 + 订阅/取消订阅
 - [x] **通话入口抽公共** — [common/avcall.uts](common/avcall.uts) ← `call/av_call_launcher.dart`，会话页和用户详情页共用
+- [x] **登录页补齐** `[API❌→已补]` — [LoginPage](pages/login/LoginPage.uvue) ← `login_screen.dart` + `login/login_form_controller.dart`
+  - 原来只有「手机号 + 验证码」两个下划线输入框，现在：标题随模式变（密码登录 / 手机号登录）、
+    密码登录与验证码登录切换、发码 60s 倒计时、用户协议/隐私政策勾选（两个链接分别可点，走 WebViewPage）、滑块验证
+  - 新增 [slide-verify-dialog](components/slide-verify-dialog/slide-verify-dialog.uvue) ← `widget/slide_verify_dialog.dart`
+  - `appServerApi` 补 `/slide_verify/generate`、`/slide_verify/verify`，并给 `/send_code`、`/login`、`/login_pwd`
+    加上可选的 `slideVerifyToken`（服务端 `forceSlideVerify` 开着时是必填）
+  - 滑块什么时候弹、登录请求带不带 token，逐条对齐 flutter，见 LoginPage 文件头注释
+  - **找回密码不做**，理由见本节开头的核对表
+  - 与 flutter 的差异：协议那行用并列 `<text>` + `flex-wrap` 而不是 RichText（嵌套 text 的子节点点不了）；
+    回弹没有缓动动画（uni 只有 transition 没有 animation）；重发按钮显示的是**剩余**秒数而不是 flutter 的已过秒数
 - [x] **消息转发页对齐** `[UI]` — [ForwardMessagePage](pages/conversation/message/forward/ForwardMessagePage.uvue) ← `conversation/forward/pick_forward_page.dart`
   - 原来是「选会话 / 创建会话」两个整页视图，各自底部常驻一块「已选 + 预览 + 留言 + 发送」面板，且**恒为多选**
   - 现在按 flutter：标题栏可切**单选/多选**（标题跟着变「选择一个聊天 / 选择多个聊天」）；单选点一行直接弹确认框，多选在底栏点「发送(n)」再弹；已选目标以头像内嵌在搜索框左侧
@@ -439,10 +449,6 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 #### 本轮没做的
 
 - [ ] **创建频道 / 搜索频道** `[UI]` — `channel/search_channel.dart`，SDK 的 `createChannel` / `searchChannel` 都有。频道详情页已落地，这两个是它的上游入口
-- [ ] **登录页补齐** `[API❌]` — 密码登录 + 登录方式切换（`/login_pwd` 已有）、用户协议/隐私政策勾选、滑块验证
-  - 铺垫已经做了：`Config` 补了 `USER_AGREEMENT_URL` / `PRIVACY_AGREEMENT_URL` / `ENABLE_SLIDE_VERIFY` / `PREFER_PASSWORD_LOGIN`，设置页那两个写死的地址也改成读 Config
-  - 滑块验证 `widget/slide_verify_dialog.dart`（451 行）需要 `/slide_verify/generate`、`/slide_verify/verify`；uni 侧只有 `transition` 没有 `animation`，实现要简化，可接受
-  - **找回密码不做**，理由见本节开头的核对表
 - [ ] **外部域 / 互联互通** `[SDK❌ getDomainInfo]` — 仍按「原生改动攒批做」的原则，和 M2 的入群申请审批、M6 的 `sendMomentsRequest` 一起做
 - [ ] 收藏的群 / 订阅的频道两页的**行版式**（56px 行高 + 40px 头像 + 16px 标题）还是老样式，功能等价但不够贴 flutter
 
@@ -506,8 +512,23 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 8. **PC 扫码登录**：PC 端打开登录二维码 → 手机扫 → 确认页显示电脑图标 → 点「登录」PC 端登录成功；
    点「取消登录」PC 端应回到未登录态
 9. **频道详情**：从频道列表或扫码进入，订阅/取消订阅切换正常，已订阅时才有「进入会话」
-10. **深色模式 + 最大字号**：把上面每页再扫一遍，重点看**长按菜单的 4 列格子**（最大档最容易把文字挤出格）
-    和**选人页搜索框**（已选头像 + 输入框同处一行，头像多了会不会把输入框挤没）
+10. **登录页**（退出登录后进；需要 app server 打开 `slide_verify` 相关接口）：
+    - 不勾协议直接点登录 → 提示「请先同意用户协议和隐私政策」；点「用户协议」「隐私政策」各自打开对应网页，
+      **点这两个词以外的地方不应跳网页**
+    - 手机号不满 11 位时「发送验证码」和「登录」都是灰的、点不动，也不该有按下态
+    - `Config.ENABLE_SLIDE_VERIFY = true` 时点发验证码 → 弹「安全验证」：缺口图 + 底部轨道；
+      拖滑块时**图上的白色拼图块跟着一起走**（两者位移必须一致，不一致说明轨道宽和图宽没对齐）；
+      拖到缺口处抬手 → 滑块变绿 + 「验证成功」→ 半秒后关窗并真的收到短信；
+      故意拖歪 → 「验证失败，请重试」，回弹后 1 秒自动换一张新图
+    - 验证码登录：发码通过滑块后再点登录**不应再弹一次滑块**；登录失败后再点登录**应该重新弹**
+    - 密码登录：点底部「密码登录」切过去 —— 标题变「密码登录」、输入框变密码掩码、
+      「发送验证码」按钮消失、倒计时被取消；每次点登录都弹滑块
+    - 倒计时：发码成功后按钮显示「60 s」并每秒减一，到 0 恢复「发送验证码」；
+      **倒计时期间切到密码登录再切回来，按钮应已复位**
+    - `Config.ENABLE_SLIDE_VERIFY = false` 时全程不弹滑块，发码/登录都能直接走通
+11. **深色模式 + 最大字号**：把上面每页再扫一遍，重点看**长按菜单的 4 列格子**（最大档最容易把文字挤出格）、
+    **选人页搜索框**（已选头像 + 输入框同处一行，头像多了会不会把输入框挤没）
+    和**登录页的协议那行**（最大档下「我已阅读并同意 用户协议 和 隐私政策」要能折行而不是被裁掉）
 
 ---
 
@@ -745,7 +766,8 @@ flutter 侧 13 个设置页面。**代码侧已全部完成，三端编译通过
 
 - 已补（M1）：`/send_destroy_code`、`/destroy`、`/fav/list`、`/fav/add`、`/fav/del/{id}`
 - 已补（M4）：`/scan_pc/{token}`、`/confirm_pc`、`/cancel_pc`
-- 待补：`/change_name`、`/slide_verify/generate`、`/slide_verify/verify`（登录页滑块）、`/pc_session`（PC 端生成二维码用，手机侧用不到）、`/conference/*`、`/group/members_for_portrait`
+- 已补（M4 登录页）：`/slide_verify/generate`、`/slide_verify/verify`，以及 `/send_code`、`/login`、`/login_pwd` 的 `slideVerifyToken` 参数
+- 待补：`/change_name`、`/pc_session`（PC 端生成二维码用，手机侧用不到）、`/conference/*`、`/group/members_for_portrait`
 - **不补**：`/send_reset_code`、`/reset_pwd` —— flutter 里有这两个封装但零调用方，移动端没有找回密码页面，见 M4 小节
 
 M3 用到但**不在 app server 上**的独立服务：ASR（`Config.ASR_SERVER`，见 [common/asr.uts](common/asr.uts)）

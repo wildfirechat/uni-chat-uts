@@ -1,0 +1,434 @@
+<template>
+    <view v-if="modelValue" class="mask" :style="{ backgroundColor: c.scrim }" @tap="dismiss">
+        <view class="dialog" :style="{ backgroundColor: c.popupBg, width: dialogWidth + 'px' }" @tap.stop="noop">
+            <text class="title" :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ t('login.security_verification') }}</text>
+
+            <!-- 图片区：高度恒等于 宽 * 150/300，加载中/失败时也占同样的高，避免弹窗跳动 -->
+            <view class="image-area" :style="{ width: imageWidth + 'px', height: imageHeight + 'px' }">
+                <view v-if="loading" class="image-placeholder">
+                    <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_BASE) }">{{ t('common.loading') }}</text>
+                </view>
+                <view v-else-if="errorMessage != ''" class="image-placeholder">
+                    <text :style="{ color: c.danger, fontSize: fontPx(FONT_BASE) }">{{ errorMessage }}</text>
+                </view>
+                <view v-else class="image-stack">
+                    <image class="bg-image" mode="scaleToFill" :src="backgroundImage"
+                        :style="{ width: imageWidth + 'px', height: imageHeight + 'px' }" />
+                    <image class="slider-image" mode="scaleToFill" :src="sliderImage"
+                        :style="{ width: sliderSize + 'px', height: sliderSize + 'px', left: sliderPosition + 'px', top: sliderTop + 'px' }" />
+                </view>
+            </view>
+
+            <!-- 滑动轨道。轨道宽 = 图片宽，两者同一个坐标系，滑块位移可直接当图片位移用 -->
+            <view class="track" :style="{ width: imageWidth + 'px', backgroundColor: c.inputBg }">
+                <text class="hint" :style="{ color: hintColor, fontSize: fontPx(FONT_BASE) }">{{ hintText }}</text>
+                <view class="knob" :style="{ left: sliderPosition + 'px', backgroundColor: knobBackground }"
+                    @touchstart="onKnobTouchStart" @touchmove="onKnobTouchMove" @touchend="onKnobTouchEnd"
+                    @touchcancel="onKnobTouchCancel">
+                    <!-- 图标字体的字形只能写成 HTML 实体，进不了 {{ }} 插值，所以分成两个节点 -->
+                    <text v-if="verified" class="knob-icon" :style="{ color: knobForeground }">&#xf122;</text>
+                    <text v-else class="knob-icon" :style="{ color: knobForeground }">&#xf3d3;</text>
+                </view>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 滑块验证弹窗。对齐 `../flutter-chat/chat/lib/widget/slide_verify_dialog.dart`。
+ *
+ * ```vue
+ * <slide-verify-dialog v-model="verifyVisible" @success="onVerified" @load-failed="onLoadFailed" />
+ * ```
+ *
+ * 流程与 flutter 一致：打开即拉一张验证码 → 拖滑块 → 抬手校验 → 通过则 500ms 后关窗回调
+ * `success(token)`；失败则回弹、提示、1s 后自动换一张；加载失败提示 1s 后关窗回调 `load-failed`。
+ *
+ * ## 坐标系
+ *
+ * 服务端出的背景图恒为 300x150、滑块 50x50（`SlideVerifyService`），校验时回传的 x 必须换算回
+ * **背景图原始像素**。这里让轨道宽 == 背景图显示宽，于是「滑块在轨道上的位移」和「滑块图在背景图
+ * 上的位移」是同一个数，只需除以显示缩放比即可还原成原始像素 —— 与 flutter 的做法相同。
+ *
+ * ## 与 flutter 的三处刻意差异
+ *
+ * 1. **回弹没有动画**：flutter 用 AnimationController 做 200ms 缓动回弹，uni-app x 只有
+ *    transition 没有 animation，这里直接置 0（同 bottom-action-sheet 不做入场动画的理由）。
+ * 2. **两张图直接用 data URI 喂 `<image src>`**，不像 flutter 那样先 base64 解成字节。
+ * 3. **滑块图高度写死 = 宽度**：服务端画的就是 50x50 正方形；flutter 靠 `BoxFit.fitWidth`
+ *    的固有高度自适应，uni-app x 的绝对定位元素给固定高更稳。
+ *
+ * ## 触点为什么用位移而不是绝对坐标
+ *
+ * 鸿蒙上 touch 坐标是物理像素、tap 是 vp（见 common/touch.uts），且 `getBoundingClientRect`
+ * 的位置/尺寸单位在鸿蒙运行时里并不一致。所以这里只用**按下点到当前点的位移**（经
+ * [getTouchPoint] 归一化成逻辑像素）叠加到按下瞬间的滑块位置上，不去问任何节点的几何。
+ */
+import appServerApi, {
+    SlideVerifyData,
+    SLIDE_VERIFY_IMAGE_WIDTH,
+    SLIDE_VERIFY_IMAGE_HEIGHT,
+    SLIDE_VERIFY_SLIDER_SIZE
+} from '@/api/appServerApi.uts'
+import { appServerErrorMessage } from '@/api/appServerError.uts'
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, FONT_BASE, FONT_XL } from '@/common/layoutScale.uts'
+import { getTouchPoint, TouchPoint } from '@/common/touch.uts'
+import { t } from '@/i18n/i18n.uts'
+
+defineOptions({
+    name: 'slide-verify-dialog'
+})
+
+/**
+ * 滑块按钮宽度，对齐 flutter 的 `_sliderButtonWidth`。
+ * 轨道高度和滑块尺寸本身写在 .track / .knob 的 class 里（都是常量，没必要走 :style），
+ * 这里留一份是因为 [maxSliderPosition] 要用它算可拖范围 —— 改了记得两边一起改。
+ */
+const KNOB_WIDTH: number = 48
+/** 弹窗宽度上限，对齐 flutter Dialog 的 320。窄屏按屏宽收。 */
+const DIALOG_MAX_WIDTH: number = 320
+/** 弹窗内边距，与 .dialog 的 padding 保持一致。 */
+const DIALOG_PADDING: number = 16
+/** 位移小于这个值当作没滑，直接回弹不发校验请求（同 flutter）。 */
+const MIN_SLIDE_DISTANCE: number = 10
+/** 校验通过时滑块变绿，对齐 flutter 的 0xFF4CAF50。 */
+const VERIFIED_COLOR = '#4CAF50'
+
+const props = withDefaults(defineProps<{
+    modelValue?: boolean
+}>(), {
+    modelValue: false
+})
+
+const emit = defineEmits(['update:modelValue', 'success', 'failed', 'loadFailed'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const loading = ref<boolean>(true)
+/** 校验请求在途，此时不响应拖动 */
+const verifying = ref<boolean>(false)
+const verified = ref<boolean>(false)
+const errorMessage = ref<string>('')
+
+const token = ref<string>('')
+const backgroundImage = ref<string>('')
+const sliderImage = ref<string>('')
+const originalY = ref<number>(0)
+
+/** 滑块当前位移，单位是逻辑像素，范围 [0, imageWidth - KNOB_WIDTH] */
+const sliderPosition = ref<number>(0)
+const hintText = ref<string>('')
+const hintIsError = ref<boolean>(false)
+
+// 按下瞬间的触点与滑块位置，touchmove 只用两者的差值。
+// 必须显式标 number：不标的话字面量 0 在 Kotlin 侧落成 Int，再赋触点坐标（Double）就类型不匹配
+let dragStartX: number = 0
+let dragStartPosition: number = 0
+
+const dialogWidth = computed<number>((): number => {
+    const screenWidth = uni.getWindowInfo().windowWidth
+    // 两侧各留 24 的外边距，屏幕再窄也不会顶边
+    const avail = screenWidth - 48
+    return avail < DIALOG_MAX_WIDTH ? avail : DIALOG_MAX_WIDTH
+})
+
+const imageWidth = computed<number>((): number => dialogWidth.value - DIALOG_PADDING * 2)
+
+const imageHeight = computed<number>((): number => {
+    return imageWidth.value * SLIDE_VERIFY_IMAGE_HEIGHT / SLIDE_VERIFY_IMAGE_WIDTH
+})
+
+/** 显示宽 / 原始宽，把显示坐标换算回服务端坐标要除它 */
+const imageScale = computed<number>((): number => imageWidth.value / SLIDE_VERIFY_IMAGE_WIDTH)
+
+const sliderSize = computed<number>((): number => SLIDE_VERIFY_SLIDER_SIZE * imageScale.value)
+
+const sliderTop = computed<number>((): number => originalY.value * imageScale.value)
+
+const maxSliderPosition = computed<number>((): number => {
+    const max = imageWidth.value - KNOB_WIDTH
+    return max < 0 ? 0 : max
+})
+
+const hintColor = computed<string>((): string => {
+    if (verified.value) {
+        return VERIFIED_COLOR
+    }
+    return hintIsError.value ? colors().danger : colors().textSecondary
+})
+
+const knobBackground = computed<string>((): string => {
+    return verified.value ? VERIFIED_COLOR : colors().surface
+})
+
+const knobForeground = computed<string>((): string => {
+    return verified.value ? colors().onAccent : colors().textSecondary
+})
+
+const noop = () => { }
+
+const close = () => {
+    emit('update:modelValue', false)
+}
+
+/** 点遮罩关闭。flutter 的 barrierDismissible: true，关掉不回调任何监听。 */
+const dismiss = () => {
+    close()
+}
+
+const resetSlider = () => {
+    sliderPosition.value = 0
+}
+
+const loadVerifyCode = () => {
+    loading.value = true
+    errorMessage.value = ''
+    verified.value = false
+    hintIsError.value = false
+    hintText.value = t('login.slide_to_verify')
+    resetSlider()
+
+    appServerApi.generateSlideVerifyCode()
+        .then((data: SlideVerifyData): void => {
+            // 请求在途期间用户可能已经把弹窗关了，回来别再改状态
+            if (!props.modelValue) {
+                return
+            }
+            token.value = data.token
+            backgroundImage.value = data.backgroundImage
+            sliderImage.value = data.sliderImage
+            originalY.value = data.y
+            loading.value = false
+        })
+        .catch((e): void => {
+            console.log('generateSlideVerifyCode fail', e)
+            if (!props.modelValue) {
+                return
+            }
+            errorMessage.value = appServerErrorMessage(e, t('login.load_verify_fail'))
+            loading.value = false
+            // 让用户看清失败原因再关窗，与 flutter 一致
+            setTimeout(() => {
+                if (props.modelValue) {
+                    close()
+                    emit('loadFailed')
+                }
+            }, 1000)
+        })
+}
+
+const onVerifySuccess = () => {
+    verifying.value = false
+    verified.value = true
+    hintIsError.value = false
+    hintText.value = t('login.verify_success')
+    const verifiedToken = token.value
+    setTimeout(() => {
+        close()
+        emit('success', verifiedToken)
+    }, 500)
+}
+
+const onVerifyFailed = () => {
+    verifying.value = false
+    hintIsError.value = true
+    hintText.value = t('login.verify_failed_retry')
+    resetSlider()
+    emit('failed')
+    // 1s 后换一张，同 flutter
+    setTimeout(() => {
+        if (props.modelValue) {
+            loadVerifyCode()
+        }
+    }, 1000)
+}
+
+const verifySlidePosition = () => {
+    if (verifying.value || token.value == '') {
+        return
+    }
+    if (sliderPosition.value < MIN_SLIDE_DISTANCE) {
+        resetSlider()
+        return
+    }
+    verifying.value = true
+    // 换算回背景图原始像素，服务端容差 10px
+    const originalX = Math.round(sliderPosition.value / imageScale.value)
+    appServerApi.verifySlideCode(token.value, originalX)
+        .then((_): void => {
+            if (!props.modelValue) {
+                return
+            }
+            onVerifySuccess()
+        })
+        .catch((e): void => {
+            console.log('verifySlideCode fail', e)
+            if (!props.modelValue) {
+                return
+            }
+            onVerifyFailed()
+        })
+}
+
+const draggable = (): boolean => {
+    return !loading.value && !verifying.value && !verified.value && errorMessage.value == ''
+}
+
+// 事件参数按本项目触摸组件的写法收成 any 再 as，null 检查之后也显式 as ——
+// 依赖 Kotlin 智能转换在 UTS 编译产物里并不总成立（见 quick-index-bar）
+const onKnobTouchStart = (e: any) => {
+    if (!draggable()) {
+        return
+    }
+    const point = getTouchPoint(e as UniTouchEvent)
+    if (point == null) {
+        return
+    }
+    dragStartX = (point as TouchPoint).x
+    dragStartPosition = sliderPosition.value
+}
+
+const onKnobTouchMove = (e: any) => {
+    if (!draggable()) {
+        return
+    }
+    const point = getTouchPoint(e as UniTouchEvent)
+    if (point == null) {
+        return
+    }
+    let next = dragStartPosition + ((point as TouchPoint).x - dragStartX)
+    if (next < 0) {
+        next = 0
+    }
+    const max = maxSliderPosition.value
+    if (next > max) {
+        next = max
+    }
+    sliderPosition.value = next
+}
+
+const onKnobTouchEnd = () => {
+    if (!draggable()) {
+        return
+    }
+    verifySlidePosition()
+}
+
+const onKnobTouchCancel = () => {
+    if (!draggable()) {
+        return
+    }
+    resetSlider()
+}
+
+// 每次打开都重新拉一张：token 一次性，关掉再开必须换新的
+watch((): boolean => props.modelValue, (newValue: boolean, _oldValue: boolean) => {
+    if (newValue) {
+        loadVerifyCode()
+    }
+})
+
+onMounted(() => {
+    if (props.modelValue) {
+        loadVerifyCode()
+    }
+})
+</script>
+
+<style scoped>
+.mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.dialog {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.title {
+    font-weight: bold;
+    margin-bottom: 16px;
+}
+
+.image-area {
+    position: relative;
+    overflow: hidden;
+    border-radius: 4px;
+}
+
+.image-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.image-stack {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.bg-image {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.slider-image {
+    position: absolute;
+}
+
+.track {
+    /* 高度对齐 flutter 的 _trackHeight */
+    height: 48px;
+    margin-top: 16px;
+    border-radius: 4px;
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.hint {
+    /* 提示文字铺在轨道正中，滑块盖在它上面 */
+    text-align: center;
+}
+
+.knob {
+    position: absolute;
+    top: 0;
+    /* 宽度必须和脚本里的 KNOB_WIDTH 一致 */
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 组件引用不到全局 class，图标字体要在这里自己声明 */
+.knob-icon {
+    font-family: "icomoon";
+    font-size: 20px;
+    line-height: 20px;
+}
+</style>
