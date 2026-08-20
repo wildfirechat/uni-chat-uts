@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2020 WildFireChat. All rights reserved.
  */
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 export default class UserInfo {
     uid = '';
@@ -65,7 +66,7 @@ export default class UserInfo {
         u.groupAlias = obj.getString('groupAlias') ?? ''
         u.friendAlias = obj.getString('friendAlias') ?? ''
         u.gender = obj.getNumber('gender') ?? 0
-        u.portrait = obj.getString('portrait') ?? ''
+        u.portrait = redirectMediaUrl(obj.getString('portrait') ?? '')
         u.mobile = obj.getString('mobile') ?? ''
         u.email = obj.getString('email') ?? ''
         u.address = obj.getString('address') ?? ''

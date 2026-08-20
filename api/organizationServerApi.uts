@@ -3,6 +3,7 @@ import { getItem, setItem } from "../pages/util/storageHelper.uts";
 import wfc from "../wfc/client/wfc.uts";
 import OrganizationServerError from "./organizationServerError.uts";
 import UserInfo from "../wfc/model/userInfo.uts";
+import { redirectMediaUrl } from '../common/mediaUrlRedirector.uts';
 import {
     Organization, Employee, OrganizationEx, EmployeeEx,
     organizationListFromJson, employeeListFromJson,
@@ -143,7 +144,7 @@ export class OrganizationServerApi {
         userInfo.name = employee.getString('name') ?? '';
         userInfo.displayName = employee.getString('name') ?? '';
         const portrait = employee.getString('portraitUrl') ?? employee.getString('portrait')
-        userInfo.portrait = portrait != null && portrait != '' ? portrait : employeeDefaultPortrait(userInfo.displayName);
+        userInfo.portrait = portrait != null && portrait != '' ? redirectMediaUrl(portrait) : employeeDefaultPortrait(userInfo.displayName);
         userInfo.gender = employee.getNumber('gender') ?? 0;
         userInfo.mobile = employee.getString('mobile') ?? '';
         userInfo.email = employee.getString('email') ?? '';

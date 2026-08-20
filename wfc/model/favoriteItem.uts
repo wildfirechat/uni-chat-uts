@@ -15,6 +15,7 @@ import FileMessageContent from '../messages/fileMessageContent.uts'
 import SoundMessageContent from '../messages/soundMessageContent.uts'
 import LinkMessageContent from '../messages/linkMessageContent.uts'
 import UnknownMessageContent from '../messages/unknownMessageContent.uts'
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 /**
  * 一条收藏。对齐 flutter `model/favorite_item.dart`。
@@ -61,8 +62,8 @@ export default class FavoriteItem {
         item.origin = o.getString('origin') ?? ''
         item.sender = o.getString('sender') ?? ''
         item.title = o.getString('title') ?? ''
-        item.url = o.getString('url') ?? ''
-        item.thumbUrl = o.getString('thumbUrl') ?? ''
+        item.url = redirectMediaUrl(o.getString('url') ?? '')
+        item.thumbUrl = redirectMediaUrl(o.getString('thumbUrl') ?? '')
         item.data = o.getString('data') ?? ''
         return item
     }

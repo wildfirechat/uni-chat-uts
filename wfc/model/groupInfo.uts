@@ -3,6 +3,7 @@
  */
 
 import GroupType from "./groupType.uts";
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 export default class GroupInfo {
     target = '';
@@ -45,7 +46,7 @@ export default class GroupInfo {
         const g = new GroupInfo()
         g.target = obj.getString('target') ?? ''
         g.name = obj.getString('name') ?? ''
-        g.portrait = obj.getString('portrait') ?? ''
+        g.portrait = redirectMediaUrl(obj.getString('portrait') ?? '')
         g.owner = obj.getString('owner') ?? ''
         g.type = obj.getNumber('type') ?? GroupType.Normal
         g.memberCount = obj.getNumber('memberCount') ?? 0

@@ -47,6 +47,7 @@ import UserSettingEntry from '../model/userSettingEntry.uts';
 import PCOnlineInfo from '../model/pcOnlineInfo.uts';
 import PCOnlineType from '../model/pcOnlineType.uts';
 import ModifyMyInfoEntry from '../model/modifyMyInfoEntry.uts';
+import { redirectMediaUrl, updateConnectedNetworkType, NETWORK_TYPE_MAIN, NETWORK_TYPE_BACKUP } from '../../common/mediaUrlRedirector.uts';
 import AddGroupMemberNotification from '../messages/notification/addGroupMemberNotification.uts';
 
 /**
@@ -1730,7 +1731,7 @@ export class WfcManager {
                     }
                     fileRecord.messageUid = stringValue(obj.get('messageUid'));
                     fileRecord.name = obj.getString('name') ?? '';
-                    fileRecord.url = obj.getString('url') ?? '';
+                    fileRecord.url = redirectMediaUrl(obj.getString('url') ?? '');
                     fileRecord.size = obj.getNumber('size') ?? 0;
                     fileRecord.downloadCount = obj.getNumber('downloadCount') ?? 0;
                     fileRecord.timestamp = obj.getNumber('timestamp') ?? 0;
@@ -2080,7 +2081,7 @@ export class WfcManager {
         if (userInfo.updateDt == 0) {
             return Config.DEFAULT_PORTRAIT_URL
         }
-        return `${Config.APP_SERVER}/avatar?name=${encodeURIComponent(userInfo.displayName)}`
+        return redirectMediaUrl(`${Config.APP_SERVER}/avatar?name=${encodeURIComponent(userInfo.displayName)}`)
     }
 
     defaultGroupPortrait(groupInfo: GroupInfo): string {
@@ -2107,7 +2108,7 @@ export class WfcManager {
 
         const req = JSON.stringify({ members: reqMembers } as UTSJSONObject)!;
 
-        return `${Config.APP_SERVER}/avatar/group?request=${encodeURIComponent(req)}`
+        return redirectMediaUrl(`${Config.APP_SERVER}/avatar/group?request=${encodeURIComponent(req)}`)
     }
 
     // 不填充默认头像的内部版本，避免 defaultGroupPortrait 死循环
@@ -2171,6 +2172,7 @@ export class WfcManager {
                 this.onConnectionChanged(params.length > 0 ? numberValue(params[0]) : 0);
                 break;
             case 'onConnectToServer':
+                this._updateConnectedNetwork(params);
                 this.emit(EventType.ConnectToServer, params);
                 break;
             case 'onReceiveMessage':
@@ -2229,6 +2231,31 @@ export class WfcManager {
             default:
                 break;
         }
+    }
+
+    /**
+     * 从 onConnectToServer 的回调参数里取「当前连的是主网还是备网」，喂给双网 URL 转换器
+     * （见 common/mediaUrlRedirector.uts）。
+     *
+     * 参数形状各端不一样，也不保证带这一项：鸿蒙侧协议栈的
+     * `fun_connected_to_server_callback(host, ip, nwType)` 带（nwType: 1 主网 / -1 备网 / 0 未知，
+     * 对齐 iOS 的 `ConnectedNetworkType`），android / iOS 的 uts 插件目前**根本不抛这个事件**。
+     * 所以这里只认「明确是网络类型」的值，端口号之类的一律落到 updateConnectedNetworkType
+     * 的忽略分支，不会把网络判断带偏。
+     */
+    private _updateConnectedNetwork(params: Array<any | null>): void {
+        if (params.length < 3) {
+            return;
+        }
+        const last = params[params.length - 1];
+        if (last == null) {
+            return;
+        }
+        if (typeof last == 'boolean') {
+            updateConnectedNetworkType((last as boolean) ? NETWORK_TYPE_MAIN : NETWORK_TYPE_BACKUP);
+            return;
+        }
+        updateConnectedNetworkType(numberValue(last));
     }
 
     private onConnectionChanged(status: number): void {

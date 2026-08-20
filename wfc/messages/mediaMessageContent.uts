@@ -4,7 +4,7 @@
 
 import MessageContent from './messageContent.uts'
 import MessagePayload from './messagePayload.uts'
-import Config from '../../config.uts'
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 export default class MediaMessageContent extends MessageContent {
     remotePath = '';
@@ -43,7 +43,7 @@ export default class MediaMessageContent extends MessageContent {
     override decode(payload: MessagePayload): void {
         super.decode(payload);
         this.localPath = payload.localMediaPath;
-        this.remotePath = Config.urlRedirect(payload.remoteMediaUrl);
+        this.remotePath = redirectMediaUrl(payload.remoteMediaUrl);
         this.mediaType = payload.mediaType;
     }
 }

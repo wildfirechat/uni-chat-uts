@@ -81,6 +81,7 @@ import { toLocalFilePath } from '@/common/filePath.uts'
 import { entryDisplayUrl, momentDisplayName, momentPortrait, uploadMomentFile } from '@/pages/moment/momentUi.uts'
 import { consumePublished, setPublishMedias } from '@/pages/moment/publishState.uts'
 import { t, t1 } from '@/i18n/i18n.uts'
+import { redirectMediaUrl } from "@/common/mediaUrlRedirector.uts"
 
 defineOptions({
     name: 'MomentFeedListPage'
@@ -188,7 +189,9 @@ const refreshFeed = (index: number) => {
 
 const loadProfile = () => {
     momentClient.getUserProfile(userId.value, (profiles) => {
-        backgroundUrl.value = profiles.backgroundUrl
+        // 封面图不在 MomentProfiles.fromMap 里转：profiles 会被 momentClient 原样写进本地缓存，
+        // 在那里转会把「当时那张网」的地址存进缓存。放到展示这一步，换网后立刻是对的。
+        backgroundUrl.value = redirectMediaUrl(profiles.backgroundUrl)
     }, (_: number) => { })
 }
 

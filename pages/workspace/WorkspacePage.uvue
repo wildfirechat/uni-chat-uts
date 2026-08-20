@@ -6,14 +6,16 @@
 import { WorkspaceBridge } from './bridgeServerImpl.uts'
 import { webViewMessageObjs } from './webViewMessage.uts'
 import Config from "../../config.uts";
+import { redirectMediaUrl } from "../../common/mediaUrlRedirector.uts";
 
-const url = ref<string>(Config.WORKSPACE_URL)
+// 双网下工作台地址也按当前网络换前缀，对齐 flutter `work_space.dart`
+const url = ref<string>(redirectMediaUrl(Config.WORKSPACE_URL))
 const bridge = ref<WorkspaceBridge>(new WorkspaceBridge())
 
 onLoad((options: OnLoadOptions) => {
     const urlValue = options['url'] ?? ''
     if (urlValue != '') {
-        url.value = urlValue;
+        url.value = redirectMediaUrl(urlValue);
     }
 })
 

@@ -14,6 +14,8 @@
  *    `MessageContentType` 那种静态类（见 wfc/messages/messageContentType.uts）。
  */
 
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
+
 /** 朋友圈内容类型，对应 flutter `WFMContentType`（按 index 上线，顺序不能改） */
 export class WFMContentType {
     static Text = 0;
@@ -52,8 +54,10 @@ export class FeedEntry {
 
     static fromMap(o: UTSJSONObject): FeedEntry {
         const entry = new FeedEntry();
-        entry.mediaUrl = o.getString('m') ?? '';
-        entry.thumbUrl = o.getString('t') ?? '';
+        // 双网下把地址前缀换成当前网络的。发布走的是新建 FeedEntry（不经过 fromMap），
+        // 所以这里改写不会把备网地址回写到服务端。
+        entry.mediaUrl = redirectMediaUrl(o.getString('m') ?? '');
+        entry.thumbUrl = redirectMediaUrl(o.getString('t') ?? '');
         entry.mediaWidth = o.getNumber('w') ?? 0;
         entry.mediaHeight = o.getNumber('h') ?? 0;
         return entry;

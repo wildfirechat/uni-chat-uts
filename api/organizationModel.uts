@@ -8,6 +8,7 @@
  * 字段名拼错了也不报错。集中在这里解析一次。
  */
 import Config from "../config.uts";
+import { redirectMediaUrl } from '../common/mediaUrlRedirector.uts'
 
 export class Organization {
     id = 0
@@ -85,10 +86,10 @@ export function toJsonObject(value: any | null): UTSJSONObject | null {
 function portraitUrlOf(o: UTSJSONObject): string {
     const url = o.getString('portraitUrl')
     if (url != null && url != '') {
-        return url
+        return redirectMediaUrl(url)
     }
     const legacy = o.getString('portrait')
-    return legacy != null ? legacy : ''
+    return legacy != null ? redirectMediaUrl(legacy) : ''
 }
 
 /**
@@ -100,7 +101,7 @@ export function employeeDefaultPortrait(name: string): string {
     if (name == '') {
         return Config.DEFAULT_PORTRAIT_URL
     }
-    return `${Config.APP_SERVER}/avatar?name=${encodeURIComponent(name)}`
+    return redirectMediaUrl(`${Config.APP_SERVER}/avatar?name=${encodeURIComponent(name)}`)
 }
 
 export function organizationFromJson(o: UTSJSONObject): Organization {

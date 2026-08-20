@@ -11,7 +11,8 @@
         {
             "path": "pages/login/LoginPage",
             "style": {
-                "navigationBarTitleText": "野火IM"
+                // 实际标题在页面 onLoad 里按当前语言 setNavigationBarTitle，这里只是兜底
+                "navigationBarTitleText": "登录"
             }
         },
         {

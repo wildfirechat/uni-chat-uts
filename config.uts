@@ -156,9 +156,23 @@ export default class Config {
     }
 
     /**
-     * 网络地址重定向
+     * 双网媒体地址前缀，用于头像/媒体类消息中的 URL 转换。对齐 flutter
+     * `Config.MAIN_MEDIA_URL_PREFIX` / `BACKUP_MEDIA_URL_PREFIX`。
      *
-     * 仅当双网环境时，需要特殊处理，默认原样返回
+     * 只在政企内外双网部署时配置，两个都配上才生效；不需要双网就保持空字符串。
+     * 实际的前缀互换在 [common/mediaUrlRedirector.uts](common/mediaUrlRedirector.uts)，
+     * 当前连的是主网还是备网由协议栈的 onConnectToServer 回调告知。
+     */
+    static MAIN_MEDIA_URL_PREFIX = '';
+    static BACKUP_MEDIA_URL_PREFIX = '';
+
+    /**
+     * 网络地址重定向 —— 留给使用者自己改写地址的钩子，默认原样返回。
+     *
+     * ⚠️ 双网环境的主/备前缀互换**不在这里**，见上面两个 PREFIX 和
+     * [common/mediaUrlRedirector.uts](common/mediaUrlRedirector.uts)：
+     * `redirectMediaUrl()` 会先做前缀互换，再调一次本方法，两者互不影响。
+     * 业务代码要转 URL 请调 `redirectMediaUrl()`，不要直接调这里。
      */
     static urlRedirect(url: string): string {
         if (url == '') {

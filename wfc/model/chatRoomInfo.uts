@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2020 WildFireChat. All rights reserved.
  */
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 export default class ChatRoomInfo {
     chatRoomId = '';
@@ -19,7 +20,7 @@ export default class ChatRoomInfo {
         c.chatRoomId = obj.getString('chatRoomId') ?? ''
         c.title = obj.getString('title') ?? ''
         c.desc = obj.getString('desc') ?? ''
-        c.portrait = obj.getString('portrait') ?? ''
+        c.portrait = redirectMediaUrl(obj.getString('portrait') ?? '')
         c.extra = obj.getString('extra') ?? ''
         c.state = obj.getNumber('state') ?? 0
         c.memberCount = obj.getNumber('memberCount') ?? 0

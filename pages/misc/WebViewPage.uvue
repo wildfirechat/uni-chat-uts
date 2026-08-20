@@ -3,12 +3,16 @@
 </template>
 
 <script setup lang="uts">
+import { redirectMediaUrl } from "@/common/mediaUrlRedirector.uts";
+
 const url = ref<string>('')
 
 onLoad((options: OnLoadOptions) => {
     const urlValue = options['url'] ?? ''
     console.log('onLoad option url', decodeURIComponent(urlValue));
-    url.value = decodeURIComponent(urlValue) ?? '';
+    // 双网环境下链接也要按当前网络换前缀，对齐 flutter `Utilities.openLink` /
+    // `wf_webview_screen.dart` 里的 MediaUrlRedirector.redirect
+    url.value = redirectMediaUrl(decodeURIComponent(urlValue) ?? '');
 })
 </script>
 

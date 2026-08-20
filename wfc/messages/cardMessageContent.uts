@@ -6,7 +6,7 @@ import MessageContent from './messageContent.uts'
 import MessageContentType from './messageContentType.uts'
 import MessagePayload from './messagePayload.uts';
 import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
-import Config from '../../config.uts'
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 export default class CardMessageContent extends MessageContent {
     /**
@@ -50,7 +50,7 @@ export default class CardMessageContent extends MessageContent {
             this.cardType = obj.getNumber('t') ?? 0;
             this.name = obj.getString('n') ?? '';
             this.displayName = obj.getString('d') ?? '';
-            this.portrait = Config.urlRedirect(obj.getString('p') ?? '');
+            this.portrait = redirectMediaUrl(obj.getString('p') ?? '');
             this.from = obj.getString('f') ?? '';
         }
     }

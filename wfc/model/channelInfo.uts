@@ -3,6 +3,7 @@
  */
 
 import ChannelMenu from "./channelMenu.uts";
+import { redirectMediaUrl } from '../../common/mediaUrlRedirector.uts'
 
 export default class ChannelInfo {
     channelId = '';
@@ -38,7 +39,7 @@ export default class ChannelInfo {
         const c = new ChannelInfo()
         c.channelId = obj.getString('channelId') ?? ''
         c.name = obj.getString('name') ?? ''
-        c.portrait = obj.getString('portrait') ?? ''
+        c.portrait = redirectMediaUrl(obj.getString('portrait') ?? '')
         c.desc = obj.getString('desc') ?? ''
         c.owner = obj.getString('owner') ?? ''
         c.status = obj.getNumber('status') ?? 0

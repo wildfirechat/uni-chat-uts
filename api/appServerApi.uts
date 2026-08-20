@@ -2,6 +2,7 @@ import Config from "../config.uts";
 import AppServerError from "./appServerError.uts";
 import wfc from "../wfc/client/wfc.uts";
 import { getItem, setItem } from "../pages/util/storageHelper.uts";
+import { redirectMediaUrl } from "../common/mediaUrlRedirector.uts";
 
 /**
  * 登录结果
@@ -235,7 +236,7 @@ export class AppServerApi {
     private _login(path: string, data: UTSJSONObject): Promise<LoginResult> {
         return new Promise<LoginResult>((resolve, reject) => {
             uni.request<UTSJSONObject>({
-                url: Config.APP_SERVER + path,
+                url: redirectMediaUrl(Config.APP_SERVER + path),
                 data: data,
                 header: {
                     'content-type': 'application/json',
@@ -295,7 +296,7 @@ export class AppServerApi {
      */
     _postForBody(path: string, data: UTSJSONObject): Promise<UTSJSONObject | null> {
         return new Promise<UTSJSONObject | null>((resolve, reject) => {
-            const url = Config.APP_SERVER + path;
+            const url = redirectMediaUrl(Config.APP_SERVER + path);
             console.log('_post', url);
             uni.request<UTSJSONObject>({
                 url: url,
