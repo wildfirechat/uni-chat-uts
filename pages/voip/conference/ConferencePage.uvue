@@ -89,6 +89,7 @@ import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
 import CallSession from "@/wfc/av/engine/callSession.uts";
 import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
 import CallState from "@/wfc/av/engine/callState.uts";
+import CallEndReason from "@/wfc/av/engine/callEndReason.uts";
 import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
 import conferenceManager from "./conferenceManager.uts";
 import { ConferenceParticipant, loadConferenceParticipants, participantOfProfile } from "./conferenceParticipant.uts";
@@ -461,12 +462,13 @@ const minimize = () => {
     } as NavigateBackOptions)
 }
 
-const saveHistory = () => {
+/** @param destroyed 会议是不是真结束了，只有真结束才会把散会时间写进本地历史，见 conferenceManager.addHistory */
+const saveHistory = (destroyed: boolean) => {
     const info = conferenceManager.conferenceInfo
     if (info == null) {
         return
     }
-    conferenceManager.addHistory(info!, new Date().getTime() - info!.startTime * 1000)
+    conferenceManager.addHistory(info!, new Date().getTime() - info!.startTime * 1000, destroyed)
 }
 
 const leave = (destroyRoom: boolean) => {
@@ -475,7 +477,8 @@ const leave = (destroyRoom: boolean) => {
         avEngineKit.leaveConference(s!.callId, destroyRoom)
     }
     session.value = null
-    saveHistory()
+    // 主持人选了「结束会议」才是真结束，普通的「离开会议」会议还开着
+    saveHistory(destroyRoom)
     conferenceManager.destroy()
     uni.navigateBack({
         delta: 1,
@@ -648,8 +651,9 @@ const setupSessionCallback = () => {
         }
     }
 
-    callback.didCallEndWithReason = (_reason: number): void => {
-        saveHistory()
+    callback.didCallEndWithReason = (reason: number): void => {
+        // 房间被销毁 / 已不存在，会议才是真的结束了；自己挂断、网络异常这些，会议大概率还在继续
+        saveHistory(reason == CallEndReason.RoomDestroyed || reason == CallEndReason.RoomNotExist)
         conferenceManager.destroy()
         session.value = null
     }

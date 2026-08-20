@@ -548,9 +548,20 @@ class ConferenceManager {
     // 历史会议（本地存储，最多 10 条）
     // ------------------------------------------------------------------
 
-    addHistory(conferenceInfo: ConferenceInfo, durationMS: number): void {
+    /**
+     * 记一次参会。
+     *
+     * @param destroyed 会议是不是真的结束了（主持人「结束会议」、或者收到房间已销毁）。
+     *   只有真结束才把 endTime 改写成实际的散会时间；否则保留服务端排定的结束时间 ——
+     *   自己离开会议不等于会议结束，别人可能还在开，自己也可能再进去。把每次离开都记成
+     *   已结束的话，入口页就会把一场还在进行的会议丢进「历史记录」。
+     *   与 vue-chat 的 conferenceManager.addHistory(info, durationMS, destroyed) 一致。
+     */
+    addHistory(conferenceInfo: ConferenceInfo, durationMS: number, destroyed: boolean): void {
         let historyList = this.getHistoryConference()
-        conferenceInfo.endTime = Math.ceil(conferenceInfo.startTime + durationMS / 1000)
+        if (destroyed) {
+            conferenceInfo.endTime = Math.ceil(conferenceInfo.startTime + durationMS / 1000)
+        }
         let replaced = false
         for (let i = 0; i < historyList.length; i++) {
             if (historyList[i].conferenceId == conferenceInfo.conferenceId) {
@@ -565,6 +576,32 @@ class ConferenceManager {
                 historyList = historyList.slice(historyList.length - 10)
             }
         }
+        this._saveHistory(historyList)
+    }
+
+    /**
+     * 把本地历史里的某场会议标记成「已结束」（销毁会议、房间已不存在时调用）。
+     *
+     * 这种会议服务端已经查不到了，入口页判断「是否结束」只能靠本地这份记录里的 endTime，
+     * 不钉到当下的话，一场排到晚上的会议被提前销毁后，入口页会一直把它显示成进行中。
+     */
+    endHistory(conferenceId: string): void {
+        const historyList = this.getHistoryConference()
+        const now = Math.ceil(new Date().getTime() / 1000)
+        let changed = false
+        for (let i = 0; i < historyList.length; i++) {
+            const info = historyList[i]
+            if (info.conferenceId == conferenceId && (info.endTime <= 0 || info.endTime > now)) {
+                info.endTime = now
+                changed = true
+            }
+        }
+        if (changed) {
+            this._saveHistory(historyList)
+        }
+    }
+
+    private _saveHistory(historyList: ConferenceInfo[]): void {
         const arr: UTSJSONObject[] = []
         for (let i = 0; i < historyList.length; i++) {
             arr.push(historyList[i].toJsonObject())

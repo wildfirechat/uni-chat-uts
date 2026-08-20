@@ -59,6 +59,7 @@
 import NavBar from "@/pages/common/NavBar.uvue";
 import conferenceApi from "@/api/conferenceApi.uts";
 import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
+import conferenceManager from "./conferenceManager.uts";
 import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
 import avEngineKit from "@/wfc/av/engine/avEngineKit.uts";
 import wfc from "@/wfc/client/wfc.uts";
@@ -187,6 +188,9 @@ const destroyConference = () => {
     showConfirmDialog('销毁会议', '确认销毁该会议？', true, (): void => {
         conferenceApi.destroyConference(conferenceInfo.value.conferenceId)
             .then((_r: UTSJSONObject | null): void => {
+                // 销毁之后服务端就查不到这场会议了，本地历史里的结束时间得钉到当下，
+                // 否则入口页会一直把它当成还在进行中的会议
+                conferenceManager.endHistory(conferenceInfo.value.conferenceId)
                 toast('已销毁')
                 uni.navigateBack({ fail: (err) => { console.log('nav back err', err) } } as NavigateBackOptions)
             })

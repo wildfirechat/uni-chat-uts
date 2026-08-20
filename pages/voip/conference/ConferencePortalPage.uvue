@@ -24,11 +24,28 @@
             <text class="section-label" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">即将开始</text>
             <view class="section">
                 <form-card :radius="8">
-                    <option-item v-for="(info, i) in favConferenceInfos" :key="info.conferenceId"
-                        :title="info.conferenceTitle" :desc="favConferenceDesc(info)"
-                        :show-bottom-divider="i < favConferenceInfos.length - 1"
-                        @tap="showConferenceInfo(info)" />
-                    <view v-if="favConferenceInfos.length == 0" class="empty">
+                    <view v-for="(info, i) in upcomingConferenceInfos" :key="info.conferenceId" class="conf-item">
+                        <view class="conf-row" :hover-class="rowPressedClass" hover-stay-time="80"
+                            @tap="showConferenceInfo(info)">
+                            <view class="conf-texts">
+                                <view class="conf-title-row">
+                                    <text class="conf-title"
+                                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">{{ info.conferenceTitle }}</text>
+                                    <view v-if="isOngoing(info)" class="chip" :style="{ backgroundColor: c.accentSoft }">
+                                        <text class="chip-text"
+                                            :style="{ color: c.accent, fontSize: fontPx(FONT_XXS) }">进行中</text>
+                                    </view>
+                                </view>
+                                <text class="conf-desc"
+                                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ upcomingConferenceDesc(info) }}</text>
+                            </view>
+                            <text class="conf-arrow icomoon"
+                                :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
+                        </view>
+                        <view v-if="i < upcomingConferenceInfos.length - 1" class="conf-divider"
+                            :style="{ backgroundColor: c.hairlineSoft }"></view>
+                    </view>
+                    <view v-if="upcomingConferenceInfos.length == 0" class="empty">
                         <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_SM) }">没有即将开始的会议</text>
                     </view>
                 </form-card>
@@ -37,10 +54,23 @@
             <text class="section-label" :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">历史记录</text>
             <view class="section">
                 <form-card :radius="8">
-                    <option-item v-for="(info, i) in historyConferenceInfos" :key="info.conferenceId"
-                        :title="info.conferenceTitle" :desc="historyConferenceDesc(info)"
-                        :show-bottom-divider="i < historyConferenceInfos.length - 1"
-                        @tap="showConferenceInfo(info)" />
+                    <view v-for="(info, i) in historyConferenceInfos" :key="info.conferenceId" class="conf-item">
+                        <view class="conf-row" :hover-class="rowPressedClass" hover-stay-time="80"
+                            @tap="showConferenceInfo(info)">
+                            <view class="conf-texts">
+                                <view class="conf-title-row">
+                                    <text class="conf-title"
+                                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_BASE) }">{{ info.conferenceTitle }}</text>
+                                </view>
+                                <text class="conf-desc"
+                                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ historyConferenceDesc(info) }}</text>
+                            </view>
+                            <text class="conf-arrow icomoon"
+                                :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
+                        </view>
+                        <view v-if="i < historyConferenceInfos.length - 1" class="conf-divider"
+                            :style="{ backgroundColor: c.hairlineSoft }"></view>
+                    </view>
                     <view v-if="historyConferenceInfos.length == 0" class="empty">
                         <text :style="{ color: c.textTertiary, fontSize: fontPx(FONT_SM) }">没有历史会议</text>
                     </view>
@@ -57,8 +87,14 @@
  * 会议入口页，迁移自 pages/voip/conference/ConferencePortalPage.vue。
  * 原版是左右分栏的桌面布局，这里按本项目移动端的分组卡片风格重排。
  *
- * 「即将开始」来自 app server 的收藏会议列表，「历史记录」是本地存的最近 10 场
- * （由 ConferencePage 退出时写入，见 conferenceManager.addHistory）。
+ * 两个列表的划分只看**会议有没有真的结束**（有没有过 endTime），不看自己有没有离开：
+ * - 「即将开始」= 服务端收藏的会议 + 本地参加过的会议里，还没结束的（含正在进行的）；
+ * - 「历史记录」= 本地参加过的会议里，已经结束的。
+ *
+ * 本地那份记录的结束时间由 conferenceManager.addHistory / endHistory 维护：只有主持人「结束
+ * 会议」、房间被销毁、或者从详情页销毁会议时才会改写成实际散会时间，所以「自己退出了、但会议
+ * 还在开」不会掉进历史记录，还能从「即将开始」里点回去。
+ * 反过来，服务端的收藏列表里排期已经过去的会议也不再算「即将开始」。
  */
 import NavBar from "@/pages/common/NavBar.uvue";
 import conferenceApi from "@/api/conferenceApi.uts";
@@ -67,7 +103,7 @@ import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
 import { getUserDisplayName } from "@/wfc/client/userBrief.uts";
 import { navigateToPage } from "@/common/nav.uts";
 import { colors, AppColors, isDark } from "@/common/theme.uts";
-import { fontPx, iconPx, FONT_BASE, FONT_SM, FONT_XS } from "@/common/layoutScale.uts";
+import { fontPx, iconPx, FONT_BASE, FONT_SM, FONT_XS, FONT_XXS } from "@/common/layoutScale.uts";
 
 defineOptions({
     name: "ConferencePortalPage"
@@ -75,14 +111,101 @@ defineOptions({
 
 const c = computed<AppColors>((): AppColors => colors())
 const pressedClass = computed<string>((): string => isDark() ? 'entry-pressed-dark' : 'entry-pressed-light')
+const rowPressedClass = computed<string>((): string => isDark() ? 'row-pressed-dark' : 'row-pressed-light')
 
-const favConferenceInfos = ref<ConferenceInfo[]>([] as ConferenceInfo[])
+const upcomingConferenceInfos = ref<ConferenceInfo[]>([] as ConferenceInfo[])
 const historyConferenceInfos = ref<ConferenceInfo[]>([] as ConferenceInfo[])
 
-const loadFavConferences = () => {
+// 两份原始数据：服务端的收藏列表 + 本地参会记录。分开存是为了收藏列表还没返回（或者请求失败）
+// 的时候，也能先按本地记录把两个列表铺出来。
+let favConferences: ConferenceInfo[] = []
+let historyConferences: ConferenceInfo[] = []
+
+/**
+ * 会议是否已经真正结束：过了结束时间。
+ * endTime 为 0 表示服务端没给结束时间，只能按没结束处理。
+ */
+const isEnded = (info: ConferenceInfo): boolean => {
+    return info.endTime > 0 && info.endTime * 1000 <= new Date().getTime()
+}
+
+/** 已经到点、但还没结束的会议，列表里打「进行中」标 */
+const isOngoing = (info: ConferenceInfo): boolean => {
+    return !isEnded(info) && info.startTime * 1000 <= new Date().getTime()
+}
+
+/** 把两份原始数据合并成「即将开始」和「历史记录」 */
+const applyConferences = () => {
+    const upcoming: ConferenceInfo[] = []
+    const upcomingIds: string[] = []
+
+    // 本地已经确知结束了的会议（主持人结束会议、房间被销毁）。这种会议服务端的收藏列表可能还
+    // 带着（排期时间没到），以本地为准，不然已经结束的会议会赖在「即将开始」里。
+    const endedIds: string[] = []
+    for (let i = 0; i < historyConferences.length; i++) {
+        const info = historyConferences[i]
+        if (isEnded(info)) {
+            endedIds.push(info.conferenceId)
+        }
+    }
+
+    // 服务端的收藏会议，去掉已经结束的。startTime 为 0 的是没有排期的会议（如个人会议号），
+    // 和原版一样不进「即将开始」。
+    for (let i = 0; i < favConferences.length; i++) {
+        const info = favConferences[i]
+        if (info.startTime <= 0 || isEnded(info) || endedIds.indexOf(info.conferenceId) >= 0
+            || upcomingIds.indexOf(info.conferenceId) >= 0) {
+            continue
+        }
+        upcoming.push(info)
+        upcomingIds.push(info.conferenceId)
+    }
+    // 本地参加过、但还没结束的会议（没收藏的会议只有这一条路能回去）
+    for (let i = 0; i < historyConferences.length; i++) {
+        const info = historyConferences[i]
+        if (info.startTime <= 0 || isEnded(info) || upcomingIds.indexOf(info.conferenceId) >= 0) {
+            continue
+        }
+        upcoming.push(info)
+        upcomingIds.push(info.conferenceId)
+    }
+    // 快开始的排前面
+    upcoming.sort((a: ConferenceInfo, b: ConferenceInfo): number => {
+        if (a.startTime == b.startTime) {
+            return 0
+        }
+        return a.startTime < b.startTime ? -1 : 1
+    })
+
+    // 历史记录只留真正结束了的
+    const history: ConferenceInfo[] = []
+    for (let i = 0; i < historyConferences.length; i++) {
+        const info = historyConferences[i]
+        if (!isEnded(info) || upcomingIds.indexOf(info.conferenceId) >= 0) {
+            continue
+        }
+        history.push(info)
+    }
+    // 最近开的排前面
+    history.sort((a: ConferenceInfo, b: ConferenceInfo): number => {
+        if (a.startTime == b.startTime) {
+            return 0
+        }
+        return a.startTime > b.startTime ? -1 : 1
+    })
+
+    upcomingConferenceInfos.value = upcoming
+    historyConferenceInfos.value = history
+}
+
+const reload = () => {
+    historyConferences = conferenceManager.getHistoryConference()
+    // 先用本地数据出一版，收藏列表回来了再合一次
+    applyConferences()
     conferenceApi.getFavConferences()
         .then((infos: ConferenceInfo[]): void => {
-            favConferenceInfos.value = infos
+            favConferences = infos
+            applyConferences()
         })
         .catch((err: any | null): void => {
             console.log('getFavConferences error', err)
@@ -90,8 +213,7 @@ const loadFavConferences = () => {
 }
 
 onShow(() => {
-    loadFavConferences()
-    historyConferenceInfos.value = conferenceManager.getHistoryConference()
+    reload()
 })
 
 const joinConference = () => {
@@ -110,36 +232,58 @@ const showConferenceInfo = (info: ConferenceInfo) => {
     navigateToPage('/pages/voip/conference/ConferenceInfoPage', info)
 }
 
-const favConferenceDesc = (info: ConferenceInfo): string => {
-    const start = info.startTime * 1000
-    const end = info.endTime * 1000
-    const now = new Date().getTime()
-    if (now < start) {
-        return '会议尚未开始'
-    } else if (now < end) {
-        return '会议已开始，请尽快加入'
+const pad = (n: number): string => n < 10 ? '0' + n : '' + n
+
+const isSameDay = (a: Date, b: Date): boolean => {
+    return a.getFullYear() == b.getFullYear() && a.getMonth() == b.getMonth() && a.getDate() == b.getDate()
+}
+
+/** 会议时间：今天/明天/昨天只显示时分，其余带上日期，跨年再带上年份 */
+const formatDateTime = (seconds: number): string => {
+    if (seconds <= 0) {
+        return '时间待定'
     }
-    return '会议已结束'
+    const date = new Date(seconds * 1000)
+    const time = pad(date.getHours()) + ':' + pad(date.getMinutes())
+    const now = new Date()
+    if (isSameDay(date, now)) {
+        return '今天 ' + time
+    }
+    if (isSameDay(date, new Date(now.getTime() + 86400000))) {
+        return '明天 ' + time
+    }
+    if (isSameDay(date, new Date(now.getTime() - 86400000))) {
+        return '昨天 ' + time
+    }
+    const monthDay = (date.getMonth() + 1) + '月' + date.getDate() + '日 '
+    if (date.getFullYear() == now.getFullYear()) {
+        return monthDay + time
+    }
+    return date.getFullYear() + '年' + monthDay + time
 }
 
 const formatDuration = (second: number): string => {
-    let desc = ''
-    if (second > 3600) {
-        desc = Math.floor(second / 3600) + 'H'
+    if (second <= 0) {
+        return '不到 1 分钟'
     }
-    if (second > 60) {
-        desc += Math.floor((second % 3600) / 60) + 'M'
+    const hour = Math.floor(second / 3600)
+    const minute = Math.floor((second % 3600) / 60)
+    if (hour > 0) {
+        return minute > 0 ? (hour + '小时' + minute + '分钟') : (hour + '小时')
     }
-    desc += (second % 60) + 'S'
-    return desc
+    if (minute > 0) {
+        return minute + '分钟'
+    }
+    return '不到 1 分钟'
+}
+
+const upcomingConferenceDesc = (info: ConferenceInfo): string => {
+    return formatDateTime(info.startTime) + ' 开始 · ' + getUserDisplayName(info.owner)
 }
 
 const historyConferenceDesc = (info: ConferenceInfo): string => {
-    const duration = formatDuration(info.endTime - info.startTime)
-    const ownerName = getUserDisplayName(info.owner)
-    const date = new Date(info.startTime * 1000)
-    const dateStr = date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate()
-    return '时间：' + dateStr + ' 发起人：' + ownerName + ' 时长：' + duration
+    return formatDateTime(info.startTime) + ' · 时长 ' + formatDuration(info.endTime - info.startTime)
+        + ' · ' + getUserDisplayName(info.owner)
 }
 </script>
 
@@ -193,6 +337,77 @@ const historyConferenceDesc = (info: ConferenceInfo): string => {
 
 .section {
     padding: 0 12px;
+}
+
+/* 会议行是「标题 + 副标题」两行，塞不进 option-item（它的 desc 在右侧、最宽半屏，
+   「时间 · 时长 · 发起人」这种长文案一定被截成省略号），所以这里自己排一行 */
+.conf-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.conf-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 15px;
+}
+
+.row-pressed-light {
+    background-color: #0000000A;
+}
+
+.row-pressed-dark {
+    background-color: #FFFFFF14;
+}
+
+.conf-texts {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.conf-title-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+/* 带 overflow 的 text 必须自己拿到确定宽度（flex:1），否则鸿蒙上会被量成 0；
+   单行截断用 white-space，lines 在鸿蒙 vapor 下不生效 */
+.conf-title {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 「进行中」标：底色和圆角给外层 view，文字单独一层 —— 和 PollListPage 的 chip 一致，
+   直接给 text 加 padding 在三端表现不一致 */
+.chip {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.conf-desc {
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.conf-arrow {
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.conf-divider {
+    height: 0.5px;
+    margin-left: 15px;
+    margin-right: 12px;
 }
 
 .empty {
