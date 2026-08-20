@@ -7,12 +7,16 @@
         </view>
         <view v-else class="conversation-content-container" :style="{ backgroundColor: c.conversationBg }">
             <view class="message-list-container">
+                <!-- 倒置渲染：scroll-view 整体 rotate(180deg)，每个 message-item 再各自转回来，
+                     渲染的是倒序列表 renderMessageList。于是「最新一条消息」落在滚动内容偏移 0 处，
+                     转过来正好显示在视觉底部；「加载历史消息」变成往滚动内容**末尾**追加，
+                     已有内容一格都不动，不需要任何位置补偿，闪烁从根上消失。
+                     取舍、坐标换算和已知代价见下面 loadHistoryMessages 上方的注释。 -->
                 <scroll-view ref="messageListEl" class="message-list" direction="vertical"
-                    :scroll-into-view="scrollIntoView" :refresher-enabled="true" :refresher-triggered="triggered"
-                    :refresher-threshold="45" @refresherrefresh="onRefresh" @refresherrestore="onRestore"
-                    @refresherabort="onAbort" @scrolltolower="onScrollToLower" @touchstart="onTouchStart"
+                    :show-scrollbar="false" @scroll="onMessageListScroll" @touchstart="onTouchStart"
                     @touchmove="onTouchMove" @tap="hideKeyboardAndPanel">
-                    <view v-for="(message, index) in messageList" :id="'id-' + message.messageId" :key="index"
+                    <!-- :key 必须是 index，不能用 messageId，理由见下面 loadHistoryMessages 上方的注释 -->
+                    <view v-for="(message, index) in renderMessageList" :id="'id-' + message.messageId" :key="index"
                         class="message-item"
                         :style="{ backgroundColor: message.messageId == highlightMessageId ? c.messageHighlight : 'transparent' }"
                         @tap="clickMessageItem(message)">
@@ -112,10 +116,11 @@ const contextMenuItems = ref<PopupMenuItem[]>([] as PopupMenuItem[])
 const contextMenuMessage = ref<Message | null>(null)
 
 const keyboardHeight = ref<number>(0)
-const scrollIntoView = ref<string>('')
-const triggered = ref<boolean>(false)
 const freshing = ref<boolean>(false)
 const loadingNewMessages = ref<boolean>(false)
+
+// 最后一次手指碰消息列表的时间，scrollToBottom 的延迟兜底靠它避让用户操作
+let lastTouchMessageListAt = 0
 
 // 与原生一致：未读数超过 10 条才显示顶部提示条
 const UNREAD_LABEL_MIN_COUNT = 10
@@ -132,7 +137,7 @@ const closingConversationInfo = ref<ConversationInfo | null>(null)
 const closingMessageList = ref<Message[]>([] as Message[])
 
 const messageInputView = ref<ComponentPublicInstance | null>(null)
-// 消息列表 scroll-view 的原生元素，scrollToBottom 要读它的真实 scrollHeight/offsetHeight
+// 消息列表 scroll-view 的原生元素，scrollToBottom / scrollToMessage 要直接操作它的滚动偏移
 const messageListEl = ref<UniElement | null>(null)
 
 const conversationInfo = computed<ConversationInfo | null>((): ConversationInfo | null => {
@@ -141,6 +146,27 @@ const conversationInfo = computed<ConversationInfo | null>((): ConversationInfo 
 
 const messageList = computed<Message[]>((): Message[] => {
     return closing.value ? closingMessageList.value : conversationState.currentConversationMessageList
+})
+
+/**
+ * 真正丢给 v-for 的列表：messageList 的倒序副本（最新一条在 0）。
+ *
+ * 配合 .message-list / .message-item 上的 rotate(180deg)，倒序渲染的结果在视觉上仍然是
+ * 「老消息在上、新消息在下」，但在**滚动内容坐标系**里方向反了过来：
+ *   - 内容偏移 0 = 最新一条 = 视觉底部
+ *   - 内容偏移越大 = 消息越老 = 视觉越靠上
+ * 于是 store 往列表头部插历史消息，落到这里就是往数组**末尾**追加，
+ * 对应 scroll-view 里「在已有内容下方接一段」，已有内容的布局位置完全不变。
+ *
+ * ⚠️ 不要用 reverse()：它原地修改数组，会把 store 里的列表也翻掉。
+ */
+const renderMessageList = computed<Message[]>((): Message[] => {
+    const list = messageList.value
+    const reversed: Message[] = []
+    for (let i = list.length - 1; i >= 0; i--) {
+        reversed.push(list[i])
+    }
+    return reversed
 })
 
 const enableMessageMultiSelection = computed<boolean>((): boolean => {
@@ -285,34 +311,140 @@ const currentVoiceMessage = computed<Message | null>((): Message | null => {
 })
 
 /**
- * 滚到底部。
+ * 滚到「最新一条消息」（视觉底部）。
  *
- * 这里**不能**用「把 scroll-top 设成 999999 这种魔法大数，指望框架帮忙截断」的写法：
- * 鸿蒙上它根本不截断，999999 会被原样当成滚动偏移应用下去。手指还按在列表上时，
- * 过卷不会被立刻收回，列表整片滚出可视区 —— 表现就是「消息列表消失了、右侧滚动条
- * 缩成一点吊在右下角」；等抬手之后才由 Spring 回弹动画花几百毫秒一路弹回来，
- * 看着就像「触发了加载更多，列表从下往上弹出来」。
+ * 倒置渲染下最新一条就在滚动内容偏移 0 处，所以这里退化成 scrollTo(0, 0)：
+ * 不再依赖 scrollHeight / offsetHeight，也就不存在「排版还没完成、算出来的底部偏移是旧值」
+ * 这类时序问题 —— 以前那个 200ms / 600ms 双保险就是为了绕它，现在不需要了。
  *
- * 改成按真实内容高度算精确的底部偏移：scrollHeight(内容总高) - offsetHeight(可视区高)。
- * 这个值就是最大可滚动偏移，不会过卷，也就没有回弹。
+ * 顺带也解决了鸿蒙上「scroll-top 给个魔法大数会过卷」的老坑：0 永远是合法偏移。
+ *
+ * 唯一还留一次延迟兜底的原因：新消息插入的那一帧，原生端可能还在应用上一次滚动动画，
+ * scrollTo(0,0) 落点会被覆盖。scrollTo(0,0) 本身是幂等的，多调一次没有副作用。
+ * 但这 200ms 里用户可能已经开始往上翻了，所以兜底那次要避让手指 —— 否则就是
+ * 「刚开始翻历史就被弹回最新一条」。
  */
 const scrollToBottom = () => {
     const doScrollToBottom = () => {
         const el = messageListEl.value
+        if (el != null) {
+            el.scrollTo(0, 0)
+        }
+    }
+    doScrollToBottom()
+    const scheduledAt = Date.now()
+    setTimeout(() => {
+        if (lastTouchMessageListAt > scheduledAt) {
+            return
+        }
+        doScrollToBottom()
+    }, 200)
+}
+
+/**
+ * 滚到指定消息，把它摆在视觉顶部（对齐原来 scroll-into-view 的效果）。
+ *
+ * **不能用 `scroll-into-view`**：它内部是 `_scrollToItem` → `getChildOffset()` →
+ * `getBoundingClientRect()`，而 getBoundingClientRect 拿的是带 transform 的**屏幕位置**，
+ * 在旋转 180° 的容器里算出来是镜像的，会滚到完全相反的地方。
+ *
+ * 这里改成用**布局坐标**自己算。`UniElement.offsetTop/offsetHeight` 走的是
+ * `layoutNode.getLayoutTop()/getLayoutHeight()`，纯排版结果，既不受 transform 影响，
+ * 也不受当前滚动偏移影响；scroll-view 的子节点又是直接挂在它的排版节点下的，
+ * 所以 offsetTop 就是这条消息在滚动内容坐标系里的位置。
+ *
+ * 换算：视口显示内容区间 [S, S+H)（S = scrollTop，H = 可视区高）。
+ * 旋转之后 c=S 在视觉底部、c=S+H 在视觉顶部。目标消息占 [t, t+h)，
+ * 要让它贴在视觉顶部就是 t+h = S+H，即 S = t + h - H。
+ *
+ * 定位场景（搜索跳转 / @我 / 未读定位）是 store 换了一整批消息，排版没跑完之前
+ * querySelector 找不到节点、offsetHeight 也是 0，所以这里轮询等排版结果。
+ * 这跟之前「补偿滚动位置」不一样：那个要求同帧命中否则就闪，这里是用户主动发起的跳转，
+ * 晚几十毫秒只是跳转动作本身，看不出问题。
+ */
+const LOCATE_PROBE_INTERVAL = 16
+const LOCATE_PROBE_TIMEOUT = 3000
+
+const scrollToMessage = (messageId: number) => {
+    let elapsed = 0
+    const probe = () => {
+        const el = messageListEl.value
         if (el == null) {
             return
         }
-        const maxScrollTop = el.scrollHeight - el.offsetHeight
-        el.scrollTo(0, maxScrollTop > 0 ? maxScrollTop : 0)
+        const target = el.querySelector('#id-' + messageId)
+        if (target != null && target.offsetHeight > 0) {
+            const viewportHeight = el.offsetHeight
+            let top = target.offsetTop + target.offsetHeight - viewportHeight
+            const maxScrollTop = el.scrollHeight - viewportHeight
+            if (top > maxScrollTop) {
+                top = maxScrollTop
+            }
+            if (top < 0) {
+                top = 0
+            }
+            el.scrollTo(0, top)
+            console.log('scrollToMessage id=' + messageId + ' waited=' + elapsed
+                + 'ms offsetTop=' + target.offsetTop + ' -> scrollTop=' + top)
+            return
+        }
+        elapsed += LOCATE_PROBE_INTERVAL
+        if (elapsed >= LOCATE_PROBE_TIMEOUT) {
+            console.log('scrollToMessage timeout, id=' + messageId)
+            return
+        }
+        setTimeout(probe, LOCATE_PROBE_INTERVAL)
     }
-    setTimeout(doScrollToBottom, 200)
-    // 图片/视频/语音等消息没有输入法弹出带来的额外滚动机会，且内容排版比纯文本慢，
-    // 200ms 时可能还没排版完成，这里再兜底滚动一次
-    setTimeout(doScrollToBottom, 600)
+    setTimeout(probe, LOCATE_PROBE_INTERVAL)
 }
 
+/**
+ * 列表尾部(= 最新一条消息)的标识。
+ * messageId 为 0 的(远程拉回来还没落库)用 messageUid 兜底，避免两条不同的消息算出同一个标识。
+ */
+const newestKeyOf = (list: Message[]): string => {
+    if (list.length == 0) {
+        return ''
+    }
+    const last = list[list.length - 1]
+    return last.messageId != 0 ? ('' + last.messageId) : ('u' + last.messageUid)
+}
+
+/**
+ * 列表尾部标识的当前值，watch 用它判断「最新一条变没变」。
+ *
+ * ⚠️ **必须用进页面时的实际列表初始化，不能写成 ''。**
+ * 会话列表页是 `store.setCurrentConversationInfo(...)` 之后才 `navigateTo` 的
+ * (ConversationListPage.uvue showConversation)，消息在本页 setup 跑之前就已经装进 store 了；
+ * 而 watch 不是 immediate，注册时不会跑一遍。初始化成 '' 的话，
+ * 进会话后**第一次任何列表变动**(一条已读回执、一次资料 patch、一次状态更新)
+ * 都会算出「key 从 '' 变成了 14934」→ 被当成来了新消息 → 把正在快速下拉的用户弹回最新一条。
+ * 表现就是「进会话第一次下拉松手，非常容易被拽回最新」。
+ */
+let newestMessageKey = newestKeyOf(messageList.value)
+
 watch(messageList, (_newList: Message[], _old: Message[]) => {
-    if (conversationState.shouldAutoScrollToBottom) {
+    // ⚠️ 这里判的是「最新一条消息变没变」，不是「列表变没变」，别改回后者。
+    //
+    // messageList 被整体换掉的场合远不止「收到新消息」：消息状态更新(已发送/已送达/已读)、
+    // 撤回、发送进度，以及用户资料/群成员资料回来之后的 _deferPatchCurrentConversationMessages，
+    // 都会 slice(0) 换一个新数组。这些事件跟用户翻历史消息是并发的 —— 翻历史正好把一批新
+    // 发送者的资料带回来，150ms 后那个整表 patch 落地，就出现「期间根本没有新消息，
+    // 却偶发被拽到最新一条」。概率低，但一定会碰上。
+    //
+    // 以前用「正在加载历史消息」标志位挡，挡不住：标志位只在一次加载的窗口内为真，
+    // 上面这些事件落在窗口外照样放行。改成看尾部标识就跟时序无关了：
+    // 倒置渲染下历史消息只往数组**头部**插，尾部一动不动；状态更新是原位替换，
+    // 尾部还是同一个 messageId。两种情况算出来的 key 都不变，自然不会滚。
+    const newestKey = newestKeyOf(messageList.value)
+    const hasNewMessage = newestKey != newestMessageKey
+    const prevNewestKey = newestMessageKey
+    newestMessageKey = newestKey
+    if (hasNewMessage && conversationState.shouldAutoScrollToBottom) {
+        // 诊断用：再遇到「莫名其妙滚到最新一条」，先看有没有这条，能区分是不是走了自动跟随。
+        // 前一个 key 是空的说明是刚进会话的第一次变动，正常情况下不该走到这里
+        console.log('autoScrollToBottom, newest [' + prevNewestKey + '] -> ' + newestKey
+            + ' count=' + messageList.value.length)
         scrollToBottom();
     }
     const info = conversationState.currentConversationInfo
@@ -320,6 +452,169 @@ watch(messageList, (_newList: Message[], _old: Message[]) => {
         store.clearConversationUnreadStatus(info.conversation);
     }
 }, { deep: false })
+
+/**
+ * 加载更多历史消息。
+ *
+ * ## 触发方式：@scroll 自己量距离，不用 scrolltolower
+ *
+ * 倒置渲染下「最老的一条」在滚动内容的**末尾**，看起来应该用 `scrolltolower`。
+ * 但那个事件是「**穿越**阈值」才触发一次的（UniScroll.ets 里判的是
+ * `bottom <= lowerThreshold && bottom + yOffset >= lowerThreshold`，yOffset 是这一帧的增量），
+ * 于是有两种情况它永远不会响：
+ *   ① 内容总高本来就小于「一屏 + 阈值」—— bottom 一开始就在阈值带里，没有穿越可言；
+ *   ② 内容压根填不满一屏 —— 列表根本滚不动，连 scroll 事件都不会有。
+ * 真机上就是这么翻的：一次只捞回 20 条，会话里的消息又都很短（极端情况每条就 1 个字符），
+ * 20 条撑不过一屏 + 阈值，于是历史消息再也加载不出来。消息长、气泡高的会话看着一切正常，
+ * 所以很容易误判成「某类会话的问题」—— 它跟会话类型无关，只跟内容总高有关。
+ * 所以改成在 `@scroll` 里自己量 `scrollHeight - scrollTop - offsetHeight`，只看距离不看穿越；
+ * ② 那种情况由下面的「自动补齐」兜底。
+ * `scrolltoupper` 真机上不触发，别拿它当另一端的入口。
+ *
+ * 预取距离 HISTORY_PREFETCH 特意留了 400：提前大半屏就开始加载，新内容接在**视口之外**，
+ * 用户滑到那儿的时候已经在了 —— 微信那种「没有加载动画、一路平滑」的观感就是这么来的。
+ * 也正因为提前量足够，不再需要下拉刷新控件（倒置之后刷新区也会跑到视觉底部，用不了）。
+ *
+ * ## 自动补齐
+ *
+ * 加载完如果内容还是没填满「一屏 + 预取距离」，就接着加载，直到填满或者真没有了。
+ * 不这么做的话，短会话会卡死在「滚不动 → 没有 scroll 事件 → 加载不了 → 还是滚不动」。
+ * 终止条件是「这一轮没拿到新消息」→ historyExhausted，只挡自动补齐；
+ * 用户手动滑到底仍然会再试一次，避免一次网络抖动把这个会话永久锁死。
+ *
+ * ## 改这块之前先看这几条约束
+ *
+ * 1. 消息列表的 `:key` 必须是 `index`，**不能**换成 `message.messageId`。
+ *    vapor 的 keyed diff 在「一次插入多条」时，发给原生端的 mount 指令是按新下标
+ *    **倒序**的一串插入(19,18,...,0)，原生端顺序套用之后新旧节点就交叉了 ——
+ *    真机上表现为「新旧消息一条隔一条交替出现、并且行与行重叠」，android 和鸿蒙都会复现。
+ *    倒置之后「加载历史」确实变成了末尾追加(稳定 key 也安全)，但「收到一批新消息」
+ *    仍然是一次性头部插多条，稳定 key 在那条路径上照样会交叉。所以还是 index。
+ *
+ * 2. 用 index 做 key 的代价：头部插入会让每一行的下标内容都变，整表重渲染。
+ *    倒置之后这个代价从「每次加载历史」挪到了「每次收到新消息」（新消息插在数组头部）。
+ *    消息渲染量大到卡顿时，下一步是给 renderMessageList 加个渲染窗口（只渲染最新 N 条，
+ *    滑到窗口末尾再放开），而不是去动 key。
+ *
+ * 3. **不要**再用「正在加载历史消息」标志位去挡 watch 里的自动滚动。标志位只在一次加载的
+ *    窗口内为真，而消息状态更新、资料回来之后的整表 patch 这些事件是并发的、会落在窗口外，
+ *    照样把用户拽到最新一条(表现为「翻历史时低概率跳到最后，期间并没有收到新消息」)。
+ *    正确做法见 watch(messageList)：只看列表尾部(最新一条)变没变。
+ *
+ * ⚠️ 倒置之前试过并失败、别再回头的路子（目标都是消除插入历史消息时那一下闪烁）：
+ * - `nextTick` / `nextTick`+`setTimeout(0)` / 猜时间的 `setTimeout` / `flush:'post'` 的 watch
+ *   / 8ms 轮询探测 scrollHeight 再 scrollTo 补偿 —— 全部追不上那一帧。根因是首屏之后
+ *   uni-app x **不存在**跑在「排版完成」和「画帧」之间的 JS 钩子：
+ *   `waitNativeRender()` 在 renderStatus 变成 RENDERED 之后永不复位、一律同步直返，
+ *   而排版本身在 `applyRenderQueue()` 的 setTimeout(0) 里跑，期间 JS 定时器被饿死。
+ * - 和插入同一次提交里设 `scroll-into-view` 指向锚点 —— 属性按旧排版算，等于空操作。
+ * - **换 list-view**：`getWrapperSize()` 拿"最后一个已实例化子节点"估算高度，
+ *   `scrollHeight` 会飘，进会话就闪，delta 也算错。已回退。
+ */
+// 离最老的一条还有这么远(px)就开始预取历史消息
+const HISTORY_PREFETCH = 400
+// 定位状态下，离最新的一条还有这么远就开始把更新的消息补回来
+const NEWER_MESSAGE_PREFETCH = 400
+// store 那边的回调有几条分支两个回调都不调(比如拉回来时会话已经切走)，加个看门狗别把 freshing 卡死
+const HISTORY_LOAD_TIMEOUT = 15000
+// 排版是异步的，加载完要等一会儿才量得到新的 scrollHeight
+const FILL_CHECK_DELAY = 300
+// 已经没有历史消息了之后的重试间隔：人停在最顶上时 @scroll 每帧都满足距离条件，
+// 不限流会变成每帧一次数据库+远程拉取
+const HISTORY_RETRY_INTERVAL = 3000
+
+// 自动补齐已经补不出新消息了(真没有历史消息了)。只挡自动补齐，不挡用户手动滑到底
+let historyExhausted = false
+let historyExhaustedAt = 0
+
+const loadHistoryMessages = () => {
+    if (freshing.value || closing.value) {
+        return
+    }
+    if (historyExhausted && Date.now() - historyExhaustedAt < HISTORY_RETRY_INTERVAL) {
+        return
+    }
+    freshing.value = true
+
+    const before = messageList.value.length
+    let settled = false
+    const done = () => {
+        if (settled) {
+            return
+        }
+        settled = true
+        freshing.value = false
+        const after = messageList.value.length
+        // 诊断用：加载历史消息没反应时先看这条，能区分「没触发」和「触发了但没拿到消息」
+        console.log('loadHistory done, count ' + before + ' -> ' + after)
+        if (after > before) {
+            historyExhausted = false
+            // 可能还是没填满一屏，等排版出结果再量一次
+            setTimeout(fillHistoryIfNeeded, FILL_CHECK_DELAY)
+        } else {
+            historyExhausted = true
+            historyExhaustedAt = Date.now()
+        }
+    }
+    setTimeout(() => {
+        if (!settled) {
+            console.log('loadHistory timeout')
+            done()
+        }
+    }, HISTORY_LOAD_TIMEOUT)
+    store.loadConversationHistoryMessages(done, done)
+}
+
+// 内容没填满「一屏 + 预取距离」就补，见 loadHistoryMessages 上方「自动补齐」一段
+const fillHistoryIfNeeded = () => {
+    if (historyExhausted || freshing.value || closing.value) {
+        return
+    }
+    const el = messageListEl.value
+    if (el == null) {
+        return
+    }
+    const bottom = el.scrollHeight - el.scrollTop - el.offsetHeight
+    // 诊断用：bottom 是「离最老的一条还有多远」，一直是负数/0 说明内容还没填满一屏
+    console.log('fillHistoryIfNeeded, bottom=' + bottom
+        + ' scrollHeight=' + el.scrollHeight + ' scrollTop=' + el.scrollTop + ' viewport=' + el.offsetHeight)
+    if (bottom <= HISTORY_PREFETCH) {
+        loadHistoryMessages()
+    }
+}
+
+// 从「定位到某条历史消息」的状态往回滑到最新消息时，把更新的消息补回来
+const loadNewerMessages = () => {
+    if (!conversationState.hasMoreNewMessages || loadingNewMessages.value) {
+        return
+    }
+    loadingNewMessages.value = true
+    store.loadConversationNewMessages(() => {
+        loadingNewMessages.value = false
+    }, () => {
+        loadingNewMessages.value = false
+    })
+}
+
+/**
+ * 倒置渲染下两端的含义都反了过来，所以两个方向的翻页都在这里按距离判断：
+ *   - scrollTop 越小 → 越靠近最新一条(视觉底部) → 需要往回补更新的消息
+ *   - scrollHeight - scrollTop - 可视区高 越小 → 越靠近最老一条(视觉顶部) → 需要加载历史消息
+ * 判断只有几次数值读取，逐帧调不会成为瓶颈。
+ */
+const onMessageListScroll = (e: UniScrollEvent) => {
+    const el = messageListEl.value
+    if (el == null) {
+        return
+    }
+    const scrollTop = e.detail.scrollTop
+    if (scrollTop <= NEWER_MESSAGE_PREFETCH) {
+        loadNewerMessages()
+    }
+    if (el.scrollHeight - scrollTop - el.offsetHeight <= HISTORY_PREFETCH) {
+        loadHistoryMessages()
+    }
+}
 
 // 触发 currentVoiceMessage computed 的求值
 watch(currentVoiceMessage, (_n: Message | null, _o: Message | null) => {
@@ -506,6 +801,7 @@ const hideKeyboardAndPanel = () => {
 }
 
 const onTouchStart = (e: UniTouchEvent) => {
+    lastTouchMessageListAt = Date.now()
     isScroll.value = false
     if (e.touches.length > 0) {
         touchStartX.value = e.touches[0].clientX
@@ -514,6 +810,7 @@ const onTouchStart = (e: UniTouchEvent) => {
 }
 
 const onTouchMove = (e: UniTouchEvent) => {
+    lastTouchMessageListAt = Date.now()
     hideKeyboardAndPanel();
     if (e.touches.length > 0) {
         const delX = e.touches[0].clientX - touchStartX.value
@@ -674,16 +971,16 @@ const onLocated = (found: boolean) => {
         return
     }
     const messageId = conversationState.highlightMessageId
-    setTimeout(() => {
-        scrollIntoView.value = 'id-' + messageId
-    }, 100)
+    historyExhausted = false
+    scrollToMessage(messageId)
+    // 定位之后列表被换成了目标消息附近的一小段，同样可能填不满一屏
+    setTimeout(fillHistoryIfNeeded, 800)
     if (highlightClearTimer != 0) {
         clearTimeout(highlightClearTimer)
     }
     highlightClearTimer = setTimeout(() => {
         highlightClearTimer = 0
         store.clearHighlightMessage()
-        scrollIntoView.value = ''
     }, 3000)
 }
 
@@ -709,45 +1006,9 @@ const onLocateMessageEvent = (data: any | null) => {
 
 const backToLatest = () => {
     store.backToLatestMessages()
-    scrollIntoView.value = ''
+    historyExhausted = false
     scrollToBottom()
-}
-
-const onScrollToLower = () => {
-    if (!conversationState.hasMoreNewMessages || loadingNewMessages.value) {
-        return
-    }
-    loadingNewMessages.value = true
-    store.loadConversationNewMessages(() => {
-        loadingNewMessages.value = false
-    }, () => {
-        loadingNewMessages.value = false
-    })
-}
-
-const onRefresh = () => {
-    console.log('onRefresh...')
-    if (freshing.value) {
-        return;
-    }
-
-    freshing.value = true;
-    triggered.value = true;
-    store.loadConversationHistoryMessages(() => {
-        triggered.value = false;
-        freshing.value = false;
-    }, () => {
-        triggered.value = false;
-        freshing.value = false;
-    });
-}
-
-const onRestore = () => {
-    console.log("onRestore");
-}
-
-const onAbort = () => {
-    console.log("onAbort");
+    setTimeout(fillHistoryIfNeeded, 500)
 }
 
 onUnload(() => {
@@ -772,6 +1033,11 @@ onUnload(() => {
 
 onMounted(() => {
     scrollToBottom();
+    // 首屏消息可能填不满一屏(超级群组尤其明显：一次只捞 20 条、通知类消息又很矮)，
+    // 填不满就滚不动、滚不动就没有 scroll 事件、也就再没有机会加载历史消息。
+    // 两个时间点各量一次：600ms 覆盖本地直接出数据的情况，1800ms 覆盖要走远程拉取的会话。
+    setTimeout(fillHistoryIfNeeded, 600);
+    setTimeout(fillHistoryIfNeeded, 1800);
     const info = conversationState.currentConversationInfo
     if (info != null) {
         store.clearConversationUnreadStatus(info.conversation);
@@ -845,12 +1111,24 @@ onShow(() => {
     flex-direction: column;
 }
 
+/* 倒置渲染的两半：容器整体转 180°，每一行再各自转回来，抵消掉行内文字/头像的翻转。
+ * transform-origin 默认就是元素中心，正好是原地翻转，不用额外设置。
+ * 为什么要倒置、坐标怎么换算，见模板里 scroll-view 上方和 loadHistoryMessages 上方的注释。
+ *
+ * 滚动条也会跟着翻到左边、方向相反，所以模板里用 show-scrollbar="false" 关掉了。
+ */
 .message-list {
     flex: 1;
+    transform: rotate(180deg);
+}
+
+.message-item {
+    transform: rotate(180deg);
 }
 
 /* 高亮态原来是 `.message-item.highlight`（复合选择器是支持的）。改成 :style 的理由只有一个：
- * 高亮色要跟明暗主题走，静态 class 给不了。 */
+ * 高亮色要跟明暗主题走，静态 class 给不了。
+ */
 .unread-label-container {
     position: absolute;
     top: 10px;
