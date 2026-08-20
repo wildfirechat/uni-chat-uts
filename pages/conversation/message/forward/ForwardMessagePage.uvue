@@ -25,11 +25,65 @@
             </view>
         </view>
 
+        <!--
+            list-item 必须是 list-view 的**直接子节点**：只有这样鸿蒙 vapor 才会把这段编译成
+            复用（recycle）渲染路径（createRecycleContext / createSharedDataRecycleFor），
+            2000+ 会话时只创建可视区那十几行。原来整张列表包在 ForwardTargetListView 组件里，
+            编译产物只有普通的 createSharedDataFor —— 进页面就把几千行节点全建出来，卡住主线程。
+            这也是 ConversationListPage 的写法，v-for 的每一项只放一个组件。
+        -->
         <list-view class="target-list" direction="vertical">
-            <ForwardTargetListView :conversation-infos="conversationInfos" :search-text="searchText"
-                :searched-friends="searchedFriends" :searched-groups="searchedGroups" :multi-select="isMultiSelect"
-                :selected-conversations="pickedConversations" @targetTap="onTargetTap"
-                @createGroupTap="onCreateGroupTap" />
+            <!-- 创建群聊入口 -->
+            <list-item v-if="!searching" class="target-row-item" @tap="onCreateGroupTap">
+                <view class="create-group" :style="{ backgroundColor: c.surface }">
+                    <view class="create-group-icon-box" :style="{ backgroundColor: c.accent }">
+                        <text class="icomoon create-group-icon" :style="{ color: c.onAccent }">&#xf39f;</text>
+                    </view>
+                    <text class="create-group-label" :class="fontClass(16)" :style="{ color: c.textPrimary }">{{ createGroupLabel }}</text>
+                </view>
+            </list-item>
+
+            <!-- 最近聊天。v-if 包不住 v-for，搜索态靠 recentConversationInfos 返回空数组来收起 -->
+            <list-item v-if="!searching" class="target-row-item">
+                <view class="section" :style="{ backgroundColor: c.sectionGap }">
+                    <text class="section-label" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ recentChatsLabel }}</text>
+                </view>
+            </list-item>
+            <list-item v-for="(info, index) in recentConversationInfos" :key="conversationInfoKey(info)"
+                class="target-row-item" @tap="onTargetTap(info.conversation)">
+                <ForwardTargetItemView :conversation="info.conversation" :show-checkbox="isMultiSelect"
+                    :checked="isConversationPicked(info.conversation)" :show-divider="index < recentConversationInfos.length - 1" />
+            </list-item>
+
+            <!-- 搜索态：好友 -->
+            <list-item v-if="searchedFriendRows.length > 0" class="target-row-item">
+                <view class="section" :style="{ backgroundColor: c.sectionGap }">
+                    <text class="section-label" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ friendsLabel }}</text>
+                </view>
+            </list-item>
+            <list-item v-for="(row, index) in searchedFriendRows" :key="row.key" class="target-row-item"
+                @tap="onTargetTap(row.conversation)">
+                <ForwardTargetItemView :conversation="row.conversation" :title="row.title" :portrait="row.portrait"
+                    :show-divider="index < searchedFriendRows.length - 1" />
+            </list-item>
+
+            <!-- 搜索态：群组 -->
+            <list-item v-if="searchedGroupRows.length > 0" class="target-row-item">
+                <view class="section" :style="{ backgroundColor: c.sectionGap }">
+                    <text class="section-label" :class="fontClass(12)" :style="{ color: c.textSecondary }">{{ groupsLabel }}</text>
+                </view>
+            </list-item>
+            <list-item v-for="(row, index) in searchedGroupRows" :key="row.key" class="target-row-item"
+                @tap="onTargetTap(row.conversation)">
+                <ForwardTargetItemView :conversation="row.conversation" :title="row.title" :portrait="row.portrait"
+                    :show-divider="index < searchedGroupRows.length - 1" />
+            </list-item>
+
+            <list-item v-if="showEmptyResult" class="target-row-item">
+                <view class="empty">
+                    <text class="empty-label" :class="fontClass(14)" :style="{ color: c.textSecondary }">{{ noSearchResultLabel }}</text>
+                </view>
+            </list-item>
         </list-view>
 
         <!-- 多选态底栏：已选数量 + 发送(n)。单选态点一行就直接弹确认框，不需要底栏 -->
@@ -67,7 +121,7 @@ import store, { conversationState, contactState, pickState } from "@/store.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import Config from "@/config.uts";
 import NavBar from "@/pages/common/NavBar.uvue";
-import ForwardTargetListView from "./ForwardTargetListView.uvue";
+import ForwardTargetItemView from "./ForwardTargetItemView.uvue";
 import ForwardConfirmationSheet from "./ForwardConfirmationSheet.uvue";
 import ForwardType from "./ForwardType.uts";
 import Conversation from "@/wfc/model/conversation.uts";
@@ -83,7 +137,7 @@ import { toast } from "@/common/prompt.uts";
 import { t, t1 } from "@/i18n/i18n.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx, iconPx, FONT_BASE } from "@/common/layoutScale.uts";
+import { fontPx, iconPx, fontClass, FONT_BASE } from "@/common/layoutScale.uts";
 
 defineOptions({
     name: "ForwardMessagePage"
@@ -92,6 +146,14 @@ defineOptions({
 /** 建群人数上限与群名长度上限，对齐 flutter ForwardTargetController */
 const MAX_GROUP_MEMBERS = 1024
 const MAX_GROUP_NAME_LENGTH = 24
+
+/** 搜索结果的一行。最近聊天不走它，直接用 store 里的 ConversationInfo */
+class ForwardTargetRow {
+    key: string = ''
+    conversation: Conversation = new Conversation(ConversationType.Single, '', 0)
+    title: string = ''
+    portrait: string = ''
+}
 
 const c = computed<AppColors>((): AppColors => colors())
 const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
@@ -160,22 +222,77 @@ watch(pickedConversations, (newList: Conversation[], oldList: Conversation[]) =>
     }, 50)
 })
 
-const conversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] => {
+const searching = computed<boolean>((): boolean => searchText.value != '')
+
+const createGroupLabel = computed<string>((): string => t('forward.create_group_chat'))
+const recentChatsLabel = computed<string>((): string => t('forward.recent_chats'))
+const friendsLabel = computed<string>((): string => t('forward.friends'))
+const groupsLabel = computed<string>((): string => t('forward.groups'))
+const noSearchResultLabel = computed<string>((): string => t('forward.no_search_result'))
+
+/**
+ * 最近聊天。**直接把 store 里的数组给 v-for**，不再包一层行对象 ——
+ * 会话列表每来一条消息就变一次，包一层的话每次都要重建几千个对象。
+ * 标题/头像交给 [ForwardTargetItemView] 渲染到那一行时才解析。
+ */
+const recentConversationInfos = computed<ConversationInfo[]>((): ConversationInfo[] => {
+    if (searching.value) {
+        return [] as ConversationInfo[]
+    }
     return conversationState.conversationInfoList
 })
 
-const searchedFriends = computed<UserInfo[]>((): UserInfo[] => {
-    if (searchText.value == '') {
-        return [] as UserInfo[]
+const conversationInfoKey = (conversationInfo: ConversationInfo): string => {
+    const conv = conversationInfo.conversation
+    return conv.target + '-' + conv.type + '-' + conv.line
+}
+
+const isConversationPicked = (conversation: Conversation): boolean => {
+    if (!isMultiSelect.value) {
+        return false
     }
-    return store.filterContact(searchText.value)
+    return pickState.conversations.findIndex((conv: Conversation): boolean => conv.equal(conversation)) >= 0
+}
+
+/** 搜索结果行。结果集小，这里预解析成行对象（名字/头像随搜索结果一起来，不用再查 store） */
+const searchedFriendRows = computed<ForwardTargetRow[]>((): ForwardTargetRow[] => {
+    const rows: ForwardTargetRow[] = []
+    if (!searching.value) {
+        return rows
+    }
+    const friends = store.filterContact(searchText.value)
+    for (let i = 0; i < friends.length; i++) {
+        const user = friends[i]
+        const row = new ForwardTargetRow()
+        row.key = 'u-' + user.uid
+        row.conversation = new Conversation(ConversationType.Single, user.uid, 0)
+        row.title = user._displayName
+        row.portrait = user.portrait
+        rows.push(row)
+    }
+    return rows
 })
 
-const searchedGroups = computed<GroupInfo[]>((): GroupInfo[] => {
-    if (searchText.value == '') {
-        return [] as GroupInfo[]
+const searchedGroupRows = computed<ForwardTargetRow[]>((): ForwardTargetRow[] => {
+    const rows: ForwardTargetRow[] = []
+    if (!searching.value) {
+        return rows
     }
-    return store.filterGroupConversation(searchText.value)
+    const groups = store.filterGroupConversation(searchText.value)
+    for (let i = 0; i < groups.length; i++) {
+        const group = groups[i]
+        const row = new ForwardTargetRow()
+        row.key = 'g-' + group.target
+        row.conversation = new Conversation(ConversationType.Group, group.target, 0)
+        row.title = group.name
+        row.portrait = group.portrait
+        rows.push(row)
+    }
+    return rows
+})
+
+const showEmptyResult = computed<boolean>((): boolean => {
+    return searching.value && searchedFriendRows.value.length == 0 && searchedGroupRows.value.length == 0
 })
 
 onLoad((_options: OnLoadOptions) => {
@@ -352,6 +469,61 @@ const onSendTap = () => {
 
 .target-list {
     flex: 1;
+}
+
+/* list-item 走复用渲染，这里一个动态绑定都不留（底色画在里面那层上） */
+.target-row-item {
+    width: 100%;
+}
+
+.create-group {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+}
+
+.create-group-icon-box {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* flutter 用 Icons.group_add_rounded，icomoon(Ionicons) 里取最接近的 ion-android-person-add。
+   图标是图形，字号刻意不跟字号档位放大 */
+.create-group-icon {
+    font-size: 22px;
+}
+
+.create-group-label {
+    flex: 1;
+    margin-left: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.section {
+    width: 100%;
+    padding: 8px 16px;
+}
+
+.section-label {
+    white-space: nowrap;
+}
+
+.empty {
+    width: 100%;
+    padding: 40px 16px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
 }
 
 .bottom-bar {

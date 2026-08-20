@@ -1,0 +1,119 @@
+<template>
+    <view class="row-wrapper" :style="{ backgroundColor: c.surface }">
+        <view class="row">
+            <image class="portrait" mode="aspectFill" :src="portraitUrl" :style="{ backgroundColor: c.inputBg }" />
+            <text class="title" :class="fontClass(16)" :style="{ color: c.textPrimary }">{{ titleText }}</text>
+            <round-checkbox v-if="showCheckbox" :checked="checked" />
+        </view>
+        <view v-if="showDivider" class="row-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 转发目标列表里的一行。宿主是 [ForwardMessagePage] 里 list-view 的 list-item，
+ * 走鸿蒙 vapor 的**复用（recycle）渲染路径** —— 同 ConversationItemView 之于会话列表：
+ * 尺寸、字号一律留在 class 里，只有颜色走 :style（见 M0「鸿蒙 list-view 是复用渲染」）。
+ *
+ * 标题/头像**不由上层预解析**：2000+ 群会话时全量 ensureConversationTarget 会打出
+ * 几千次远程拉取（见「鸿蒙 ShortLink 线程风暴」），这里在真正渲染到这一行时才解析，
+ * 靠 list-view 的复用渲染兜住；搜索结果本来就带着名字和头像，直接用 props 传进来。
+ */
+import store from "@/store.uts";
+import Config from "@/config.uts";
+import Conversation from "@/wfc/model/conversation.uts";
+import ConversationType from "@/wfc/model/conversationType.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontClass } from "@/common/layoutScale.uts";
+
+defineOptions({
+    name: "ForwardTargetItemView",
+    // 'app' 是为了吃到 global.css 里的 fs-* 字号档位类（fontClass 的返回值），
+    // 组件默认的样式隔离下那些类是空的，字号档位会静默失效
+    styleIsolation: 'app'
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const props = withDefaults(defineProps<{
+    conversation: Conversation
+    /** 搜索结果行的标题/头像随结果一起给；最近聊天行留空，这里按需解析 */
+    title?: string
+    portrait?: string
+    showCheckbox?: boolean
+    checked?: boolean
+    showDivider?: boolean
+}>(), {
+    title: '',
+    portrait: '',
+    showCheckbox: false,
+    checked: false,
+    showDivider: false
+})
+
+// class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
+const targetConversation = computed<Conversation>((): Conversation => props.conversation as Conversation)
+
+const titleText = computed<string>((): string => {
+    if (props.title != '') {
+        return props.title
+    }
+    const target = store.ensureConversationTarget(targetConversation.value)
+    return target != null ? target._displayName : ''
+})
+
+const portraitUrl = computed<string>((): string => {
+    let portrait = props.portrait
+    if (portrait == '') {
+        const target = store.ensureConversationTarget(targetConversation.value)
+        portrait = target != null ? target.portrait : ''
+    }
+    if (portrait != '') {
+        return portrait
+    }
+    return targetConversation.value.type == ConversationType.Single ? Config.DEFAULT_PORTRAIT_URL : Config.DEFAULT_GROUP_PORTRAIT_URL
+})
+</script>
+
+<style scoped>
+.row-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.row {
+    width: 100%;
+    height: 64px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 16px;
+}
+
+.portrait {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+/* 要截断的文字自己 flex:1；单行截断用 white-space，lines 在鸿蒙 vapor 下无效 */
+.title {
+    flex: 1;
+    margin-left: 12px;
+    margin-right: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 分隔线缩进 = 16(左边距) + 48(头像) + 12(间距)，对齐 flutter 的 Divider(indent)。
+   走正常流排在行下面，不用 position: absolute —— 行本身在复用渲染的 list-item 里，
+   少一层定位少一个变量 */
+.row-divider {
+    height: 0.5px;
+    margin-left: 76px;
+}
+</style>
