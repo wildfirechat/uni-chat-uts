@@ -580,7 +580,7 @@ export function sendMessage(conversation: string, messagePayload: string, toUser
 //      注意 aar 侧要负责响应体解码：/moments_pb/feed/pull_one 用 decodeData(1, ..)、
 //      /moments_pb/feed/pull 用 decodeData(0, ..)、其余用 decodeData(..)，回调给 JS 的必须是 JSON 字符串。
 export function sendMomentsRequest(path: string, data: string, successCB: StringCallback, failCB: FailCallback): void {
-    failCB(254)
+    clientModule.sendMomentsRequest(path, data, stringCallback(successCB), numberCallback(failCB))
 }
 
 export function setBackupAddress(backupHost: string, backupPort: number): void {
