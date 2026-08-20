@@ -25,12 +25,13 @@
 <script setup lang="uts">
 /**
  * 输入会议号加入会议，迁移自 JoinConferencePage.vue。
- * 这里只负责查会议信息，真正入会在 ConferenceInfoPage 上确认音视频开关后再进。
+ * 这里只负责查会议信息，真正入会在 ConferenceInfoPage 上确认音视频开关后再进；
+ * 查到之后本页就 redirectTo 掉自己，整条链路 入口页 -> 详情页 -> 会议页 只占入口页之上一层。
  */
 import NavBar from "@/pages/common/NavBar.uvue";
 import conferenceApi from "@/api/conferenceApi.uts";
 import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
-import { navigateToPage } from "@/common/nav.uts";
+import { redirectToPage } from "@/common/nav.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { toast } from "@/common/prompt.uts";
 
@@ -63,7 +64,9 @@ const joinConference = () => {
                 toast('获取会议信息失败')
                 return
             }
-            navigateToPage('/pages/voip/conference/ConferenceInfoPage', info)
+            // 用 redirectTo：会议号已经查到了，从详情页/会议中退回来再输一遍会议号没有意义，
+            // 退出会议后应该直接落到会议入口页
+            redirectToPage('/pages/voip/conference/ConferenceInfoPage', info)
         })
         .catch((err: any | null): void => {
             console.log('queryConferenceInfo failed', err)

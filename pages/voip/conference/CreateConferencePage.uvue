@@ -61,11 +61,10 @@ import conferenceApi from "@/api/conferenceApi.uts";
 import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
 import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
 import wfc from "@/wfc/client/wfc.uts";
-import { navigateToPage } from "@/common/nav.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, FONT_XS } from "@/common/layoutScale.uts";
 import { toast } from "@/common/prompt.uts";
-import { ConferenceJoinOptions } from "./conferenceJoinOptions.uts";
+import { ConferenceJoinOptions, setPendingConferenceJoinOptions } from "./conferenceJoinOptions.uts";
 
 defineOptions({
     name: "CreateConferencePage"
@@ -190,7 +189,15 @@ const createAndJoinConference = () => {
                 options.conferenceInfo = info
                 options.muteAudio = false
                 options.muteVideo = false
-                navigateToPage('/pages/voip/conference/ConferencePage', options)
+                // 用 redirectTo：会议已经建好并入会了，退出会议后再回到创建页没有意义
+                // （还会让用户以为会议没建成功），和详情页入会的处理一致
+                setPendingConferenceJoinOptions(options)
+                uni.redirectTo({
+                    url: '/pages/voip/conference/ConferencePage',
+                    fail: (err) => {
+                        console.log('nav to ConferencePage err', err)
+                    }
+                } as RedirectToOptions)
             })
             .catch((err: any | null): void => {
                 creating.value = false

@@ -34,6 +34,28 @@ export function navigateToPage(url: string, options: any | null): void {
 }
 
 /**
+ * 同 navigateToPage，但用 redirectTo 替换掉当前页面（当前页面退不回来时用）
+ */
+export function redirectToPage(url: string, options: any | null): void {
+    if (options != null) {
+        pendingOptionsStack.push(options)
+    }
+    uni.redirectTo({
+        url: url,
+        fail: (e) => {
+            console.log('redirect to page error', url, e)
+            if (options != null) {
+                // 跳转失败，移除暂存的参数
+                const index = pendingOptionsStack.indexOf(options)
+                if (index >= 0) {
+                    pendingOptionsStack.splice(index, 1)
+                }
+            }
+        }
+    } as RedirectToOptions)
+}
+
+/**
  * 页面 onLoad 时调用，取出跳转方传递的 options；没有时返回 null
  */
 export function takePageOptions(): any | null {
