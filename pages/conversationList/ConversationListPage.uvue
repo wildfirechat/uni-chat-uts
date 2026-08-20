@@ -144,7 +144,7 @@ const updateTabBarBadge = () => {
     if (newValue > 0) {
         uni.setTabBarBadge({
             index: 0,
-            text: '' + newValue
+            text: newValue > 99 ? '99+' : '' + newValue
         } as SetTabBarBadgeOptions)
     } else {
         uni.removeTabBarBadge({
