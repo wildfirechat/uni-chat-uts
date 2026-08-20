@@ -1,0 +1,27 @@
+/**
+ * 频道菜单（公众号底部菜单）的公共部分。
+ *
+ * 菜单栏本身是 [components/channel-menu-bar](../components/channel-menu-bar/channel-menu-bar.uvue)，
+ * 点击后的行为（view / click / 其它）在
+ * [MessageInputView](../pages/conversation/MessageInputView.uvue) 里，对齐 flutter
+ * `conversation/input_bar/channel_menu_widget.dart` 的 `_handleMenuSelected`。
+ */
+import ChannelMenu from '../wfc/model/channelMenu.uts'
+
+/** 菜单类型：打开链接 */
+export const CHANNEL_MENU_TYPE_VIEW = 'view'
+/** 菜单类型：给频道后台发一条透传事件消息 */
+export const CHANNEL_MENU_TYPE_CLICK = 'click'
+
+/** channel-menu-bar 的选中事件：被点的一级菜单 + 触点坐标（给子菜单弹窗定位用） */
+export class ChannelMenuSelectEvent {
+    menu: ChannelMenu
+    x: number
+    y: number
+
+    constructor(menu: ChannelMenu, x: number, y: number) {
+        this.menu = menu
+        this.x = x
+        this.y = y
+    }
+}

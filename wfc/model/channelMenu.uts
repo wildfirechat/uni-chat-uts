@@ -11,6 +11,33 @@ export default class ChannelMenu {
     extra = '';
     subMenus: ChannelMenu[] = [];
 
+    /**
+     * 与 android `ChannelMenu.toJsonObj()` 对齐：空的 subMenus 不写进去
+     * （android 用 putOpt + size > 0 判断），别改成无脑 JSON.stringify(this)。
+     */
+    toJsonObject(): UTSJSONObject {
+        const obj = {
+            menuId: this.menuId,
+            type: this.type,
+            name: this.name,
+            key: this.key,
+            url: this.url,
+            mediaId: this.mediaId,
+            articleId: this.articleId,
+            appId: this.appId,
+            appPage: this.appPage,
+            extra: this.extra,
+        } as UTSJSONObject;
+        if (this.subMenus.length > 0) {
+            const arr: UTSJSONObject[] = [];
+            for (let i = 0; i < this.subMenus.length; i++) {
+                arr.push(this.subMenus[i].toJsonObject());
+            }
+            obj['subMenus'] = arr;
+        }
+        return obj;
+    }
+
     static fromJsonObject(obj: UTSJSONObject): ChannelMenu {
         const m = new ChannelMenu()
         m.menuId = obj.getString('menuId') ?? ''

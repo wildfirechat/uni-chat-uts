@@ -128,7 +128,9 @@ export default {
         "unsubscribed": "已取消訂閱",
         "enter_conversation": "進入會話",
         "unsubscribe_confirm": "取消訂閱後將不再接收該頻道消息",
-        "unsubscribe_success": "已取消訂閱"
+        "unsubscribe_success": "已取消訂閱",
+        "menu_not_supported": "暫不支援",
+        "menu_invalid_url": "無法開啟連結"
     },
     "message": {
         "send_message": "發消息",

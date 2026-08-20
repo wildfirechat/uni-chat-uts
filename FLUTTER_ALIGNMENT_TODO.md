@@ -66,12 +66,16 @@
   - **刻意保留硬编码色值的三类**：常暗界面（[voip/Single](pages/voip/Single.uvue)、[voip/Multi](pages/voip/Multi.uvue)、[PreviewVideoPage](pages/misc/PreviewVideoPage.uvue)）、常暗浮层（[chunLei-popups](components/chunLei-popups/chunLei-popups.uvue)、[main-action-menu](components/main-action-menu/main-action-menu.uvue)）、`hover-class` 的按下态（只认静态类名，拿不到 `:style`）
 - **字号缩放层**：[common/layoutScale.uts](common/layoutScale.uts) 8 档字号令牌 + 5 档缩放 + 三类上限（`iconPx` / `rowPx` / `fontPx`）。正文走 `fontPx` 完整跟随，角标与图标不跟随
 - **通用组件**：[option-item](components/option-item/option-item.uvue)、[option-switch-item](components/option-switch-item/option-switch-item.uvue)、[option-button-item](components/option-button-item/option-button-item.uvue)、[form-card](components/form-card/form-card.uvue)、[form-text-row](components/form-text-row/form-text-row.uvue)、[section-divider](components/section-divider/section-divider.uvue)、[bottom-action-sheet](components/bottom-action-sheet/bottom-action-sheet.uvue)、[popup-menu](components/popup-menu/popup-menu.uvue)、[member-grid](components/member-grid/member-grid.uvue)、[member-row](components/member-row/member-row.uvue)、[qr-code](components/qr-code/qr-code.uvue)、[slide-verify-dialog](components/slide-verify-dialog/slide-verify-dialog.uvue)、[quick-index-bar](components/quick-index-bar/quick-index-bar.uvue)
+- **双网媒体 URL 重定向**：[common/mediaUrlRedirector.uts](common/mediaUrlRedirector.uts) + [Config.MAIN_MEDIA_URL_PREFIX / BACKUP_MEDIA_URL_PREFIX](config.uts)。两个前缀都配上才生效（默认空 = 单网，等于没启用），按当前连的是主网还是备网互换 URL 前缀
+  - 主/备网判断来自协议栈 `onConnectToServer` 回调（1 主网 / -1 备网 / 0 未知，对齐 iOS `ConnectedNetworkType`），在 [wfc.uts 的 `_updateConnectedNetwork`](wfc/client/wfc.uts) 里取；**只认 1/-1/0，端口号之类的值一律忽略**，因为各端回调参数形状不一样
+  - ⚠️ **android / iOS 的 uts 插件根本不抛 `onConnectToServer`**（只有鸿蒙抛），这两端目前恒按主网算。见 §四台账
 - **公共逻辑**：[common/prompt.uts](common/prompt.uts)、[common/conversationActions.uts](common/conversationActions.uts)、[common/asr.uts](common/asr.uts)、[common/favorite.uts](common/favorite.uts)、[common/report.uts](common/report.uts)、[common/qrcode.uts](common/qrcode.uts)、[common/avcall.uts](common/avcall.uts)、[common/popupMenu.uts](common/popupMenu.uts)、[common/mediaSaver.uts](common/mediaSaver.uts)、[api/authCodeApiClient.uts](api/authCodeApiClient.uts)（接龙/网盘复用）
 
 ### 功能模块
 
 - **会话列表**：列表/未读角标/置顶/静音/删除/标记已读未读/连接状态提示/tabBar badge/长按菜单；PC 在线横幅 + [PcOnlineDevicesPage](pages/me/PcOnlineDevicesPage.uvue)
 - **会话页**：文本、图片、视频、语音(AMR)、文件、表情贴纸、链接、名片、合并转发、引用、@提醒（含@全体）、撤回+重新编辑、多选、草稿、下拉加载历史、向下翻页、消息定位高亮、未读/@我提示条、正在输入提示、对方在线状态、已读回执（含群已读详情页）、清空聊天记录、保存到相册/本地
+- **频道菜单栏（公众号底部菜单）**：[components/channel-menu-bar](components/channel-menu-bar/channel-menu-bar.uvue) + [MessageInputView](pages/conversation/MessageInputView.uvue)。频道配了 menus 时输入栏出现「菜单/键盘」切换按钮，进会话默认就是菜单态；一级菜单等分排列，带子菜单的项点开在上方弹出；`view` → 内嵌 WebView、`click` → 发一条 `ChannelMenuEventMessageContent` 透传消息、其它类型给提示。点/拖消息列表会退回输入态（对齐 flutter 的 `resetStatus()`）
 - **消息长按菜单**：删除（再选本地/远程）→ 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报 → 保存
 - **消息类型注册**：64 项；渲染器覆盖 flutter 除 `collection_cell_builder`（随接龙）之外的全部
 - **我的与设置**：[MePage](pages/me/MePage.uvue)、[GeneralSettingsPage](pages/me/GeneralSettingsPage.uvue)、[MessageNotificationSettingsPage](pages/me/MessageNotificationSettingsPage.uvue)、[PrivacySettingsPage](pages/me/PrivacySettingsPage.uvue)、[PrivacyFindMePage](pages/me/PrivacyFindMePage.uvue)、[BlacklistPage](pages/me/BlacklistPage.uvue)、[AccountSafetyPage](pages/me/AccountSafetyPage.uvue) + [ChangePasswordPage](pages/me/ChangePasswordPage.uvue)、[DestroyAccountPage](pages/me/DestroyAccountPage.uvue)、[FontSizeSettingsPage](pages/me/FontSizeSettingsPage.uvue)、[FileRecordsPage](pages/me/FileRecordsPage.uvue) + [FileListPage](pages/me/FileListPage.uvue)、[FavoriteListPage](pages/me/FavoriteListPage.uvue)
@@ -116,10 +120,6 @@
 
 ### 批次 B · 纯 UI / HTTP，随时可开工
 
-- [ ] **频道菜单栏（公众号底部菜单）** ← flutter `conversation/input_bar/channel_menu_widget.dart`
-  - flutter 在**移动端**输入栏就渲染它（`message_input_bar.dart:378`）：频道有 menus 时输入栏左侧出现菜单/键盘切换按钮，切过去后输入区整体换成一级菜单等分排列，带子菜单的项点开在上方弹出
-  - 行为：`view` → 内嵌 WebView 打开链接；`click` → 向频道发一条 `ChannelMenuEventMessageContent` 透传消息；其它类型给提示而不是静默无反应
-  - **uni 侧模型和消息类型早就有了**（[wfc/model/channelMenu.uts](wfc/model/channelMenu.uts)、[wfc/messages/channelMenuEventMessageContent.uts](wfc/messages/channelMenuEventMessageContent.uts)），[MessageInputView](pages/conversation/MessageInputView.uvue) 里**零处 channel 引用** —— 只缺这一层 UI。频道会话信息页已经做了，这是现成断链，也是剩余项里最便宜的
 - [ ] **创建频道 / 搜索频道** ← `channel/search_channel.dart`
   - 三端插件的 `createChannel` / `searchChannel` **都已导出**，只缺页面。[ChannelDetailPage](pages/contact/ChannelDetailPage.uvue) 已落地，这两个是它的上游入口
 - [ ] **接龙** `[API❌ COLLECTION_SERVER]` ← `collection/`（6 个文件，1.1k 行）
@@ -145,7 +145,6 @@
 ### Backlog
 
 - [ ] **备份与恢复** —— flutter `backup/` 12 个文件 4.2k 行，其中 5 个是 PC 备份/恢复（已排除）。需先评估 uni-app x 的文件系统 API 能否支撑本地库文件的打包/校验/写出
-- [ ] **双网媒体 URL 重定向** —— flutter `utils/media_url_redirector.dart`：配了 `MAIN_MEDIA_URL_PREFIX` / `BACKUP_MEDIA_URL_PREFIX` 时按当前网络环境互换媒体 URL 前缀。flutter 默认 null 不启用，uni 门面已有 `setBackupAddress` / `setBackupAddressStrategy` 但没有前缀互换。等有双网部署需求再做
 - [ ] **会议的演讲者布局 / 屏幕共享发起** —— 见 §五的刻意差异，要不要补取决于产品判断
 
 ---
@@ -162,6 +161,7 @@
 | `getFirstUnreadMessageId` | 精确定位首条未读 | 待 SDK | **只差插件导出** | 待 SDK |
 | `getMessagesV2` 支持 `contentTypes` | 按类型取消息 | 写死空数组 | 写死空数组 | 写死空数组 |
 | `cancelSendingMessage` | flutter 有此 API 但菜单未用 | 忽略 | 忽略 | 忽略 |
+| `onConnectToServer` 事件 | 双网下判断当前连的是主网还是备网 | **插件不抛此事件** | ✅ 已通（带 nwType） | **插件不抛此事件** |
 
 **鸿蒙侧已知的运行时空实现**（编译期无感，真机才暴露）：`clearAllNotification`、`getListenedChannels`、`initProto`、`getUserMessages*` 系列在 [app-harmony/index.uts](uni_modules/wfc-client/utssdk/app-harmony/index.uts) 里是 `// TODO` 空壳，用到再补。
 
@@ -210,6 +210,10 @@
 | 朋友圈 | 不做「长按发布按钮直接发纯文字」 | 同一节点上 `@longpress` 后仍会补一次 `@tap`，行为不稳 |
 | 会议 | **只有宫格布局，没有演讲者/焦点布局**（[ConferencePage.uvue:77](pages/voip/conference/ConferencePage.uvue#L77)） | 移动端小屏上演讲者视图价值不大；焦点用户排在第一格 |
 | 会议 | **不提供屏幕共享发起入口**（[ConferencePage.uvue:79](pages/voip/conference/ConferencePage.uvue#L79)） | Android/iOS 的 uts 插件还没接，原版这段代码也是注释掉的 |
+| 频道菜单 | 子菜单用 [dropdown-menu](components/dropdown-menu/dropdown-menu.uvue) 弹在**触点**上方，不是 flutter `PopupMenuButton` 那种贴着菜单项定点弹出 | 同长按菜单：vapor 下拿不到节点矩形。dropdown-menu 会自己按屏幕边缘翻上翻下、夹住左右 |
+| 频道菜单 | 菜单栏本身不画上边框；高度取 38px（与语音输入条一致）不是 flutter 的 50 | 输入栏工具条已经有一条上边框，再加会变双线；高度对齐同一格里的其它形态，切来切去工具条不跳 |
+| 双网 URL | 转换点放在**模型解析处**（userInfo / groupInfo / channelInfo / chatRoomInfo 的 portrait、mediaMessageContent 的 remotePath、favoriteItem、fileRecord、朋友圈 FeedEntry 等），不像 flutter 那样在每个展示点各调一次 | uni 侧没有统一的 Portrait 组件/ImageProvider，改解析处一次就覆盖了所有展示点，也不会漏 |
+| 双网 URL | 朋友圈封面（`MomentProfiles.backgroundUrl`）例外，在**展示处**转 | profiles 会被 momentClient 原样写进本地缓存，在 `fromMap` 里转等于把「当时那张网」的地址存进缓存 |
 | 会议 | 管理页把 flutter 的 4 个组件（参会者列表/举手/申请开麦音视频）合成一页用 mode 切，参与者操作用 actionSheet | 移动端不适合原版那种同屏多列表的桌面布局；actionSheet 对应原版的右键菜单 |
 
 ---

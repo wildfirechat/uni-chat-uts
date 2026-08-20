@@ -128,7 +128,9 @@ export default {
         "unsubscribed": "Unsubscribed",
         "enter_conversation": "Open Conversation",
         "unsubscribe_confirm": "You will no longer receive messages from this channel",
-        "unsubscribe_success": "Unsubscribed"
+        "unsubscribe_success": "Unsubscribed",
+        "menu_not_supported": "Not supported",
+        "menu_invalid_url": "Cannot open link"
     },
     "message": {
         "send_message": "Send Message",

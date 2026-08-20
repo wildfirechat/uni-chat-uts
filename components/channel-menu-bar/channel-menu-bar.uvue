@@ -1,0 +1,137 @@
+<template>
+    <view class="channel-menu-bar">
+        <view v-for="(cell, index) in cells" :key="index" class="menu-cell"
+            :style="{ borderRightColor: cell.isLast ? 'transparent' : c.hairline }"
+            hover-class="cell-pressed" hover-stay-time="80" @tap="onCellTap(index, $event)">
+            <!-- 有子菜单的项左边挂一个汉堡图标，和 flutter 的 Icons.menu 对应 -->
+            <text v-if="cell.hasSubMenus" class="menu-cell-icon icomoon"
+                :style="{ fontSize: iconPx(14), color: c.iconSecondary }">&#xf394;</text>
+            <text class="menu-cell-name single-line"
+                :style="{ fontSize: fontPx(FONT_BASE), color: c.textPrimary }">{{ cell.name }}</text>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 频道菜单栏（公众号底部菜单）。对齐 flutter
+ * `conversation/input_bar/channel_menu_widget.dart` 的移动端形态：占满输入栏中间那格，
+ * 一级菜单等分排列，项与项之间一条竖发丝线。
+ *
+ * 这里只负责“画”和“报告点了哪一项”，`view` / `click` 怎么处理由
+ * [MessageInputView](../../pages/conversation/MessageInputView.uvue) 决定 —— 子菜单弹窗
+ * 也在那边（弹窗要盖住整个页面，放在输入栏内部的组件里不合适）。
+ *
+ * ## 与 flutter 的差异
+ *
+ * - flutter 那份还带一个 `onToggleInput`（桌面端在菜单栏最右侧画“切回输入框”按钮）。
+ *   移动端的切换按钮本来就在输入栏左侧、由输入栏自己画，所以这里不收这个参数。
+ * - flutter 的菜单栏自带 `Border(top:)`。uni 侧输入栏工具条已经有上边框了，再加一条会变双线。
+ */
+import ChannelMenu from '../../wfc/model/channelMenu.uts'
+import { ChannelMenuSelectEvent } from '../../common/channelMenu.uts'
+import { getPointerPoint } from '../../common/touch.uts'
+import { colors, AppColors } from '../../common/theme.uts'
+import { fontPx, iconPx, FONT_BASE } from '../../common/layoutScale.uts'
+
+// 组件默认样式隔离，吃不到 global.css 的 .icomoon / .single-line，样式块里各自声明了一份。
+defineOptions({
+    name: 'channel-menu-bar'
+})
+
+const props = withDefaults(defineProps<{
+    menus?: ChannelMenu[]
+}>(), {
+    menus: (): ChannelMenu[] => [] as ChannelMenu[]
+})
+
+const emit = defineEmits(['select'])
+
+const c = computed<AppColors>((): AppColors => colors())
+
+/**
+ * 模板只读原始类型：android 端 class 类型的 props 在模板里是 `Any`，
+ * `menu.name` 这种取成员一律编译不过（见 FLUTTER_ALIGNMENT_TODO §七）。
+ */
+class MenuCell {
+    name: string
+    hasSubMenus: boolean
+    isLast: boolean
+
+    constructor(name: string, hasSubMenus: boolean, isLast: boolean) {
+        this.name = name
+        this.hasSubMenus = hasSubMenus
+        this.isLast = isLast
+    }
+}
+
+const cells = computed<MenuCell[]>((): MenuCell[] => {
+    const menus = props.menus as ChannelMenu[]
+    const list: MenuCell[] = []
+    for (let i = 0; i < menus.length; i++) {
+        list.push(new MenuCell(menus[i].name, menus[i].subMenus.length > 0, i == menus.length - 1))
+    }
+    return list
+})
+
+const onCellTap = (index: number, e: UniPointerEvent) => {
+    const menus = props.menus as ChannelMenu[]
+    if (index < 0 || index >= menus.length) {
+        return
+    }
+    // 触点带出去给上层定位子菜单弹窗用。tap 是 UniPointerEvent，
+    // 走 getPointerPoint 而不是 getTouchPoint（两者单位不同，见 common/touch.uts）。
+    const p = getPointerPoint(e)
+    emit('select', new ChannelMenuSelectEvent(menus[index], p.x, p.y))
+}
+</script>
+
+<style scoped>
+/* 组件吃不到全局 .icomoon / .single-line（组件默认样式隔离），自己声明一份。
+ * 字体本身由 App.uvue 的 loadFontFace({ global: true }) 加载，全局可用。 */
+.icomoon {
+    font-family: "icomoon";
+}
+
+.single-line {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.channel-menu-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    /* 与语音输入条(.wf-input-voice-container)同高，切来切去工具条不跳 */
+    height: 38px;
+    margin: 0 6px;
+}
+
+.menu-cell {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    border-right-width: 1px;
+    border-right-style: solid;
+}
+
+.menu-cell-icon {
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+/* 要截断的文字自己 flex:1，否则鸿蒙上两个字的菜单名也会变成省略号 */
+.menu-cell-name {
+    flex: 1;
+    text-align: center;
+}
+
+.cell-pressed {
+    background-color: #0000000A;
+}
+</style>

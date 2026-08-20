@@ -5,7 +5,13 @@
             <view class="wf-message-input-toolbar" :style="{ borderTopColor: c.hairline, borderBottomColor: c.hairline, alignItems: toolbarAlignItems }">
                 <text class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }" @tap="toggleVoice">{{ showVoice ? '' : '' }}</text>
                 <text v-if="isPttEnable" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }" @tap="togglePtt">{{ showPtt ? '' : '' }}</text>
-                <view class="wf-input-voice-container" v-if="showVoice">
+                <!-- 频道菜单开关：频道配了菜单才出现，对齐 flutter message_input_bar.dart 的 showMenu 分支 -->
+                <text v-if="showChannelMenuBar" class="wf-input-button-icon wxfont"
+                    :style="{ color: c.iconSecondary }" @tap="toggleChannelMenu">&#xe661;</text>
+                <text v-else-if="hasChannelMenus" class="wf-input-button-icon icomoon"
+                    :style="{ color: c.iconSecondary }" @tap="toggleChannelMenu">&#xf394;</text>
+                <channel-menu-bar v-if="showChannelMenuBar" :menus="channelMenus" @select="onChannelMenuSelect" />
+                <view class="wf-input-voice-container" v-else-if="showVoice">
                     <AudioInputView :conversationInfo="conversationInfo"></AudioInputView>
                 </view>
                 <view class="wf-input-voice-container" v-else-if="showPtt">
@@ -22,12 +28,13 @@
                         <text class="cancel icomoon" :style="{ fontSize: iconPx(16), color: c.textSecondary }" @tap="cancelQuote">&#xf12a;</text>
                     </view>
                 </view>
-                <text @tap="toggleEmoji" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }">&#xe60b;</text>
-                <view v-if="!hideSendButton && text != ''" class="wf-input-text-send-button"
+                <!-- 菜单栏占满中间那格时右侧按钮全部让位，与 flutter 的 status != menuStatus 分支一致 -->
+                <text v-if="!showChannelMenuBar" @tap="toggleEmoji" class="wf-input-button-icon wxfont" :style="{ color: c.iconSecondary }">&#xe60b;</text>
+                <view v-if="!showChannelMenuBar && !hideSendButton && text != ''" class="wf-input-text-send-button"
                     :style="{ backgroundColor: c.accent, borderColor: c.accent }" @tap="send">
                     <text class="send-button-text" :style="{ fontSize: fontPx(15), color: c.onAccent }">发送</text>
                 </view>
-                <text v-if="hideSendButton || text == ''" @tap="toggleExt" class="wf-input-button-icon wxfont"
+                <text v-if="!showChannelMenuBar && (hideSendButton || text == '')" @tap="toggleExt" class="wf-input-button-icon wxfont"
                     :style="{ color: c.iconSecondary }">&#xe657;</text>
             </view>
             <view v-if="showExt" class="wf-ext-container"
@@ -64,6 +71,9 @@
                 </scroll-view>
             </view>
         </view>
+        <!-- 一级菜单带子菜单时点开，弹在触点上方（菜单栏贴着屏幕底部，dropdown-menu 会自动翻上去） -->
+        <dropdown-menu v-model="showSubMenu" :items="subMenuItems" :targetX="subMenuTargetX" :targetY="subMenuY"
+            :targetWidth="SUB_MENU_WIDTH" :menuWidth="SUB_MENU_WIDTH" @select="onSubMenuSelect" />
     </view>
 </template>
 
@@ -96,6 +106,10 @@ import { toLocalFilePath } from "../../common/filePath.uts";
 import { toast } from "../../common/prompt.uts";
 import { t } from "../../i18n/i18n.uts";
 import pollServerApi from "../../api/pollServerApi.uts";
+import ChannelMenu from "../../wfc/model/channelMenu.uts";
+import ChannelMenuEventMessageContent from "../../wfc/messages/channelMenuEventMessageContent.uts";
+import { ChannelMenuSelectEvent, CHANNEL_MENU_TYPE_VIEW, CHANNEL_MENU_TYPE_CLICK } from "../../common/channelMenu.uts";
+import { PopupMenuItem } from "../../common/popupMenu.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, iconPx } from "@/common/layoutScale.uts";
@@ -135,6 +149,24 @@ const hideSendButton = ref<boolean>((Config.getWFCPlatform() == 1 || Config.getW
 const showVoice = ref<boolean>(false)
 const showPtt = ref<boolean>(false)
 const isPttEnable = ref<boolean>(Config.ENABLE_PTT && pttClient.isEnable())
+
+// ---- 频道菜单（公众号底部菜单）----
+// 菜单本身随 channelInfo 下发，由 store 在进入频道会话/收到 ChannelInfosUpdate 时维护。
+// showChannelMenu 是「当前在菜单态还是输入态」，进入带菜单的频道会话时默认是菜单态，
+// 对齐 flutter `MessageInputBarController` 的 menuStatus。
+const channelMenus = computed<ChannelMenu[]>((): ChannelMenu[] => conversationState.channelMenus)
+const hasChannelMenus = computed<boolean>((): boolean => conversationState.channelMenus.length > 0)
+const showChannelMenuBar = computed<boolean>((): boolean => hasChannelMenus.value && conversationState.showChannelMenu)
+
+// 子菜单弹窗。宽度固定，targetX 取「触点 - 半个宽度」让弹窗横向居中在手指上
+// （dropdown-menu 是把面板右边缘对齐 targetX + targetWidth 的，超出屏幕它自己会夹回来）
+const SUB_MENU_WIDTH: number = 160
+const showSubMenu = ref<boolean>(false)
+const subMenuItems = ref<PopupMenuItem[]>([] as PopupMenuItem[])
+const subMenus = ref<ChannelMenu[]>([] as ChannelMenu[])
+const subMenuX = ref<number>(0)
+const subMenuY = ref<number>(0)
+const subMenuTargetX = computed<number>((): number => subMenuX.value - SUB_MENU_WIDTH / 2)
 // 「群投票」只在群会话且配了投票服务时才出现，与 flutter `input_bar/plugin_board.dart` 一致
 const extList = computed<ExtItem[]>((): ExtItem[] => {
     const items = [
@@ -382,16 +414,20 @@ const send = () => {
 const minimizeMessageInputView = () => {
     showEmoji.value = false;
     showExt.value = false;
+    // 对齐 flutter：点/拖消息列表会走 resetStatus()，菜单态一并退回输入态
+    store.toggleChannelMenu(false);
 }
 
 const onInputFocus = () => {
     showEmoji.value = false;
     showExt.value = false;
+    store.toggleChannelMenu(false);
 }
 
 const toggleVoice = () => {
     // 语音/表情/更多面板都是占据键盘位置的，切过去时先收起键盘，否则两者会同时占底部空间
     uni.hideKeyboard();
+    store.toggleChannelMenu(false);
     showVoice.value = !showVoice.value;
     showPtt.value = false;
     showEmoji.value = false;
@@ -403,6 +439,7 @@ const toggleVoice = () => {
 
 const togglePtt = () => {
     uni.hideKeyboard();
+    store.toggleChannelMenu(false);
     showPtt.value = !showPtt.value;
     showVoice.value = false;
     showEmoji.value = false;
@@ -411,6 +448,7 @@ const togglePtt = () => {
 
 const toggleEmoji = () => {
     uni.hideKeyboard();
+    store.toggleChannelMenu(false);
     showEmoji.value = !showEmoji.value;
     showExt.value = false;
     showVoice.value = false;
@@ -422,6 +460,7 @@ const toggleEmoji = () => {
 
 const toggleExt = () => {
     uni.hideKeyboard();
+    store.toggleChannelMenu(false);
     showExt.value = !showExt.value;
     showEmoji.value = false;
     showVoice.value = false;
@@ -429,6 +468,77 @@ const toggleExt = () => {
     if (showExt.value) {
         emit('panelShow');
     }
+}
+
+/** 菜单栏 / 输入框互切。flutter 那边是 setStatus(menuStatus)，语音、表情、扩展面板都要让位 */
+const toggleChannelMenu = () => {
+    uni.hideKeyboard();
+    const toMenu = !showChannelMenuBar.value
+    store.toggleChannelMenu(toMenu);
+    if (toMenu) {
+        showVoice.value = false;
+        showPtt.value = false;
+        showEmoji.value = false;
+        showExt.value = false;
+    }
+}
+
+/**
+ * 执行一个菜单项。对齐 flutter `channel_menu_widget.dart` 的 `_handleMenuSelected`：
+ * - view：内嵌 WebView 打开链接
+ * - click：给频道发一条透传的 ChannelMenuEventMessageContent，由频道后台响应
+ * - 其它（miniprogram 等）：给提示，不静默无反应
+ */
+const handleChannelMenu = (menu: ChannelMenu) => {
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    if (menu.type == CHANNEL_MENU_TYPE_VIEW) {
+        let url = menu.url
+        if (url == '') {
+            // flutter 那边 url 为空是静默不动作。本项目的规矩是不留哑操作，给一句提示
+            toast(t('channel.menu_invalid_url'))
+            return
+        }
+        // 对齐 flutter `Utilities.openLink`：只补 www. 开头的裸域名，其它原样交给 WebView
+        if (url.indexOf('://') < 0 && url.indexOf('www.') == 0) {
+            url = 'https://' + url
+        }
+        // 双网前缀互换由 WebViewPage 统一做，这里不重复
+        uni.navigateTo({
+            url: '/pages/misc/WebViewPage?url=' + encodeURIComponent(url),
+            fail: (err) => {
+                console.log('nav to WebViewPage err', err)
+            }
+        } as NavigateToOptions)
+    } else if (menu.type == CHANNEL_MENU_TYPE_CLICK) {
+        wfc.sendConversationMessage(conversationInfo.conversation, new ChannelMenuEventMessageContent(menu))
+    } else {
+        toast(t('channel.menu_not_supported'))
+    }
+}
+
+const onChannelMenuSelect = (e: ChannelMenuSelectEvent) => {
+    const menu = e.menu
+    if (menu.subMenus.length == 0) {
+        handleChannelMenu(menu)
+        return
+    }
+    const items: PopupMenuItem[] = []
+    for (let i = 0; i < menu.subMenus.length; i++) {
+        items.push(new PopupMenuItem(menu.subMenus[i].name, '' + i))
+    }
+    subMenus.value = menu.subMenus
+    subMenuItems.value = items
+    subMenuX.value = e.x
+    subMenuY.value = e.y
+    showSubMenu.value = true
+}
+
+const onSubMenuSelect = (item: PopupMenuItem) => {
+    const index = parseInt(item.tag)
+    if (index < 0 || index >= subMenus.value.length) {
+        return
+    }
+    handleChannelMenu(subMenus.value[index])
 }
 
 /** 群投票入口：发起投票 / 我的投票，对齐 flutter `PollHomeScreen.show` */

@@ -29,6 +29,7 @@ import GroupInfo from "./wfc/model/groupInfo.uts";
 import NullGroupInfo from "./wfc/model/nullGroupInfo.uts";
 import NullChannelInfo from "./wfc/model/NullChannelInfo.uts";
 import ChannelInfo from "./wfc/model/channelInfo.uts";
+import ChannelMenu from "./wfc/model/channelMenu.uts";
 import UserInfo from "./wfc/model/userInfo.uts";
 import GroupMember from "./wfc/model/groupMember.uts";
 import GroupType from "./wfc/model/groupType.uts";
@@ -189,6 +190,12 @@ export class ConversationState {
     get showChannelMenu(): boolean { return this._showChannelMenu.value }
     set showChannelMenu(value: boolean) { this._showChannelMenu.value = value }
 
+    // 当前频道会话的菜单（公众号底部菜单）。非频道会话恒为空数组，输入栏据此决定
+    // 要不要出「菜单/键盘」切换按钮，见 MessageInputView。
+    private _channelMenus = ref<ChannelMenu[]>([]);
+    get channelMenus(): ChannelMenu[] { return this._channelMenus.value }
+    set channelMenus(value: ChannelMenu[]) { this._channelMenus.value = value }
+
     private _quotedMessage = ref<Message | null>(null);
     get quotedMessage(): Message | null { return this._quotedMessage.value }
     set quotedMessage(value: Message | null) { this._quotedMessage.value = value }
@@ -235,6 +242,7 @@ export class ConversationState {
         this.previewMediaIndex = 0;
         this.enableMessageMultiSelection = false;
         this.showChannelMenu = false;
+        this.channelMenus = [];
         this.quotedMessage = null;
         this.downloadingMessages = [];
         this.sendingMessages = [];
@@ -605,6 +613,22 @@ class Store {
         wfc.eventEmitter.on(EventType.ChannelInfosUpdate, (args: Array<any | null>) => {
             this._deferLoadDefaultConversationList();
             this._deferLoadChannelList();
+            // 频道菜单是随 channelInfo 一起下发的，正停在这个频道的会话页时要把输入栏的菜单换掉
+            const channelInfos = args[0] as ChannelInfo[];
+            const currentConversationInfo = conversationState.currentConversationInfo;
+            if (currentConversationInfo == null || currentConversationInfo.conversation.type != ConversationType.Channel) {
+                return;
+            }
+            const target = currentConversationInfo.conversation.target;
+            for (let i = 0; i < channelInfos.length; i++) {
+                if (channelInfos[i].channelId == target) {
+                    conversationState.channelMenus = channelInfos[i].menus;
+                    if (conversationState.channelMenus.length == 0) {
+                        conversationState.showChannelMenu = false;
+                    }
+                    break;
+                }
+            }
         });
 
         wfc.eventEmitter.on(EventType.ConversationInfoUpdate, (args: Array<any | null>) => {
@@ -1211,8 +1235,12 @@ class Store {
 
         conversationState.enableMessageMultiSelection = false;
         conversationState.showChannelMenu = false;
+        conversationState.channelMenus = [];
         if (conversation.type == ConversationType.Channel) {
             const channelInfo = wfc.getChannelInfo(conversation.target, true);
+            // 对齐 flutter `MessageInputBarController`：频道配了菜单就默认先展示菜单栏，
+            // 用户可以自己切回输入框。
+            conversationState.channelMenus = channelInfo.menus;
             if (channelInfo.menus.length > 0) {
                 conversationState.showChannelMenu = true;
             }

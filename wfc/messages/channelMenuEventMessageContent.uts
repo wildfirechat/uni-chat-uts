@@ -15,7 +15,9 @@ export default class ChannelMenuEventMessageContent extends MessageContent {
         const payload = super.encode();
         const menu = this.menu
         if (menu != null) {
-            payload.content = JSON.stringify(menu) ?? '';
+            // 走 ChannelMenu.toJsonObject() 而不是 JSON.stringify(menu)：报文格式以
+            // android `ChannelMenu.toJsonObj()` 为准（见 FLUTTER_ALIGNMENT_TODO §六）
+            payload.content = JSON.stringify(menu.toJsonObject()) ?? '';
         }
         return payload;
     }
