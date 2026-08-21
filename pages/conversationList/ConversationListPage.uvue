@@ -9,9 +9,14 @@
             <text class="pc-online-text" :style="{ color: c.textSecondary, fontSize: fontPx(13) }">{{ pcOnlineDesc }}</text>
             <text class="icomoon pc-online-arrow" :style="{ color: c.textSecondary }">&#xf3d3;</text>
         </view>
+        <!-- :key 必须用 index，不能用会话自身的 key（target-type-line）：
+             list-view 走复用（recycle）渲染，v-for 的 key 会整表推给原生端当 keyList。
+             用会话 key 时，每来一条消息、每次置顶变化都会让 keyList 的顺序变一遍，
+             原生端要跟着搬迁 cell；这个搬迁和滚动撞在一起就会留下「空白、点不动、露出页面底色」的行。
+             用 index 时 keyList 恒为 0..N-1，重排只改行内容，原生端一动不动。 -->
         <list-view class="conversation-list" direction="vertical">
-            <list-item class="conversation-item"
-                v-for="conversationInfo in conversationInfoList" :key="conversationInfoKey(conversationInfo)"
+            <list-item
+                v-for="(conversationInfo, index) in conversationInfoList" :key="index"
                 @tap="showConversation(conversationInfo)"
                 @longpress="showConversationContextMenu($event, conversationInfo)">
                 <ConversationItemView :conversationInfo="conversationInfo" />
@@ -217,11 +222,6 @@ const removeConversation = (conversationInfo: ConversationInfo) => {
     store.removeConversation(conversationInfo.conversation);
 }
 
-const conversationInfoKey = (conversationInfo: ConversationInfo): string => {
-    const conv = conversationInfo.conversation;
-    return conv.target + '-' + conv.type + '-' + conv.line;
-}
-
 const showConversationContextMenu = (e: any, conversationInfo: ConversationInfo) => {
     // longpress 事件 touches 可能为空，改用 changedTouches 兜底取触点坐标
     const point = getTouchPoint(e as UniTouchEvent);
@@ -312,9 +312,6 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
     flex: 1;
 }
 
-/* 底色/置顶色/分隔线都挪到了 ConversationItemView 的根节点，
- * list-item 走复用渲染，这里一个动态绑定都不留。 */
-.conversation-item {
-    position: relative;
-}
+/* 底色/置顶色/分隔线都画在 ConversationItemView 的根节点上：list-item 走复用渲染，
+ * 这里既不留动态绑定，也不留样式（原来那条 position: relative 是老版本用 ::after 画分隔线时的遗留）。 */
 </style>

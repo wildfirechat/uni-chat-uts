@@ -109,6 +109,16 @@ export class ConversationState {
     get conversationInfoList(): ConversationInfo[] { return this._conversationInfoList.value }
     set conversationInfoList(value: ConversationInfo[]) { this._conversationInfoList.value = value }
 
+    // 会话头像/名称（conversation._target）的解析版本号。
+    // 会话行的 target 是渲染时才解析、就地缓存在 conversation._target 上的普通字段，本身不是响应式的。
+    // 用户/群资料回来之后要让行重新解析，以前的做法是整表 slice + sort + 重新赋值 conversationInfoList，
+    // 而会话列表用的是 list-view 的复用（recycle）渲染：每次整表替换都会把一份完整 keyList 重新推给原生端，
+    // 滚动过程中撞上这个重推就会留下「空白、点不动」的行。改成只把版本号 +1：
+    // 数组本身不动（原生端 keyList 不变），只有当前可见的行重新解析一次 target。
+    private _conversationTargetVersion = ref<number>(0);
+    get conversationTargetVersion(): number { return this._conversationTargetVersion.value }
+    set conversationTargetVersion(value: number) { this._conversationTargetVersion.value = value }
+
     private _currentConversationMessageList = ref<Message[]>([]);
     get currentConversationMessageList(): Message[] { return this._currentConversationMessageList.value }
     set currentConversationMessageList(value: Message[]) { this._currentConversationMessageList.value = value }
@@ -1050,64 +1060,52 @@ class Store {
             conversationState.currentConversationInfo = conversationInfo;
         }
 
-        // sort
-        newList.sort((a: ConversationInfo, b: ConversationInfo): number => {
-            if ((a.top > 0 && b.top > 0) || (a.top == 0 && b.top == 0)) {
-                return gt(a.timestamp, b.timestamp) ? -1 : 1;
-            } else {
-                if (a.top > 0) {
-                    return -1;
-                } else {
-                    return 1;
-                }
-            }
-        })
+        this._sortConversationInfoList(newList);
         conversationState.conversationInfoList = newList;
         return conversationInfo;
     }
 
+    /**
+     * 会话列表排序：置顶在前，同组按时间倒序。
+     * 比较器必须自洽（相等时返回 0）：以前相等也返回 1，sort 会把时间戳相同的会话每次重排都打乱一次顺序，
+     * 会话列表的 key 顺序跟着变，list-view 复用渲染要凭空做一堆行搬迁。
+     * timestamp/top 都是普通 number，直接比较即可，不要用 longUtil 的 gt()（它按十进制字符串逐位比，只该用于 64 位 id）。
+     */
+    _sortConversationInfoList(list: ConversationInfo[]): void {
+        list.sort((a: ConversationInfo, b: ConversationInfo): number => {
+            const aTop = a.top > 0;
+            const bTop = b.top > 0;
+            if (aTop != bTop) {
+                return aTop ? -1 : 1;
+            }
+            if (a.timestamp == b.timestamp) {
+                return 0;
+            }
+            return a.timestamp > b.timestamp ? -1 : 1;
+        })
+    }
+
     _reloadSingleConversationIfExist(userInfos: UserInfo[]): void {
-        if (userInfos.length > 10) {
-            // 初次同步时用户信息会大批量更新，走去抖合并的全量重载
-            this._deferLoadDefaultConversationList();
-            return;
-        }
         const uidSet = new Set<string>();
         for (let i = 0; i < userInfos.length; i++) {
             uidSet.add(userInfos[i].uid);
         }
-        // 先从会话列表里挑出真正受影响的会话，避免为不存在的会话做无谓的原生查询 + 整表排序。
-        // 群/频道会话的最后一条消息发送者信息变了，也需要刷新
-        const toReloadConversations: Conversation[] = [];
-        const conversationInfoList = conversationState.conversationInfoList;
-        for (let i = 0; i < conversationInfoList.length; i++) {
-            const info = conversationInfoList[i];
-            const conv = info.conversation;
-            if (conv.type == ConversationType.Single) {
-                if (uidSet.has(conv.target)) {
-                    toReloadConversations.push(conv);
-                }
-            } else {
-                const lastMessage = info.lastMessage;
-                if (lastMessage != null && uidSet.has(lastMessage.from)) {
-                    toReloadConversations.push(conv);
-                }
-            }
-        }
-        for (let i = 0; i < toReloadConversations.length; i++) {
-            this._reloadConversation(toReloadConversations[i], false);
-        }
+        // 用户资料变化只影响会话行上两处按需解析的缓存：
+        //   单聊 → conversation._target（头像/名称）
+        //   群/频道 → lastMessage._from（"某某: xxx" 前缀）
+        // 把缓存清掉 + bump 版本号就够了，不需要替换 conversationInfoList。
+        this._invalidateConversationRowCache(uidSet, ConversationType.Single);
     }
 
     _reloadGroupConversationIfExist(groupInfos: GroupInfo[]): void {
-        if (groupInfos.length > 10) {
-            this._deferLoadDefaultConversationList();
-        } else {
-            for (let i = 0; i < groupInfos.length; i++) {
-                const conv = new Conversation(ConversationType.Group, groupInfos[i].target, 0);
-                this._reloadConversation(conv, false);
-            }
+        // 群资料（名称/头像/群成员数）只影响 conversation._target，让它失效即可。
+        // 以前这里逐个 _reloadConversation，每个群都要整表复制 + 排序 + 替换一次会话数组；
+        // 滚动会话列表正好会按需拉取群资料，这波替换风暴撞上 list-view 的复用渲染就出现空白行。
+        const groupIdSet = new Set<string>();
+        for (let i = 0; i < groupInfos.length; i++) {
+            groupIdSet.add(groupInfos[i].target);
         }
+        this._invalidateConversationRowCache(groupIdSet, ConversationType.Group);
     }
 
     _reloadConversationByMessageIdIfExist(messageId: number): void {
@@ -2007,10 +2005,63 @@ class Store {
     // 会话目标（头像/名称）解析要在真正展示时才有意义，页面渲染时调用本方法按需解析并缓存到 conversation._target 上，
     // 避免会话很多（2000+ 群）时一次性对全部会话拉取用户/群信息，卡死主线程。
     ensureConversationTarget(conversation: Conversation): ConversationTarget | null {
-        if (conversation._target == null) {
+        // `conversationTargetVersion >= 0` 恒真，但这一读不是废代码：它让调用方（会话行的 computed）
+        // 订阅上版本号。资料更新时 store 只把受影响会话的 _target 置空并 bump 版本号
+        // （_invalidateConversationRowCache），可见行的 computed 重跑一遍，
+        // 真正失效的那几行才会重新解析 —— 全程不替换 conversationInfoList 数组。
+        if (conversationState.conversationTargetVersion >= 0 && conversation._target == null) {
             this._resolveConversationTarget(conversation);
         }
         return conversation._target;
+    }
+
+    // 会话行「最后一条消息」的发送者。_from 和 _target 一样是缓存在普通 class 字段上的，
+    // 这里同样读一次版本号建立响应式依赖，让 _invalidateConversationRowCache 能刷新它。
+    ensureMessageSender(message: Message): UserInfo | null {
+        if (conversationState.conversationTargetVersion >= 0 && message._from == null) {
+            this._patchMessage(message, 0);
+        }
+        return message._from;
+    }
+
+    /**
+     * 资料更新后，让会话行上按需解析的缓存失效，可见行会重新解析一次：
+     *   conversationTargetType 类型的会话 → conversation._target（头像/名称）
+     *   其余会话 → lastMessage._from（群/频道行的 "某某: xxx" 前缀）
+     * 只改这两个字段 + 版本号，不碰 conversationInfoList 数组本身 ——
+     * 会话列表走 list-view 复用渲染，整表替换在滚动过程中会留下空白行，
+     * 见 ConversationState.conversationTargetVersion 的注释。
+     */
+    _invalidateConversationRowCache(ids: Set<string>, conversationTargetType: number): void {
+        if (ids.size == 0) {
+            return;
+        }
+        let dirty = false;
+        const list = conversationState.conversationInfoList;
+        for (let i = 0; i < list.length; i++) {
+            const info = list[i];
+            const conv = info.conversation;
+            if (conv.type == conversationTargetType && ids.has(conv.target)) {
+                conv._target = null;
+                dirty = true;
+            }
+            const lastMessage = info.lastMessage;
+            if (lastMessage != null && ids.has(lastMessage.from)) {
+                lastMessage._from = null;
+                dirty = true;
+            }
+        }
+        const currentConversationInfo = conversationState.currentConversationInfo;
+        if (currentConversationInfo != null) {
+            const conv = currentConversationInfo.conversation;
+            if (conv.type == conversationTargetType && ids.has(conv.target)) {
+                conv._target = null;
+                dirty = true;
+            }
+        }
+        if (dirty) {
+            conversationState.conversationTargetVersion = conversationState.conversationTargetVersion + 1;
+        }
     }
 
     addDownloadingMessage(messageId: number): void {

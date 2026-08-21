@@ -127,11 +127,10 @@ const lastMessageContent = computed<string>((): string => {
         let senderName = '';
         if (conversationInfo.conversation.type == ConversationType.Group && lastMessage.direction == 1
             && !(lastMessage.messageContent instanceof NotificationMessageContent)) {
-            let from = lastMessage._from
-            if (from == null) {
-                store._patchMessage(lastMessage, 0)
-                from = lastMessage._from
-            }
+            // 走 store.ensureMessageSender：它会顺带订阅 conversationTargetVersion，
+            // 发送者资料更新时 store 清掉 _from + bump 版本号，这一行就会自己重算，
+            // 不需要 store 整表替换 conversationInfoList（那会在滚动时留下空白行）
+            const from = store.ensureMessageSender(lastMessage)
             if (from != null) {
                 senderName = from._displayName + ': ';
             } else {
