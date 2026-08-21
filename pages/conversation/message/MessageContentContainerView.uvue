@@ -6,6 +6,8 @@
         <StreamingTextMessageContentView :message="message"
             v-else-if="contentType == 14 || contentType == 15" />
         <AudioMessageContentView :message="message" v-else-if="contentType == 2" />
+        <!-- 23 是对讲语音消息（PttSoundMessageContent），结构与普通语音消息一致，按语音消息显示/点击播放 -->
+        <AudioMessageContentView :message="message" v-else-if="contentType == 23" />
         <ImageMessageContentView :message="message" v-else-if="contentType == 3" />
         <FileMessageContentView :message="message" v-else-if="contentType == 5" />
         <VideoMessageContentView :message="message" v-else-if="contentType == 6" />
