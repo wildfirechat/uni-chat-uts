@@ -39,6 +39,20 @@ let avEngineEventListener: NativeEventListener | null = null
 let callSessionEventListener: NativeEventListener | null = null
 let initialized = false
 
+// SDK 的 delegate 回调可能来自后台线程（如音量上报来自音频线程），而 UTS 的事件监听最终要
+// 调到 JS 引擎，不能跨线程调用，所以所有事件统一派发到主线程再回调。
+function emitAVEngineEvent(event: string, argsJson: string): void {
+    DispatchQueue.main.async(execute = (): void => {
+        avEngineEventListener?.(event, argsJson)
+    })
+}
+
+function emitCallSessionEvent(event: string, argsJson: string): void {
+    DispatchQueue.main.async(execute = (): void => {
+        callSessionEventListener?.(event, argsJson)
+    })
+}
+
 // 页面 <native-view> 元素 -> 绑定到其上的视频容器。重复对同一元素 setup 时复用同一个容器
 // （bindIOSView 只能绑一次）。
 // 注意：UniNativeViewElement 不是 Hashable，不能用作 Swift Dictionary/Map 的键，所以这里
@@ -150,61 +164,61 @@ function participantProfileToJson(p: WFAVParticipantProfile): string {
 class NativeAVEngineDelegate implements WFAVEngineDelegate {
     didReceiveCall(session: WFAVCallSession): void {
         session.delegate = nativeCallSessionDelegate
-        avEngineEventListener?.("onReceiveCall", jsonArrayString([callSessionToJson(session)]))
+        emitAVEngineEvent("onReceiveCall", jsonArrayString([callSessionToJson(session)]))
     }
 
     shouldStartRing(isIncoming: boolean): void {
-        avEngineEventListener?.("shouldStartRing", jsonArrayString([isIncoming]))
+        emitAVEngineEvent("shouldStartRing", jsonArrayString([isIncoming]))
     }
 
     shouldStopRing(): void {
-        avEngineEventListener?.("shouldStopRing", jsonArrayString([]))
+        emitAVEngineEvent("shouldStopRing", jsonArrayString([]))
     }
 
     didCallEnded(reason: WFAVCallEndReason, @argumentLabel("duration") duration: Int32): void {
         clearVideoContainers()
-        avEngineEventListener?.("didCallEnded", jsonArrayString([reason.rawValue, duration]))
+        emitAVEngineEvent("didCallEnded", jsonArrayString([reason.rawValue, duration]))
     }
 
     // WFAVEngineDelegate 的必需方法（收到 VoIP push）。dictionaryPayload 是 [AnyHashable: Any]，
     // UTS 里拿不到通用 JSON 序列化，这里只把 push 类型透传给应用层。
     didReceiveIncomingPush(@argumentLabel("with") payload: PKPushPayload, @argumentLabel("forType") type: string): void {
-        avEngineEventListener?.("didReceiveIncomingPush", jsonArrayString([type]))
+        emitAVEngineEvent("didReceiveIncomingPush", jsonArrayString([type]))
     }
 }
 
 class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
     // 协议方法在 Swift 里被改名为 didChange(_:)，事件名仍用 didChangeState 透传，避免动应用层
     didChange(state: WFAVEngineState): void {
-        callSessionEventListener?.("didChangeState", jsonArrayString([state.rawValue]))
+        emitCallSessionEvent("didChangeState", jsonArrayString([state.rawValue]))
     }
 
     didParticipantJoined(userId: string, @argumentLabel("screenSharing") screenSharing: boolean): void {
-        callSessionEventListener?.("didParticipantJoined", jsonArrayString([userId, screenSharing]))
+        emitCallSessionEvent("didParticipantJoined", jsonArrayString([userId, screenSharing]))
     }
 
     didParticipantConnected(userId: string, @argumentLabel("screenSharing") screenSharing: boolean): void {
-        callSessionEventListener?.("didParticipantConnected", jsonArrayString([userId, screenSharing]))
+        emitCallSessionEvent("didParticipantConnected", jsonArrayString([userId, screenSharing]))
     }
 
     didParticipantLeft(userId: string, @argumentLabel("screenSharing") screenSharing: boolean, @argumentLabel("with") reason: WFAVCallEndReason): void {
-        callSessionEventListener?.("didParticipantLeft", jsonArrayString([userId, reason.rawValue, screenSharing]))
+        emitCallSessionEvent("didParticipantLeft", jsonArrayString([userId, reason.rawValue, screenSharing]))
     }
 
     didChangeInitiator(initiator: string | null): void {
-        callSessionEventListener?.("didChangeInitiator", jsonArrayString([initiator ?? ""]))
+        emitCallSessionEvent("didChangeInitiator", jsonArrayString([initiator ?? ""]))
     }
 
     // 协议方法在 Swift 里被改名为 didCallEnd(with:)，事件名仍用 didCallEndWithReason 透传
     didCallEnd(@argumentLabel("with") reason: WFAVCallEndReason): void {
-        callSessionEventListener?.("didCallEndWithReason", jsonArrayString([reason.rawValue]))
+        emitCallSessionEvent("didCallEndWithReason", jsonArrayString([reason.rawValue]))
     }
 
     // didError 的协议签名是 didError(_ error: any Error)，UTS 里没有能映射到 Swift any Error
     // 的参数类型，所以该方法由同目录下的原生 Swift 扩展文件（AVDelegates.swift）补充实现。
 
     didChangeMode(isAudioOnly: boolean): void {
-        callSessionEventListener?.("didChangeMode", jsonArrayString([isAudioOnly]))
+        emitCallSessionEvent("didChangeMode", jsonArrayString([isAudioOnly]))
     }
 
     didGetStats(stats: any[]): void {
@@ -212,27 +226,30 @@ class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
     }
 
     didCreateLocalVideoTrack(localVideoTrack: RTCVideoTrack): void {
-        callSessionEventListener?.("didCreateLocalVideoTrack", jsonArrayString([]))
+        emitCallSessionEvent("didCreateLocalVideoTrack", jsonArrayString([]))
     }
 
     didReceiveRemoteVideoTrack(remoteVideoTrack: RTCVideoTrack, @argumentLabel("fromUser") userId: string, @argumentLabel("screenSharing") screenSharing: boolean): void {
-        callSessionEventListener?.("didReceiveRemoteVideoTrack", jsonArrayString([userId, screenSharing]))
+        emitCallSessionEvent("didReceiveRemoteVideoTrack", jsonArrayString([userId, screenSharing]))
     }
 
     didVideoMuted(videoMuted: boolean, @argumentLabel("fromUser") userId: string): void {
-        callSessionEventListener?.("didVideoMuted", jsonArrayString([userId, videoMuted]))
+        emitCallSessionEvent("didVideoMuted", jsonArrayString([userId, videoMuted]))
     }
 
-    didReportAudioVolume(volume: number, @argumentLabel("ofUser") userId: string): void {
-        callSessionEventListener?.("didReportAudioVolume", jsonArrayString([userId, volume]))
+    // SDK 声明是 didReportAudioVolume:(NSInteger)volume，参数是标量整数。UTS 的 number 会编译成
+    // NSNumber（对象指针），@objc 方法编码变成 v@:@@，SDK 按 v@:q@ 传参时把 int 当指针 → 崩溃。
+    // 用 Int64（编码 q，与 NSInteger 一致）才能正确对接。
+    didReportAudioVolume(volume: Int64, @argumentLabel("ofUser") userId: string): void {
+        emitCallSessionEvent("didReportAudioVolume", jsonArrayString([userId, volume]))
     }
 
     didChangeType(audience: boolean, @argumentLabel("ofUser") userId: string): void {
-        callSessionEventListener?.("didChangeType", jsonArrayString([userId, audience, false]))
+        emitCallSessionEvent("didChangeType", jsonArrayString([userId, audience, false]))
     }
 
     didMuteStateChanged(userIds: string[]): void {
-        callSessionEventListener?.("didMuteStateChanged", jsonArrayString([jsonArrayString(userIds)]))
+        emitCallSessionEvent("didMuteStateChanged", jsonArrayString([jsonArrayString(userIds)]))
     }
 }
 

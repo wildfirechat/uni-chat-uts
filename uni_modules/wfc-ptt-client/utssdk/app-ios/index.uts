@@ -16,6 +16,14 @@ import { WFCCConversation } from 'WFChatClient'
 let pttEventListener: PttEventListener | null = null
 let initialized = false
 
+// WFPttDelegate 的回调可能来自后台线程（振幅上报等），统一派发到主线程再回调 JS 监听，
+// 避免跨线程调用 UTS 事件桥导致崩溃。
+function emitPttEvent(event: string, conversationJsonStr: string, argsJson: string): void {
+    DispatchQueue.main.async(execute = (): void => {
+        pttEventListener?.(event, conversationJsonStr, argsJson)
+    })
+}
+
 function conversationJson(conv: WFCCConversation): string {
     // 数值字段先转成 String 再拼（每个转换单独一条语句，避免混合类型 String+/NSNumber 重载
     // 解析导致编译器 "unable to type-check in reasonable time"）
@@ -36,15 +44,15 @@ class NativePttDelegate implements WFPttDelegate {
     // amplitudeUpdate / ofUser），必须用 @argumentLabel 标注，否则生成的 Swift 方法名全是 _，
     // 前两个会因签名完全相同而报 invalid redeclaration。
     didConversation(conversation: WFCCConversation, @argumentLabel("startTalkingUser") startTalkingUser: string): void {
-        pttEventListener?.("userStartTalking", conversationJson(conversation), "[\"" + startTalkingUser + "\"]")
+        emitPttEvent("userStartTalking", conversationJson(conversation), "[\"" + startTalkingUser + "\"]")
     }
 
     didConversation(conversation: WFCCConversation, @argumentLabel("endTalkingUser") endTalkingUser: string): void {
-        pttEventListener?.("userEndTalking", conversationJson(conversation), "[\"" + endTalkingUser + "\"]")
+        emitPttEvent("userEndTalking", conversationJson(conversation), "[\"" + endTalkingUser + "\"]")
     }
 
     didConversation(conversation: WFCCConversation, @argumentLabel("amplitudeUpdate") amplitudeUpdate: Int32, @argumentLabel("ofUser") ofUser: string): void {
-        pttEventListener?.("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + Number(amplitudeUpdate).toString() + "]")
+        emitPttEvent("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + Number(amplitudeUpdate).toString() + "]")
     }
 }
 

@@ -38,7 +38,7 @@ export function initProto(): void {
         }
     })
 	//添加bugly崩溃日志收集
-	//clientModule.startBugly("b21375e023";)
+	//clientModule.startBugly("b21375e023");
 }
 
 @UTSJS.keepAlive
