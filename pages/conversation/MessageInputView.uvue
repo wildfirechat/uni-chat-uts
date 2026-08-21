@@ -37,14 +37,28 @@
                 <text v-if="!showChannelMenuBar && (hideSendButton || text == '')" @tap="toggleExt" class="wf-input-button-icon wxfont"
                     :style="{ color: c.iconSecondary }">&#xe657;</text>
             </view>
+            <!-- 扩展面板：一页 4 列 × 2 行，最多 8 个，超出的横滑翻页（对齐微信的 + 面板） -->
             <view v-if="showExt" class="wf-ext-container"
-                :style="{ height: keyboardHeight + 'px', backgroundColor: c.bottomBarBg }">
-                <view class="wf-ext-item" v-for="(v, i) in extList" @tap="onClickExt(v)" :key="i">
-                    <view class="wf-ext-item-icon" :style="{ backgroundColor: c.surface }">
-                        <!-- 字形颜色跟主题走：原来没写 color，深色模式下是黑字压深色底板 -->
-                        <text class="ext-icon" :class="v.font" :style="{ color: c.iconSecondary }">{{ v.icon }}</text>
-                    </view>
-                    <text class="wf-ext-item-text" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ v.title }}</text>
+                :style="{ height: extPanelHeight + 'px', backgroundColor: c.bottomBarBg }">
+                <swiper class="wf-ext-swiper" :style="{ height: extSwiperHeight + 'px' }" :current="extPageIndex"
+                    @change="onExtPageChange">
+                    <swiper-item v-for="(page, pi) in extPages" :key="pi">
+                        <view class="wf-ext-page">
+                            <view class="wf-ext-item" v-for="(v, i) in page" @tap="onClickExt(v)" :key="i">
+                                <view class="wf-ext-item-icon" :style="{ backgroundColor: c.surface }">
+                                    <!-- 字形颜色跟主题走：原来没写 color，深色模式下是黑字压深色底板 -->
+                                    <text class="ext-icon" :class="v.font" :style="{ color: c.iconSecondary }">{{ v.icon }}</text>
+                                </view>
+                                <text class="wf-ext-item-text single-line" :style="{ fontSize: fontPx(12), color: c.textSecondary }">{{ v.title }}</text>
+                            </view>
+                        </view>
+                    </swiper-item>
+                </swiper>
+                <!-- 页码点自己画：swiper 内置 indicator-dots 的 indicator-color/indicator-active-color
+                     在鸿蒙 vapor 上不支持（uni_vue_tag/swiper.json 标的是 x），跟不了主题色 -->
+                <view v-if="extPages.length > 1" class="wf-ext-indicator" :style="{ height: EXT_INDICATOR_HEIGHT + 'px' }">
+                    <view class="wf-ext-dot" v-for="(dotPage, i) in extPages" :key="i"
+                        :style="{ backgroundColor: i == extPageIndex ? c.iconSecondary : c.hairline }"></view>
                 </view>
             </view>
             <view v-if="showEmoji" class="wf-stickers-container"
@@ -113,7 +127,7 @@ import { ChannelMenuSelectEvent, CHANNEL_MENU_TYPE_VIEW, CHANNEL_MENU_TYPE_CLICK
 import { PopupMenuItem } from "../../common/popupMenu.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
-import { fontPx, iconPx } from "@/common/layoutScale.uts";
+import { fontPx, iconPx, scale, TEXT_CAP } from "@/common/layoutScale.uts";
 class ExtItem {
     title = ''
     tag = ''
@@ -190,12 +204,54 @@ const extList = computed<ExtItem[]>((): ExtItem[] => {
     }
     return items
 })
+
+/**
+ * 扩展面板分页：一页 4 列 × 2 行 = 8 个，多出来的翻到下一页。
+ * 列宽是 25%（见 .wf-ext-item），所以最左一列的左边距天然等于最右一列的右边距，整体水平居中；
+ * 不足一页的最后一页按列左对齐，不会把剩下的一两个撑开居中。
+ */
+const EXT_PAGE_SIZE: number = 8
+/** 页码点那一条的高度，swiper 高度要把它扣掉，否则最后一行会被压出面板 */
+const EXT_INDICATOR_HEIGHT: number = 20
+/** 一行的高度：上下 padding 17 + 图标 55 + margin 8 + 一行文字（跟字号档位走，1.5 倍行高留够） */
+const extRowHeight = computed<number>((): number => {
+    return 17.0 + 55.0 + 8.0 + scale(12, TEXT_CAP) * 1.5 + 17.0
+})
+const extPages = computed<ExtItem[][]>((): ExtItem[][] => {
+    const pages = [] as ExtItem[][]
+    const all = extList.value
+    // 下标一律显式标 number：UTSArray.length 落到 Kotlin 是 Int，和 Number 混着算会类型不匹配
+    const total: number = all.length
+    let start: number = 0
+    while (start < total) {
+        let end: number = start + EXT_PAGE_SIZE
+        if (end > total) {
+            end = total
+        }
+        pages.push(all.slice(start, end))
+        start = end
+    }
+    return pages
+})
+const extPageIndex = ref<number>(0)
+const onExtPageChange = (event: UniSwiperChangeEvent) => {
+    extPageIndex.value = event.detail.current
+}
 const showExt = ref<boolean>(false)
 const showEmoji = ref<boolean>(false)
 const text = ref<string>('')
 // 输入框当前行数，由 textarea 的 linechange 事件维护，用来决定工具栏是居中还是底部对齐
 const inputLineCount = ref<number>(1)
 const keyboardHeight = ref<number>(300)
+// 下面两个声明必须在 keyboardHeight 之后：UTS 编译到 Kotlin 后，lambda 里引用后声明的局部变量是编译错误。
+// 面板高度默认跟键盘走，但两行图标 + 页码点是硬需求，键盘矮于这个数就撑到这个数，否则第二行被切掉。
+const extPanelHeight = computed<number>((): number => {
+    const need: number = extRowHeight.value * 2 + (extPages.value.length > 1 ? EXT_INDICATOR_HEIGHT : 0.0)
+    return keyboardHeight.value > need ? keyboardHeight.value : need
+})
+const extSwiperHeight = computed<number>((): number => {
+    return extPages.value.length > 1 ? extPanelHeight.value - EXT_INDICATOR_HEIGHT : extPanelHeight.value
+})
 const currentKeyboardHeight = ref<number>(0)
 const mentions = ref<UserInfo[]>([] as UserInfo[])
 const groupMemberUserInfos = ref<UserInfo[]>([] as UserInfo[])
@@ -468,6 +524,8 @@ const toggleExt = () => {
     uni.hideKeyboard();
     store.toggleChannelMenu(false);
     showExt.value = !showExt.value;
+    // 每次重新打开都回到第一页，顺带兜住「收藏/投票不可用后页数变少」时 current 越界
+    extPageIndex.value = 0;
     showEmoji.value = false;
     showVoice.value = false;
     showPtt.value = false;
@@ -830,16 +888,45 @@ defineExpose({
 .wf-ext-container {
     width: 100%;
     display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
 }
 
+.wf-ext-swiper {
+    width: 100%;
+}
+
+.wf-ext-page {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+
+/* 列宽钉死 25%：四个一行，最左的左留白 = 最右的右留白，最后一行不满也按列对齐 */
 .wf-ext-item {
-    padding: 17px;
+    width: 25%;
+    padding-top: 17px;
+    padding-bottom: 17px;
     display: flex;
     flex-direction: column;
     align-items: center;
+}
+
+.wf-ext-indicator {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.wf-ext-dot {
+    width: 6px;
+    height: 6px;
+    margin-left: 3px;
+    margin-right: 3px;
+    border-radius: 3px;
 }
 
 .wf-ext-item-icon {
@@ -857,7 +944,9 @@ defineExpose({
 }
 
 .wf-ext-item-text {
+    width: 100%;
     margin-top: 8px;
+    text-align: center;
 }
 
 .wf-message-input-toolbar {
