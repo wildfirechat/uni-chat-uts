@@ -21,6 +21,7 @@ extension NativeCallSessionDelegate {
     /// 事件名仍用 didError 透传给应用层，与 Android 侧保持一致。
     @objc(didError:)
     public func didError(_ error: any Error) {
-        callSessionEventListener?("didError", jsonArrayString(["" + error]))
+        // String(describing:) 不依赖 UTS 运行时的字符串拼接运算符，任何 Swift 版本都能编译
+        callSessionEventListener?("didError", jsonArrayString([String(describing: error)]))
     }
 }

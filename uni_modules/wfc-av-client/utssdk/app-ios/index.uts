@@ -87,25 +87,36 @@ function jsonArrayString(args: any[]): string {
         if (typeof a == "boolean") {
             return (a as boolean) ? "true" : "false"
         }
-        return "" + a
+        // 走到这里 a 只剩数字/null（null 已在开头处理），显式 toString 避免 String+Any 依赖运行时运算符
+        return (a as number).toString()
     })
     return "[" + parts.join(",") + "]"
 }
 
 function callSessionToJson(session: WFAVCallSession): string {
-    const conv = session.conversation
-    const convJson = "{\"type\":" + conv.type.rawValue + ",\"target\":\"" + conv.target + "\",\"line\":" + conv.line + "}"
+    const conv = session.conversation!
+    // 所有数值字段先单独转成 String（每个转换一条语句），大拼接表达式里就只剩 String+String，
+    // 避免混合类型 String+/NSNumber 重载解析导致编译器 "unable to type-check in reasonable time"
+    const convTypeStr = Number(conv.type.rawValue).toString()
+    const convLineStr = Number(conv.line).toString()
+    const convTarget = conv.target!
+    const convJson = "{\"type\":" + convTypeStr + ",\"target\":\"" + convTarget + "\",\"line\":" + convLineStr + "}"
+    const stateStr = Number(session.state.rawValue).toString()
+    const startTimeStr = Number(session.startTime).toString()
+    const connectedTimeStr = Number(session.connectedTime).toString()
+    const endTimeStr = Number(session.endTime).toString()
+    const endReasonStr = Number(session.endReason.rawValue).toString()
     const obj = "{" +
-        "\"callId\":\"" + session.callId + "\"," +
+        "\"callId\":\"" + session.callId! + "\"," +
         "\"initiator\":\"" + (session.initiator ?? "") + "\"," +
         "\"inviter\":\"" + (session.inviter ?? "") + "\"," +
-        "\"state\":" + session.state.rawValue + "," +
-        "\"startTime\":" + session.startTime + "," +
-        "\"connectedTime\":" + session.connectedTime + "," +
-        "\"endTime\":" + session.endTime + "," +
+        "\"state\":" + stateStr + "," +
+        "\"startTime\":" + startTimeStr + "," +
+        "\"connectedTime\":" + connectedTimeStr + "," +
+        "\"endTime\":" + endTimeStr + "," +
         "\"conversation\":" + convJson + "," +
         "\"audioOnly\":" + (session.isAudioOnly ? "true" : "false") + "," +
-        "\"endReason\":" + session.endReason.rawValue + "," +
+        "\"endReason\":" + endReasonStr + "," +
         "\"conference\":" + (session.isConference ? "true" : "false") + "," +
         "\"audience\":" + (session.isAudience ? "true" : "false") + "," +
         "\"defaultAudience\":" + (session.defaultAudience ? "true" : "false") + "," +
@@ -122,10 +133,13 @@ function callSessionToJson(session: WFAVCallSession): string {
 }
 
 function participantProfileToJson(p: WFAVParticipantProfile): string {
+    const startTimeStr = Number(p.startTime).toString()
+    const stateStr = Number(p.state.rawValue).toString()
+    const userId = p.userId!
     return "{" +
-        "\"userId\":\"" + p.userId + "\"," +
-        "\"startTime\":" + p.startTime + "," +
-        "\"state\":" + p.state.rawValue + "," +
+        "\"userId\":\"" + userId + "\"," +
+        "\"startTime\":" + startTimeStr + "," +
+        "\"state\":" + stateStr + "," +
         "\"videoMuted\":" + (p.videoMuted ? "true" : "false") + "," +
         "\"audioMuted\":" + (p.audioMuted ? "true" : "false") + "," +
         "\"audience\":" + (p.audience ? "true" : "false") + "," +

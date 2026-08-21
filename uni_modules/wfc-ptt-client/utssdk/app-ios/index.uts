@@ -17,7 +17,13 @@ let pttEventListener: PttEventListener | null = null
 let initialized = false
 
 function conversationJson(conv: WFCCConversation): string {
-    return "{\"type\":" + conv.type.rawValue + ",\"target\":\"" + conv.target + "\",\"line\":" + conv.line + "}"
+    // 数值字段先转成 String 再拼（每个转换单独一条语句，避免混合类型 String+/NSNumber 重载
+    // 解析导致编译器 "unable to type-check in reasonable time"）
+    const typeStr = Number(conv.type.rawValue).toString()
+    const lineStr = Number(conv.line).toString()
+    // conv.target 在 Swift 里是 String!（IUO），直接拼接会让类型检查器超时，先显式解包
+    const target = conv.target!
+    return "{\"type\":" + typeStr + ",\"target\":\"" + target + "\",\"line\":" + lineStr + "}"
 }
 
 function toConversation(type: number, target: string, line: number): WFCCConversation {
@@ -38,7 +44,7 @@ class NativePttDelegate implements WFPttDelegate {
     }
 
     didConversation(conversation: WFCCConversation, @argumentLabel("amplitudeUpdate") amplitudeUpdate: Int32, @argumentLabel("ofUser") ofUser: string): void {
-        pttEventListener?.("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + Number(amplitudeUpdate) + "]")
+        pttEventListener?.("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + Number(amplitudeUpdate).toString() + "]")
     }
 }
 
