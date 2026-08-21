@@ -631,6 +631,36 @@ const notifyKeyboardHeight = (currentHeight: number) => {
     }
 }
 
+/**
+ * 键盘高度监听要在每次 onShow 时重挂一遍。
+ *
+ * Android 上每个页面是一个 Activity，而 uni.onKeyboardHeightChange 的实现（离线 SDK
+ * uni-keyboard → OnKeyBoardChangedListener）是把一个全局 OnGlobalLayoutListener 挂在
+ * 「当前 activity」的 decorView 上，只在别的 activity onResume 时搬过去，返回本页时不搬回来。
+ * 于是从任意页面（选人、群信息……）返回后，本页再也收不到键盘高度事件 —— 表现为输入框不再被顶到
+ * 键盘上方，直接被键盘盖住（真机实测：进会话点输入框正常，去一趟群信息返回再点就沉底了）。
+ * 重新 on 一次会让它把监听挂到当前 activity 的 decorView 上。
+ */
+const registerKeyboardHeightChange = () => {
+    if (keyboardHeightChangeId != 0) {
+        uni.offKeyboardHeightChange(keyboardHeightChangeId);
+        keyboardHeightChangeId = 0;
+    }
+    keyboardHeightChangeId = uni.onKeyboardHeightChange((res) => {
+        if (keyboardHeight.value != res.height && res.height > 0) {
+            keyboardHeight.value = res.height;
+            setItem('keyboardHeight', '' + keyboardHeight.value)
+        }
+        // 键盘收起(height == 0)也要通知，输入框需要据此撤掉顶起用的 padding
+        notifyKeyboardHeight(res.height);
+        // 只在键盘弹出时顶到底部；键盘收起（含点/滑消息列表触发的 hideKeyboard）不该把
+        // 正在往上翻看历史消息的用户强制拽回最新消息
+        if (res.height > 0) {
+            scrollToBottom();
+        }
+    });
+}
+
 const onReeditMessage = (data: any | null) => {
     if (data != null) {
         const inputView = messageInputView.value
@@ -1195,19 +1225,7 @@ onMounted(() => {
     }
     // 表情/更多面板高度沿用记住的键盘高度，进页面时先同步一次
     notifyKeyboardHeight(0);
-    keyboardHeightChangeId = uni.onKeyboardHeightChange((res) => {
-        if (keyboardHeight.value != res.height && res.height > 0) {
-            keyboardHeight.value = res.height;
-            setItem('keyboardHeight', '' + keyboardHeight.value)
-        }
-        // 键盘收起(height == 0)也要通知，输入框需要据此撤掉顶起用的 padding
-        notifyKeyboardHeight(res.height);
-        // 只在键盘弹出时顶到底部；键盘收起（含点/滑消息列表触发的 hideKeyboard）不该把
-        // 正在往上翻看历史消息的用户强制拽回最新消息
-        if (res.height > 0) {
-            scrollToBottom();
-        }
-    });
+    registerKeyboardHeightChange();
 
     eventBus.$on('openMessageContextMenu', onOpenMessageContextMenu);
     eventBus.$on('reeditMessage', onReeditMessage);
@@ -1216,6 +1234,7 @@ onMounted(() => {
 
 // 从搜索结果等页面跳转过来时，定位到指定消息
 onShow(() => {
+    registerKeyboardHeightChange();
     const messageId = store.takePendingLocateMessageId()
     if (messageId != 0) {
         setTimeout(() => {

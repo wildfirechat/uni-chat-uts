@@ -19,7 +19,10 @@
                 </view>
                 <view v-else class="wf-input-middle">
                     <view class="wf-input-text-container" :style="{ backgroundColor: c.surface }">
+                        <!-- cursor 必须写在 value 后面：同一次 patch 里属性是按模板顺序下发的，
+                             先 setText(会把光标带到别处)、后 setSelection 才是我们要的位置 -->
                         <textarea class="wf-input-textarea" :style="{ backgroundColor: c.surface, color: c.textPrimary }" @focus="onInputFocus" @input="onInput" :value="text"
+                            :cursor="inputCursor"
                             placeholder="" :hold-keyboard="true" confirm-type="send" @confirm="send" :maxlength="-1"
                             :auto-height="true" :adjust-position="adjustPosition" @linechange="onLineChange" />
                     </view>
@@ -240,6 +243,21 @@ const onExtPageChange = (event: UniSwiperChangeEvent) => {
 const showExt = ref<boolean>(false)
 const showEmoji = ref<boolean>(false)
 const text = ref<string>('')
+// Android 上「代码改 value」不会把光标带到新文本末尾 —— 实测 @ 选完人之后，光标还停在刚敲的
+// '@' 后面(卡在 "@张三 " 中间)，接着打字会插到名字前面。鸿蒙没这个问题。
+// 解法是显式指定 textarea 的 cursor：Android 端收到 cursor 属性就直接 setSelection
+// (离线 SDK app-runtime → InputComponent.setAttrProperty 的 "cursor" 分支)。
+// 用完立刻置回 -1(cursor 的默认值，不会触发 setSelection)，否则下次要落的位置万一和这次相同，
+// 属性没变化就不会下发，光标又不动了。
+const inputCursor = ref<number>(-1)
+const moveCursorTo = (pos: number) => {
+    // #ifdef APP-ANDROID
+    inputCursor.value = pos
+    nextTick((): void => {
+        inputCursor.value = -1
+    })
+    // #endif
+}
 // 输入框当前行数，由 textarea 的 linechange 事件维护，用来决定工具栏是居中还是底部对齐
 const inputLineCount = ref<number>(1)
 const keyboardHeight = ref<number>(300)
@@ -408,8 +426,17 @@ const onInput = (event: UniInputEvent) => {
             options.users = users.concat(groupMemberUserInfos.value)
             options.showCategoryLabel = false
             options.successCB = (user: UserInfo) => {
-                text.value = text.value.substring(0, cursor - 1) + `@${user.displayName} ` + text.value.substring(cursor);
+                const mentionText = `@${user.displayName} `
+                text.value = text.value.substring(0, cursor - 1) + mentionText + text.value.substring(cursor);
+                // 光标落到 "@某人 " 之后，接着打字才不会插进名字里
+                moveCursorTo(cursor - 1 + mentionText.length);
                 mentions.value.push(user);
+                // #ifdef APP-ANDROID
+                // 从选人页返回时键盘会自己回来，但这一次弹出未必还能等到 onKeyboardHeightChange
+                // (监听得等页面 onShow 重挂，见 ConversationPage 里 registerKeyboardHeightChange
+                // 的注释)，所以先按记住的键盘高度把输入区顶起来，真实事件到了会自己校正。
+                currentKeyboardHeight.value = keyboardHeight.value;
+                // #endif
             }
             pickUser(options)
         }
@@ -419,12 +446,14 @@ const onInput = (event: UniInputEvent) => {
 // 供会话页调用：撤回后重新编辑、@ 某人
 const insertText = (insert: string) => {
     text.value = text.value + insert;
+    moveCursorTo(text.value.length);
 }
 
 const mention = (groupId: string, userId: string) => {
     const userInfo = wfc.getUserInfo(userId, false, groupId);
     mentions.value.push(userInfo);
     text.value = text.value + '@' + userInfo.displayName + ' ';
+    moveCursorTo(text.value.length);
 }
 
 const send = () => {
@@ -845,6 +874,7 @@ const onCategoryClick = (i: number) => {
 
 const onClickEmoji = (emoji: string) => {
     text.value = text.value + emoji;
+    moveCursorTo(text.value.length);
 }
 
 const onClickSticker = (sticker: string) => {
