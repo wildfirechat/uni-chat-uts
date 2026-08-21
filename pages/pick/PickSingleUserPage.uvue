@@ -15,7 +15,7 @@
 import store from "@/store.uts";
 import UserListView from "../user/UserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
-import { currentPickUserOptions, notifyPickedUser } from "@/common/picker.uts";
+import { currentPickUserOptions, notifyPickedUser, PickUserOptions } from "@/common/picker.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
@@ -27,6 +27,10 @@ const c = computed<AppColors>((): AppColors => colors())
 const filterQuery = ref<string>('')
 const users = ref<UserInfo[]>([] as UserInfo[])
 const showCategoryLabel = ref<boolean>(true)
+
+// 参数整体留一份：确认框的标题/正文要在点人的时候才用得上。
+// 不放 ref —— 里面有函数字段，只是配置，不参与渲染。
+let pickOptions: PickUserOptions | null = null
 
 const filteredUsers = computed<UserInfo[]>((): UserInfo[] => {
     if (filterQuery.value != '') {
@@ -40,15 +44,41 @@ onLoad((_options: OnLoadOptions) => {
     console.log('PickSingleUserPage onLoad')
     const options = currentPickUserOptions()
     if (options != null) {
+        pickOptions = options;
         users.value = options.users;
         showCategoryLabel.value = options.showCategoryLabel;
     }
 })
 
-const onClickUser = (user: UserInfo) => {
-    console.log('onClick user', user.uid)
+const backWithPickedUser = (user: UserInfo) => {
     uni.navigateBack({} as NavigateBackOptions);
     notifyPickedUser(user);
+}
+
+const onClickUser = (user: UserInfo) => {
+    console.log('onClick user', user.uid)
+    const options = pickOptions
+    if (options == null) {
+        backWithPickedUser(user)
+        return
+    }
+    // 需要二次确认的场景（发名片等）在本页弹框，确认了才返回。
+    // 不能让调用方在 successCB 里弹 —— Android 上返回转场期间的 showModal 不显示，
+    // 见 common/picker.uts 里 confirmDialogContent 的注释。
+    const content = options.confirmDialogContent?.(user) ?? ''
+    if (content == '') {
+        backWithPickedUser(user)
+        return
+    }
+    uni.showModal({
+        title: options.confirmDialogTitle,
+        content: content,
+        success: (res) => {
+            if (res.confirm) {
+                backWithPickedUser(user)
+            }
+        }
+    } as ShowModalOptions)
 }
 </script>
 

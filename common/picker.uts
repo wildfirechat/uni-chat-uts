@@ -38,6 +38,21 @@ export class PickUserOptions {
     confirmTitle = '确定'
     /** 标题栏文案，空则用「选择联系人」 */
     title = ''
+    /**
+     * 二次确认框的标题；[confirmDialogContent] 为空时这个字段没有意义。
+     */
+    confirmDialogTitle = ''
+    /**
+     * 选中之后先在**选人页里**二次确认，回调返回确认框正文，返回空串等于不确认。
+     * 确认后才 navigateBack + 回调 [successCB]，取消则留在选人页。
+     *
+     * 为什么不让调用方自己在 successCB 里弹确认框：Android 上返回转场还没结束时弹出的
+     * `uni.showModal` 看不见 —— 弹窗是挂在「当前页」上的一个 dialog page，而 JS 侧的页面栈
+     * 在 navigateBack 的那一刻就已经把选人页弹掉了，此时 dialog 挂到了还在转场中的上一页，
+     * 内容视图停在 visibility=4 等一个永远不会来的布局完成回调。靠 setTimeout 等转场结束
+     * 是在赌时间（之前 50ms→300ms 都不稳）。鸿蒙的 dialog 实现不一样，所以只有 Android 复现。
+     */
+    confirmDialogContent: ((user: UserInfo) => string) | null = null
     successCB: ((user: UserInfo) => void) | null = null
 }
 

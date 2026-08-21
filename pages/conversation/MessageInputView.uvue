@@ -680,24 +680,16 @@ const voip = (audioOnly: boolean) => {
     })
 }
 
-const confirmSendUserCard = (user: UserInfo) => {
-    const name = user._displayName != '' ? user._displayName : user.displayName
-    uni.showModal({
-        title: '发送名片',
-        content: '发送 ' + name + ' 的名片？',
-        success: (res) => {
-            if (!res.confirm) {
-                return
-            }
-            const cardMessageContent = new CardMessageContent(0, user.uid, user.displayName, user.portrait, wfc.getUserId())
-            cardMessageContent.name = user.name
-            const conversationInfo = props.conversationInfo as ConversationInfo
-            wfc.sendConversationMessage(conversationInfo.conversation, cardMessageContent)
-        }
-    } as ShowModalOptions)
+const sendUserCard = (user: UserInfo) => {
+    const cardMessageContent = new CardMessageContent(0, user.uid, user.displayName, user.portrait, wfc.getUserId())
+    cardMessageContent.name = user.name
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    wfc.sendConversationMessage(conversationInfo.conversation, cardMessageContent)
 }
 
-// 名片：选联系人 → 二次确认 → 发送个人名片
+// 名片：选联系人 → 二次确认 → 发送个人名片。
+// 确认框由选人页自己弹（options.confirmDialogContent），回到会话页时已经是确认过的结果 ——
+// 在这里等转场结束再 showModal 那套在 Android 上不显示，见 common/picker.uts 的注释。
 const pickUserCard = () => {
     let users = contactState.favContactList.concat(contactState.friendList)
     const conversationInfo = props.conversationInfo as ConversationInfo
@@ -715,12 +707,13 @@ const pickUserCard = () => {
     const options = new PickUserOptions()
     options.users = users
     options.showCategoryLabel = false
+    options.confirmDialogTitle = '发送名片'
+    options.confirmDialogContent = (user: UserInfo): string => {
+        const name = user._displayName != '' ? user._displayName : user.displayName
+        return '发送 ' + name + ' 的名片？'
+    }
     options.successCB = (user: UserInfo) => {
-        // 选人页面 navigateBack 的关闭转场动画约 300ms，弹窗过早弹出会被动画吞掉/盖住，
-        // 导致用户看不到确认框、点不到"确定"，名片消息也就发不出去。延时对齐 ConversationPage 的 onShow 定位消息逻辑。
-        setTimeout((): void => {
-            confirmSendUserCard(user)
-        }, 300)
+        sendUserCard(user)
     }
     pickUser(options)
 }
