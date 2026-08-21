@@ -21,20 +21,24 @@ function conversationJson(conv: WFCCConversation): string {
 }
 
 function toConversation(type: number, target: string, line: number): WFCCConversation {
-    return WFCCConversation.conversationWithType(type as WFCCConversationType, target = target, line = line as Int32)
+    // Swift 里 conversationWithType(_:target:line:) 已替换为 init(type:target:line:)，用构造器创建
+    return new WFCCConversation(type = type as WFCCConversationType, target = target, line = line as Int32)
 }
 
 class NativePttDelegate implements WFPttDelegate {
-    didConversation(conversation: WFCCConversation, startTalkingUser: string): void {
+    // WFPttDelegate 的三个 didConversation 重载在 Swift 里带参数标签（startTalkingUser / endTalkingUser /
+    // amplitudeUpdate / ofUser），必须用 @argumentLabel 标注，否则生成的 Swift 方法名全是 _，
+    // 前两个会因签名完全相同而报 invalid redeclaration。
+    didConversation(conversation: WFCCConversation, @argumentLabel("startTalkingUser") startTalkingUser: string): void {
         pttEventListener?.("userStartTalking", conversationJson(conversation), "[\"" + startTalkingUser + "\"]")
     }
 
-    didConversation(conversation: WFCCConversation, endTalkingUser: string): void {
+    didConversation(conversation: WFCCConversation, @argumentLabel("endTalkingUser") endTalkingUser: string): void {
         pttEventListener?.("userEndTalking", conversationJson(conversation), "[\"" + endTalkingUser + "\"]")
     }
 
-    didConversation(conversation: WFCCConversation, amplitudeUpdate: number, ofUser: string): void {
-        pttEventListener?.("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + amplitudeUpdate + "]")
+    didConversation(conversation: WFCCConversation, @argumentLabel("amplitudeUpdate") amplitudeUpdate: Int32, @argumentLabel("ofUser") ofUser: string): void {
+        pttEventListener?.("userAmplitudeUpdate", conversationJson(conversation), "[\"" + ofUser + "\"," + Number(amplitudeUpdate) + "]")
     }
 }
 
@@ -49,7 +53,7 @@ export function isPttClientEnable(): boolean {
 }
 
 export function initClient(options: UTSJSONObject): void {
-    const client = WFPttClient.sharedClient()
+    const client = WFPttClient.shared()!
     if (options.getBoolean("enableGlobalPtt") != null) {
         client.enablePtt = options.getBoolean("enableGlobalPtt")!
     }
@@ -73,88 +77,89 @@ export function initClient(options: UTSJSONObject): void {
 @UTSJS.keepAlive
 export function requestTalk(type: number, target: string, line: number, priority: number, onStartTalking: () => void, onTalkingEnd: (reason: number) => void, onRequestFail: (errorCode: number) => void, onAmplitudeUpdate: (amplitude: number) => void): void {
     const conv = toConversation(type, target, line)
-    WFPttClient.sharedClient().requestTalk(conv, startTalking = (): void => {
+    WFPttClient.shared()!.requestTalk(conv, startTalking = (): void => {
         onStartTalking()
-    }, onAmplitude = (amplitude: number): void => {
-        onAmplitudeUpdate(amplitude)
-    }, requestFailure = (errorCode: number): void => {
-        onRequestFail(errorCode)
+    }, onAmplitude = (amplitude: Int32): void => {
+        onAmplitudeUpdate(Number(amplitude))
+    }, requestFailure = (errorCode: Int32): void => {
+        onRequestFail(Number(errorCode))
     }, talkingEnd = (reason: PttEndReason): void => {
-        onTalkingEnd(reason.rawValue)
+        onTalkingEnd(Number(reason.rawValue))
     })
 }
 
 export function releaseTalking(type: number, target: string, line: number): void {
-    WFPttClient.sharedClient().releaseTalking(toConversation(type, target, line))
+    WFPttClient.shared()!.releaseTalking(toConversation(type, target, line))
 }
 
 export function getMaxSpeakCount(type: number, target: string, line: number): number {
-    return WFPttClient.sharedClient().getMaxSpeakerNumber(toConversation(type, target, line))
+    return Number(WFPttClient.shared()!.getMaxSpeakerNumber(toConversation(type, target, line)))
 }
 
 export function getMaxSpeakTime(type: number, target: string, line: number): number {
-    return WFPttClient.sharedClient().getMaxSpeakerTime(toConversation(type, target, line))
+    return Number(WFPttClient.shared()!.getMaxSpeakerTime(toConversation(type, target, line)))
 }
 
 export function isSaveVoiceMessage(type: number, target: string, line: number): boolean {
-    return WFPttClient.sharedClient().isSaveVoiceMessage(toConversation(type, target, line))
+    return WFPttClient.shared()!.isSaveVoiceMessage(toConversation(type, target, line))
 }
 
 export function setSaveVoiceMessage(type: number, target: string, line: number, save: boolean, successCB: () => void, failCB: (error: number) => void): void {
-    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), saveVoiceMessage = save, success = (): void => {
+    WFPttClient.shared()!.setConversation(toConversation(type, target, line), saveVoiceMessage = save, success = (): void => {
         successCB()
-    }, error = (code: number): void => {
-        failCB(code)
+    }, error = (code: Int32): void => {
+        failCB(Number(code))
     })
 }
 
 export function setConversationMaxSpeakTime(type: number, target: string, line: number, duration: number, successCB: () => void, failCB: (error: number) => void): void {
-    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), maxSpeakerTime = duration as Int32, success = (): void => {
+    WFPttClient.shared()!.setConversation(toConversation(type, target, line), maxSpeakerTime = duration as Int32, success = (): void => {
         successCB()
-    }, error = (code: number): void => {
-        failCB(code)
+    }, error = (code: Int32): void => {
+        failCB(Number(code))
     })
 }
 
 export function setConversationMaxSpeakerCount(type: number, target: string, line: number, count: number, successCB: () => void, failCB: (error: number) => void): void {
-    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), maxSpeakerNumber = count as Int32, success = (): void => {
+    WFPttClient.shared()!.setConversation(toConversation(type, target, line), maxSpeakerNumber = count as Int32, success = (): void => {
         successCB()
-    }, error = (code: number): void => {
-        failCB(code)
+    }, error = (code: Int32): void => {
+        failCB(Number(code))
     })
 }
 
 export function setConversationPttSilent(type: number, target: string, line: number, silent: boolean, successCB: () => void, failCB: (error: number) => void): void {
-    WFPttClient.sharedClient().setConversation(toConversation(type, target, line), pttSilent = silent, success = (): void => {
+    WFPttClient.shared()!.setConversation(toConversation(type, target, line), pttSilent = silent, success = (): void => {
         successCB()
-    }, error = (code: number): void => {
-        failCB(code)
+    }, error = (code: Int32): void => {
+        failCB(Number(code))
     })
 }
 
 export function isConversationPttSilent(type: number, target: string, line: number): boolean {
-    return WFPttClient.sharedClient().isConversationPttSilent(toConversation(type, target, line))
+    return WFPttClient.shared()!.isConversationPttSilent(toConversation(type, target, line))
 }
 
 export function getTalkingStartTime(): number {
-    return WFPttClient.sharedClient().getTalkingStartTime()
+    return Number(WFPttClient.shared()!.getTalkingStartTime())
 }
 
 export function getTalkingMembers(type: number, target: string, line: number): string {
-    const dict = WFPttClient.sharedClient().getTalkingMember(toConversation(type, target, line))
+    // getTalkingMember 在 Swift 里导入为 [String: NSNumber]?，需要先转成 NSDictionary 才能用 allKeys
+    const dict = WFPttClient.shared()!.getTalkingMember(toConversation(type, target, line)) as NSDictionary
     const keys = dict.allKeys as string[]
     const items = keys.map((k: string): string => "\"" + k + "\"")
     return "[" + items.join(",") + "]"
 }
 
 export function getTalkingMemberCount(type: number, target: string, line: number): number {
-    const dict = WFPttClient.sharedClient().getTalkingMember(toConversation(type, target, line))
-    return dict.count
+    const dict = WFPttClient.shared()!.getTalkingMember(toConversation(type, target, line)) as NSDictionary
+    return Number(dict.count)
 }
 
 export function setEnablePtt(type: number, target: string, line: number, enable: boolean): void {
     // WFPttClient 的 enablePtt 是全局属性，没有按会话开关的接口，这里只更新全局开关
-    WFPttClient.sharedClient().enablePtt = enable
+    WFPttClient.shared()!.enablePtt = enable
 }
 
 // iOS 由系统在首次实际使用麦克风时自动弹出授权对话框，这里直接放行，与 wfc-av-client 的
@@ -168,9 +173,9 @@ export function requestRecordPermission(successCB: () => void, failCB: () => voi
 }
 
 export function isSpeakerEnable(): boolean {
-    return WFPttClient.sharedClient().enableSpeaker
+    return WFPttClient.shared()!.enableSpeaker
 }
 
 export function enableSpeaker(): void {
-    WFPttClient.sharedClient().enableSpeaker = true
+    WFPttClient.shared()!.enableSpeaker = true
 }

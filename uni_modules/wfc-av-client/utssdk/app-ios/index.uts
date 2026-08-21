@@ -30,6 +30,8 @@
 import { NativeEventListener } from '../interface.uts'
 
 import { WFAVEngineKit, WFAVEngineDelegate, WFAVCallSession, WFAVCallSessionDelegate, WFAVEngineState, WFAVCallEndReason, WFAVVideoType, WFAVVideoProfile, WFAVParticipantProfile, WFAVVideoScalingType } from 'WFAVEngineKit'
+import { RTCVideoTrack } from 'WebRTC'
+import { PKPushPayload } from 'PushKit'
 import { WFCCConversation, WFCCConversationType } from 'WFChatClient'
 import { UIView } from 'UIKit'
 
@@ -38,17 +40,28 @@ let callSessionEventListener: NativeEventListener | null = null
 let initialized = false
 
 // 页面 <native-view> 元素 -> 绑定到其上的视频容器。重复对同一元素 setup 时复用同一个容器
-// （bindIOSView 只能绑一次）
-const videoContainers = new Map<UniNativeViewElement, UIView>()
+// （bindIOSView 只能绑一次）。
+// 注意：UniNativeViewElement 不是 Hashable，不能用作 Swift Dictionary/Map 的键，所以这里
+// 用两个平行数组 + 引用相等（===）线性查找（页面上的 native-view 数量极少，性能无碍）。
+let videoContainerElements: UniNativeViewElement[] = []
+let videoContainerViews: UIView[] = []
 
 function videoContainerOf(element: UniNativeViewElement): UIView {
-    let container = videoContainers.get(element)
-    if (container == null) {
-        container = new UIView()
-        element.bindIOSView(container!)
-        videoContainers.set(element, container!)
+    for (let i = 0; i < videoContainerElements.length; i++) {
+        if (videoContainerElements[i] === element) {
+            return videoContainerViews[i]
+        }
     }
-    return container!
+    const container = new UIView()
+    element.bindIOSView(container)
+    videoContainerElements.push(element)
+    videoContainerViews.push(container)
+    return container
+}
+
+function clearVideoContainers(): void {
+    videoContainerElements = []
+    videoContainerViews = []
 }
 
 function jsonArrayString(args: any[]): string {
@@ -91,19 +104,19 @@ function callSessionToJson(session: WFAVCallSession): string {
         "\"connectedTime\":" + session.connectedTime + "," +
         "\"endTime\":" + session.endTime + "," +
         "\"conversation\":" + convJson + "," +
-        "\"audioOnly\":" + (session.audioOnly ? "true" : "false") + "," +
+        "\"audioOnly\":" + (session.isAudioOnly ? "true" : "false") + "," +
         "\"endReason\":" + session.endReason.rawValue + "," +
-        "\"conference\":" + (session.conference ? "true" : "false") + "," +
-        "\"audience\":" + (session.audience ? "true" : "false") + "," +
+        "\"conference\":" + (session.isConference ? "true" : "false") + "," +
+        "\"audience\":" + (session.isAudience ? "true" : "false") + "," +
         "\"defaultAudience\":" + (session.defaultAudience ? "true" : "false") + "," +
-        "\"advanced\":" + (session.advanced ? "true" : "false") + "," +
-        "\"audioMuted\":" + (session.audioMuted ? "true" : "false") + "," +
-        "\"videoMuted\":" + (session.videoMuted ? "true" : "false") + "," +
+        "\"advanced\":" + (session.isAdvanced ? "true" : "false") + "," +
+        "\"audioMuted\":" + (session.isAudioMuted ? "true" : "false") + "," +
+        "\"videoMuted\":" + (session.isVideoMuted ? "true" : "false") + "," +
         "\"title\":\"" + (session.title ?? "") + "\"," +
         "\"desc\":\"" + (session.desc ?? "") + "\"," +
         "\"pin\":\"" + (session.pin ?? "") + "\"," +
         "\"host\":\"" + (session.host ?? "") + "\"," +
-        "\"multiCall\":" + (session.multiCall ? "true" : "false") +
+        "\"multiCall\":" + (session.isMultiCall ? "true" : "false") +
         "}"
     return obj
 }
@@ -134,26 +147,33 @@ class NativeAVEngineDelegate implements WFAVEngineDelegate {
         avEngineEventListener?.("shouldStopRing", jsonArrayString([]))
     }
 
-    didCallEnded(reason: WFAVCallEndReason, duration: number): void {
-        videoContainers.clear()
+    didCallEnded(reason: WFAVCallEndReason, @argumentLabel("duration") duration: Int32): void {
+        clearVideoContainers()
         avEngineEventListener?.("didCallEnded", jsonArrayString([reason.rawValue, duration]))
+    }
+
+    // WFAVEngineDelegate 的必需方法（收到 VoIP push）。dictionaryPayload 是 [AnyHashable: Any]，
+    // UTS 里拿不到通用 JSON 序列化，这里只把 push 类型透传给应用层。
+    didReceiveIncomingPush(@argumentLabel("with") payload: PKPushPayload, @argumentLabel("forType") type: string): void {
+        avEngineEventListener?.("didReceiveIncomingPush", jsonArrayString([type]))
     }
 }
 
 class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
-    didChangeState(state: WFAVEngineState): void {
+    // 协议方法在 Swift 里被改名为 didChange(_:)，事件名仍用 didChangeState 透传，避免动应用层
+    didChange(state: WFAVEngineState): void {
         callSessionEventListener?.("didChangeState", jsonArrayString([state.rawValue]))
     }
 
-    didParticipantJoined(userId: string, screenSharing: boolean): void {
+    didParticipantJoined(userId: string, @argumentLabel("screenSharing") screenSharing: boolean): void {
         callSessionEventListener?.("didParticipantJoined", jsonArrayString([userId, screenSharing]))
     }
 
-    didParticipantConnected(userId: string, screenSharing: boolean): void {
+    didParticipantConnected(userId: string, @argumentLabel("screenSharing") screenSharing: boolean): void {
         callSessionEventListener?.("didParticipantConnected", jsonArrayString([userId, screenSharing]))
     }
 
-    didParticipantLeft(userId: string, screenSharing: boolean, reason: WFAVCallEndReason): void {
+    didParticipantLeft(userId: string, @argumentLabel("screenSharing") screenSharing: boolean, @argumentLabel("with") reason: WFAVCallEndReason): void {
         callSessionEventListener?.("didParticipantLeft", jsonArrayString([userId, reason.rawValue, screenSharing]))
     }
 
@@ -161,13 +181,13 @@ class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
         callSessionEventListener?.("didChangeInitiator", jsonArrayString([initiator ?? ""]))
     }
 
-    didCallEndWithReason(reason: WFAVCallEndReason): void {
+    // 协议方法在 Swift 里被改名为 didCallEnd(with:)，事件名仍用 didCallEndWithReason 透传
+    didCallEnd(@argumentLabel("with") reason: WFAVCallEndReason): void {
         callSessionEventListener?.("didCallEndWithReason", jsonArrayString([reason.rawValue]))
     }
 
-    didError(error: any): void {
-        callSessionEventListener?.("didError", jsonArrayString(["" + error]))
-    }
+    // didError 的协议签名是 didError(_ error: any Error)，UTS 里没有能映射到 Swift any Error
+    // 的参数类型，所以该方法由同目录下的原生 Swift 扩展文件（AVDelegates.swift）补充实现。
 
     didChangeMode(isAudioOnly: boolean): void {
         callSessionEventListener?.("didChangeMode", jsonArrayString([isAudioOnly]))
@@ -177,23 +197,23 @@ class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
         // 统计信息内容复杂，暂不转发详细数据
     }
 
-    didCreateLocalVideoTrack(localVideoTrack: any): void {
+    didCreateLocalVideoTrack(localVideoTrack: RTCVideoTrack): void {
         callSessionEventListener?.("didCreateLocalVideoTrack", jsonArrayString([]))
     }
 
-    didReceiveRemoteVideoTrack(remoteVideoTrack: any, userId: string, screenSharing: boolean): void {
+    didReceiveRemoteVideoTrack(remoteVideoTrack: RTCVideoTrack, @argumentLabel("fromUser") userId: string, @argumentLabel("screenSharing") screenSharing: boolean): void {
         callSessionEventListener?.("didReceiveRemoteVideoTrack", jsonArrayString([userId, screenSharing]))
     }
 
-    didVideoMuted(videoMuted: boolean, userId: string): void {
+    didVideoMuted(videoMuted: boolean, @argumentLabel("fromUser") userId: string): void {
         callSessionEventListener?.("didVideoMuted", jsonArrayString([userId, videoMuted]))
     }
 
-    didReportAudioVolume(volume: number, userId: string): void {
+    didReportAudioVolume(volume: number, @argumentLabel("ofUser") userId: string): void {
         callSessionEventListener?.("didReportAudioVolume", jsonArrayString([userId, volume]))
     }
 
-    didChangeType(audience: boolean, userId: string): void {
+    didChangeType(audience: boolean, @argumentLabel("ofUser") userId: string): void {
         callSessionEventListener?.("didChangeType", jsonArrayString([userId, audience, false]))
     }
 
@@ -218,64 +238,58 @@ export function initAVEngineKit(): void {
         return
     }
     initialized = true
-    WFAVEngineKit.sharedEngineKit().delegate = nativeAVEngineDelegate
+    WFAVEngineKit.shared().delegate = nativeAVEngineDelegate
 }
 
 export function addICEServer(url: string, name: string, password: string): void {
-    WFAVEngineKit.sharedEngineKit().addIceServer(url, userName = name, password = password)
+    WFAVEngineKit.shared().addIceServer(url, userName = name, password = password)
 }
 
 export function isSupportMultiCall(): boolean {
-    return WFAVEngineKit.sharedEngineKit().supportMultiCall
+    return WFAVEngineKit.shared().supportMultiCall
 }
 
 // 和 Android 一样，音视频 SDK 分多人版 / 高级版（会议版）两个包，替换
 // Frameworks/WFAVEngineKit.xcframework 切换。多人版里会议接口是「为兼容会议 UI 保留的空实现」
 // （见 WFAVEngineKit.h 里的注释），supportConference 返回 false，应用层据此隐藏会议入口。
 export function isSupportConference(): boolean {
-    return WFAVEngineKit.sharedEngineKit().supportConference
+    return WFAVEngineKit.shared().supportConference
 }
 
 export function setVideoProfile(profile: number, swapWidthHeight: boolean): void {
     // profile 数值和 Android VideoProfile 常量、iOS WFAVVideoProfile 枚举原始值保持一致（见头文件注释）
-    WFAVEngineKit.sharedEngineKit().setVideoProfile(profile as WFAVVideoProfile, swapWidthHeight = swapWidthHeight)
+    WFAVEngineKit.shared().setVideoProfile(profile as WFAVVideoProfile, swapWidthHeight = swapWidthHeight)
 }
 
 function currentSessionOrNull(): WFAVCallSession | null {
-    return WFAVEngineKit.sharedEngineKit().currentSession
+    return WFAVEngineKit.shared().currentSession
 }
 
 export function startSingleCall(userId: string, audioOnly: boolean): string | null {
     const conv = WFCCConversation.singleConversation(userId)
-    const session = WFAVEngineKit.sharedEngineKit().startCall([userId], audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
+    const session = WFAVEngineKit.shared().startCall([userId], audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
     return session == null ? null : callSessionToJson(session!)
 }
 
 export function startMultiCall(groupId: string, participants: string[], audioOnly: boolean): string | null {
     const conv = WFCCConversation.groupConversation(groupId)
-    const session = WFAVEngineKit.sharedEngineKit().startCall(participants, audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
+    const session = WFAVEngineKit.shared().startCall(participants, audioOnly = audioOnly, callExtra = null, conversation = conv, sessionDelegate = nativeCallSessionDelegate)
     return session == null ? null : callSessionToJson(session!)
 }
 
-/** 发起会议（仅会议版 xcframework 有效） */
-export function startConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, record: boolean, callExtra: string): string | null {
+/** 发起会议（仅会议版 xcframework 有效）。SDK 头文件标注 startConference 返回 _Nonnull，无需判空 */
+export function startConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, record: boolean, callExtra: string): string {
     // maxParticipants 传 0 表示不限制，与 Android 的 startConference（无该入参）行为一致
-    const session = WFAVEngineKit.sharedEngineKit().startConference(callId, audioOnly = audioOnly, pin = pin, host = host, title = title, desc = desc, callExtra = callExtra, audience = audience, advanced = advance, record = record, maxParticipants = 0, sessionDelegate = nativeCallSessionDelegate)
-    if (session == null) {
-        return null
-    }
-    session!.autoSwitchVideoType = false
-    return callSessionToJson(session!)
+    const session = WFAVEngineKit.shared().startConference(callId, audioOnly = audioOnly, pin = pin, host = host, title = title, desc = desc, callExtra = callExtra, audience = audience, advanced = advance, record = record, maxParticipants = 0, sessionDelegate = nativeCallSessionDelegate)
+    session.autoSwitchVideoType = false
+    return callSessionToJson(session)
 }
 
-/** 加入会议（仅会议版 xcframework 有效） */
-export function joinConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, muteAudio: boolean, muteVideo: boolean, callExtra: string): string | null {
-    const session = WFAVEngineKit.sharedEngineKit().joinConference(callId, audioOnly = audioOnly, pin = pin, host = host, title = title, desc = desc, callExtra = callExtra, audience = audience, advanced = advance, muteAudio = muteAudio, muteVideo = muteVideo, sessionDelegate = nativeCallSessionDelegate)
-    if (session == null) {
-        return null
-    }
-    session!.autoSwitchVideoType = false
-    return callSessionToJson(session!)
+/** 加入会议（仅会议版 xcframework 有效）。SDK 头文件标注 joinConference 返回 _Nonnull，无需判空 */
+export function joinConference(callId: string, audioOnly: boolean, pin: string, host: string, title: string, desc: string, audience: boolean, advance: boolean, muteAudio: boolean, muteVideo: boolean, callExtra: string): string {
+    const session = WFAVEngineKit.shared().joinConference(callId, audioOnly = audioOnly, pin = pin, host = host, title = title, desc = desc, callExtra = callExtra, audience = audience, advanced = advance, muteAudio = muteAudio, muteVideo = muteVideo, sessionDelegate = nativeCallSessionDelegate)
+    session.autoSwitchVideoType = false
+    return callSessionToJson(session)
 }
 
 export function leaveConference(callId: string, destroyRoom: boolean): void {
@@ -333,7 +347,7 @@ export function muteVideo(callId: string, mute: boolean): boolean {
 export function downgrade2Voice(callId: string): void {
     const session = currentSessionOrNull()
     if (session != null && session!.callId == callId) {
-        session!.audioOnly = true
+        session!.isAudioOnly = true
     }
 }
 
@@ -366,8 +380,9 @@ export function kickoffParticipant(callId: string, userId: string, successCB: ()
     }
     session!.kickoffParticipant(userId, success = (): void => {
         successCB()
-    }, error = (code: number): void => {
-        failCB(code)
+    }, error = (code: Int32): void => {
+        // SDK 的 error 回调参数是 (Int32) -> Void，Number() 把 Int32 转成 number 再回传给应用层
+        failCB(Number(code))
     })
 }
 
@@ -376,7 +391,10 @@ export function getParticipantProfiles(callId: string): string {
     if (session == null || session!.callId != callId) {
         return "[]"
     }
-    const items = session!.participants.map((p: WFAVParticipantProfile): string => participantProfileToJson(p))
+    // 头文件里 participants 是 NSArray<WFAVParticipantProfile *>，Swift 导入后是 NSArray 而不是
+    // [WFAVParticipantProfile]，需要显式 as 转换后才能 map
+    const profiles = session!.participants as WFAVParticipantProfile[]
+    const items = profiles.map((p: WFAVParticipantProfile): string => participantProfileToJson(p))
     return "[" + items.join(",") + "]"
 }
 
@@ -385,7 +403,8 @@ export function getParticipantProfile(callId: string, userId: string, screenShar
     if (session == null || session!.callId != callId) {
         return null
     }
-    const p = session!.profileOfUser(userId, isScreenSharing = screenSharing)
+    // SDK 把 profileOfUser(_:isScreenSharing:) 在 Swift 里改名为 profile(ofUser:isScreenSharing:)
+    const p = session!.profile(ofUser = userId, isScreenSharing = screenSharing)
     return p == null ? null : participantProfileToJson(p!)
 }
 
@@ -418,7 +437,7 @@ export function setLocalVideoView(callId: string, element: UniNativeViewElement)
     if (session == null || session!.callId != callId) {
         return
     }
-    session!.setupLocalVideoView(videoContainerOf(element), scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill)
+    session!.setupLocalVideoView(videoContainerOf(element), scalingType = WFAVVideoScalingType.aspectFill)
 }
 
 export function setRemoteVideoView(callId: string, userId: string, screenSharing: boolean, element: UniNativeViewElement): void {
@@ -426,7 +445,7 @@ export function setRemoteVideoView(callId: string, userId: string, screenSharing
     if (session == null || session!.callId != callId) {
         return
     }
-    session!.setupRemoteVideoView(videoContainerOf(element), scalingType = WFAVVideoScalingType.kWFAVVideoScalingTypeAspectFill, forUser = userId, screenSharing = screenSharing)
+    session!.setupRemoteVideoView(videoContainerOf(element), scalingType = WFAVVideoScalingType.aspectFill, forUser = userId, screenSharing = screenSharing)
 }
 
 export function setParticipantVideoType(callId: string, userId: string, screenSharing: boolean, videoType: number): void {

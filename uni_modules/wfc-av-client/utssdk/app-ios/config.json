@@ -1,3 +1,6 @@
 {
-  "deploymentTarget": "11"
+  "deploymentTarget": "11",
+  "frameworks": [
+    "PushKit.framework"
+  ]
 }
