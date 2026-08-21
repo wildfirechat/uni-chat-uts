@@ -1,6 +1,7 @@
 <template>
     <!-- 如果不添加一个层级的话，直接子 view 上的 @tap 不生效 -->
-    <view @longpress="onLongPress">
+    <!-- id 是给会话页量气泡位置用的（长按菜单要避开气泡），见 ConversationPage 的 messageAnchorRect -->
+    <view :id="bubbleId" @longpress="onLongPress">
         <TextMessageContentView :message="message" v-if="contentType == 1" />
         <StreamingTextMessageContentView :message="message"
             v-else-if="contentType == 14 || contentType == 15" />
@@ -52,6 +53,8 @@ const props = defineProps<{
 
 // class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
 const contentType = computed<number>((): number => (props.message as Message).messageContent.type)
+/** 会话页按这个 id 找气泡节点量位置；messageId 在页面内唯一 */
+const bubbleId = computed<string>((): string => 'bubble-' + (props.message as Message).messageId)
 
 const emit = defineEmits(['longpress'])
 

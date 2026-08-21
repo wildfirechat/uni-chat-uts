@@ -47,7 +47,7 @@
                 </view>
             </view>
             <popup-menu v-model="showContextMenu" :items="contextMenuItems" @select="onContextMenuItemSelect"
-                :targetX="contextMenuX" :targetY="contextMenuY" />
+                :targetX="contextMenuX" :targetY="contextMenuY" :targetHeight="contextMenuHeight" />
             <MessageInputView v-if="!enableMessageMultiSelection" :conversationInfo="conversationInfo"
                 class="message-input-container" ref="messageInputView" @panelShow="scrollToBottom" />
             <MultiSelectActionView v-if="enableMessageMultiSelection" />
@@ -86,7 +86,7 @@ import { forward } from "@/common/forward.uts";
 import { isSavableMessage, isSaveToAlbumMessage, saveMessageMedia } from "@/common/mediaSaver.uts";
 import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
 import eventBus from "@/common/eventBus.uts";
-import { getTouchPoint } from "@/common/touch.uts";
+import { getTouchPoint, getElementScreenRect, rectContainsPoint, ScreenRect, TouchPoint } from "@/common/touch.uts";
 import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
 import { isAsrEnabled, speechToText } from "@/common/asr.uts";
 import { isFavoriteAble, favoriteMessage } from "@/common/favorite.uts";
@@ -110,8 +110,11 @@ const touchStartX = ref<number>(0)
 const touchStartY = ref<number>(0)
 
 const showContextMenu = ref<boolean>(false)
+// 菜单的锚：横向锚在触点上（targetX + 宽 0），纵向锚在整条气泡上（targetY/targetHeight），
+// 理由见 showMessageContextMenu
 const contextMenuX = ref<number>(0)
 const contextMenuY = ref<number>(0)
+const contextMenuHeight = ref<number>(0)
 const contextMenuItems = ref<PopupMenuItem[]>([] as PopupMenuItem[])
 const contextMenuMessage = ref<Message | null>(null)
 
@@ -821,15 +824,158 @@ const onTouchMove = (e: UniTouchEvent) => {
     }
 }
 
+/** 自定义导航栏正文高度，见 [NavBar](../common/NavBar.uvue) 的 `.nav-bar`；状态栏另算 */
+const NAV_BAR_HEIGHT = 44
+
+/** 逐级向上找的层数上限，够本项目最深的消息结构（In 消息气泡到行是 7 层）用了 */
+const WALK_MAX_DEPTH = 12
+
+/**
+ * 从 [from] 逐级向上累加 `offsetTop`。
+ *
+ * `offsetTop` 在鸿蒙上是「相对**直接父节点**」的布局坐标（dom1 里就是 `layoutNode.getLayoutTop()`，
+ * dom2 转发原生但行为一致 —— [messageAnchorRect] 里那条行定位一直是准的，就是靠它）。
+ * 所以一路加上去就是相对某个祖先的偏移。
+ *
+ * @param stopHeight >0 时，撞见**高度 ≥ 它**的祖先就停（用来「加到行为止」：行本身和撑满行的
+ *   包装层相对行的偏移都是 0，停在哪一层结果一样。这样就不必比较节点身份 —— dom2 里
+ *   `parentElement` 和 `querySelector` 返回的是原生节点，不保证是同一个 JS 对象）。
+ *   传 0 表示一路加到根（用来求某个节点的页面坐标）。
+ */
+const sumOffsetTopUp = (from: UniElement, stopHeight: number): number => {
+    let node: UniElement | null = from
+    let offset = 0
+    let depth = 0
+    while (node != null && depth < WALK_MAX_DEPTH) {
+        if (stopHeight > 0 && node!.offsetHeight >= stopHeight) {
+            break
+        }
+        offset += node!.offsetTop
+        node = node!.parentElement
+        depth++
+    }
+    return offset
+}
+
+/**
+ * 长按的那条消息在屏幕上的矩形；拿不到可信几何时返回 null，调用方退回锚在触点上。
+ *
+ * ## 两条路
+ *
+ * 1. **节点矩形**（android 走这条，实测生效）：`currentTarget` 就是挂 `@longpress` 的那个节点，
+ *    也就是 [MessageContentContainerView](./message/MessageContentContainerView.uvue) 包住气泡的
+ *    那层 view，矩形≈气泡本身。`target` 是命中的最深子节点，必然在气泡内，作兜底。
+ * 2. **布局坐标**（鸿蒙走这条）：`getBoundingClientRect()` 在鸿蒙 dom2 里转发给原生，实测校验
+ *    不过，所以这条完全不碰节点矩形，只用 `offsetTop / offsetHeight / scrollTop` ——
+ *    跟 [scrollToMessage] 同一套原语，恒为逻辑像素、不受 transform 影响，鸿蒙上一直是准的。
+ *
+ * ## 第 2 条的换算，以及为什么是「一堆候选 + 挑一个」
+ *
+ * 倒置渲染下内容坐标 c 落在视觉 y =(scrollTop + 视口高) - c（推导见 [scrollToMessage]），
+ * 于是行的内容区间 [t, t+h) 对应视口内的视觉区间 [S+H-t-h, S+H-t)。再加上**视口顶边在屏幕上的
+ * 位置**就是屏幕坐标 —— 而这个「视口顶边」有三种说法，谁对取决于页面 body 是不是从状态栏底下开始：
+ * 逐级累加到根（不依赖任何假设，前提是 `parentElement` 在这个运行时里能用）、状态栏 + 导航栏、
+ * 只有导航栏。
+ *
+ * 与其赌一个，不如**三个都算成候选，谁能把触点框住就用谁** —— 反正调用方本来就要这条校验。
+ * 每种视口顶边又各有「气泡」和「整行」两个版本：气泡版把时间标签和昵称让出来（不让的话菜单
+ * 摆在上方会平白高出一截），矩形小、校验严，优先；整行版兜底，最多是离气泡远一点点。
+ *
+ * 真机上要是还不对，看 `[anchor]` 那行日志：`picked` 是命中的候选序号（0/1/2 是气泡版，
+ * 3/4/5 是整行版，-1 是全没命中），配合 `vt*` 三个值就能判断是哪种假设成立。
+ */
+const messageAnchorRect = (e: UniTouchEvent, message: Message, point: TouchPoint): ScreenRect | null => {
+    let el: UniElement | null = e.currentTarget
+    if (el == null) {
+        el = e.target
+    }
+    if (el != null) {
+        const rect = getElementScreenRect(el!, point)
+        if (rect != null) {
+            return rect
+        }
+    }
+    const listEl = messageListEl.value
+    if (listEl == null) {
+        return null
+    }
+    try {
+        const row = listEl!.querySelector('#id-' + message.messageId)
+        if (row == null) {
+            return null
+        }
+        const rowHeight = row.offsetHeight
+        const viewportHeight = listEl!.offsetHeight
+        if (rowHeight <= 0 || viewportHeight <= 0) {
+            return null
+        }
+        const scrollTop = listEl!.scrollTop
+        const visualTop = scrollTop + viewportHeight - row.offsetTop - rowHeight
+
+        // 拿不到事件节点时（鸿蒙 dom2 的 target/currentTarget 未必给），按 id 去找气泡节点，
+        // 用的是跟上面找行一样的 querySelector，行找得到气泡就也找得到
+        let bubbleEl: UniElement | null = el
+        if (bubbleEl == null) {
+            bubbleEl = row.querySelector('#bubble-' + message.messageId)
+        }
+        const bubbleHeight = bubbleEl == null ? -1 : bubbleEl!.offsetHeight
+        const bubbleOffset = bubbleEl == null ? -1 : sumOffsetTopUp(bubbleEl!, rowHeight)
+
+        const sysInfo = uni.getSystemInfoSync()
+        const width = sysInfo.windowWidth
+        const viewportTops: number[] = [
+            sumOffsetTopUp(listEl!, 0),
+            sysInfo.statusBarHeight + NAV_BAR_HEIGHT,
+            NAV_BAR_HEIGHT
+        ]
+        const candidates: ScreenRect[] = []
+        if (bubbleOffset >= 0 && bubbleHeight > 0 && bubbleHeight <= rowHeight) {
+            for (let i = 0; i < viewportTops.length; i++) {
+                candidates.push(new ScreenRect(0, viewportTops[i] + visualTop + bubbleOffset, width, bubbleHeight))
+            }
+        }
+        for (let i = 0; i < viewportTops.length; i++) {
+            candidates.push(new ScreenRect(0, viewportTops[i] + visualTop, width, rowHeight))
+        }
+        let picked = -1
+        for (let i = 0; i < candidates.length; i++) {
+            if (rectContainsPoint(candidates[i], point)) {
+                picked = i
+                break
+            }
+        }
+        // 临时诊断，定位准了就删。鸿蒙每次长按一行，android 走不到这里（第 1 条就返回了）
+        // console.log('[anchor] probeY=', point.y, 'elNull=', el == null, 'bubbleNull=', bubbleEl == null,
+        //     'vtWalk=', viewportTops[0], 'vtStatus+Nav=', viewportTops[1], 'vtNav=', viewportTops[2],
+        //     'visualTop=', visualTop, 'rowOffsetTop=', row.offsetTop, 'rowH=', rowHeight,
+        //     'S=', scrollTop, 'H=', viewportHeight, 'bubOff=', bubbleOffset, 'bubH=', bubbleHeight,
+        //     'picked=', picked)
+        if (picked >= 0) {
+            return candidates[picked]
+        }
+        return null
+    } catch (err) {
+        console.log('[anchor] 读布局坐标失败', err)
+        return null
+    }
+}
+
 const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     if (isScroll.value) {
         return;
     }
-    // longpress 事件 touches 可能为空，改用 changedTouches 兜底取触点坐标
+    // longpress 事件 touches 可能为空，改用 changedTouches 兜底取触点坐标；
+    // 取不到触点就沿用上一次的锚点，但高度要清掉，免得拿上一条气泡的高度去摆这次的菜单
+    contextMenuHeight.value = 0;
     const point = getTouchPoint(e)
     if (point != null) {
         contextMenuX.value = point.x;
-        contextMenuY.value = point.y;
+        // 纵向锚在整条气泡上：菜单尽量落在气泡的上方/下方，只有上下都塞不下才压到气泡身上
+        // （微信的行为）。横向仍锚在触点上 —— 气泡可能很宽，箭头指着手指比指着气泡中心更贴手。
+        // 取不到气泡矩形就退回锚在触点上，也就是这次改动之前的老行为。
+        const rect = messageAnchorRect(e, message, point!)
+        contextMenuY.value = rect != null ? rect!.y : point!.y;
+        contextMenuHeight.value = rect != null ? rect!.height : 0;
     }
     contextMenuMessage.value = message;
 

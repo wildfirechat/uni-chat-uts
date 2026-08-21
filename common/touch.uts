@@ -1,5 +1,5 @@
 /**
- * 触摸坐标提取工具。
+ * 触摸坐标提取工具，以及「把节点几何换算成同一套逻辑像素坐标」的 [getElementScreenRect]。
  *
  * 1) longpress 事件下 touches 可能为空数组，而 changedTouches 始终携带
  *    触发事件的触点坐标（uni-app x 官方 touch 示例及本工程录音长按代码
@@ -72,4 +72,86 @@ export function getTouchPoint(e: UniTouchEvent): TouchPoint | null {
     }
     const ratio = pixelRatio()
     return new TouchPoint(toLogical(t.clientX, ratio), toLogical(t.clientY, ratio))
+}
+
+/** 节点在屏幕坐标系里的矩形，单位逻辑像素 */
+export class ScreenRect {
+    x: number
+    y: number
+    width: number
+    height: number
+
+    constructor(x: number, y: number, width: number, height: number) {
+        this.x = x
+        this.y = y
+        this.width = width
+        this.height = height
+    }
+}
+
+/** 触点判定的容差：手指可能落在子节点溢出的部分上，或压在边框上 */
+const PROBE_TOLERANCE = 8
+
+/** 触点是否落在矩形里（带 [PROBE_TOLERANCE] 容差）。用来校验一个算出来的矩形可不可信。 */
+export function rectContainsPoint(rect: ScreenRect, probe: TouchPoint): boolean {
+    return probe.x >= rect.x - PROBE_TOLERANCE && probe.x <= rect.x + rect.width + PROBE_TOLERANCE
+        && probe.y >= rect.y - PROBE_TOLERANCE && probe.y <= rect.y + rect.height + PROBE_TOLERANCE
+}
+
+/**
+ * 取节点在屏幕坐标系里的矩形，单位统一成逻辑像素；判定不出来时返回 null。
+ *
+ * ## 为什么要传一个 probe 而不是按平台写死折算
+ *
+ * 因为鸿蒙上这个矩形的单位**查不到也不稳定**：
+ * - 老的 dom1 运行时（HBuilderX `launcher-harmony/base/project-x.zip` → `libs/runtime.har`）里，
+ *   `getBoundingClientRect()` 的**位置是物理像素、尺寸是 vp** —— `dom/UniElement.ets` 的
+ *   `_getSize()` 走了 px2vp，`_getPosition()` 没有。这是个 bug，随时可能被修。
+ * - 本项目（vapor + bytecode）实际用的是 dom2 运行时（`project-dom2-dyn.zip` → `libs/sdk.har`），
+ *   那里 `getBoundingClientRect()` 直接转发给原生节点，实现看不到，单位无从查证。
+ *
+ * 所以这里不猜单位：调用方传一个**已知落在该节点内**的触点（[getTouchPoint] 归一化过的
+ * 逻辑像素），折算前/折算后两个候选矩形里哪个能把触点框住就用哪个 —— 单位怎么变都不会错。
+ * 两个都框不住（拿到的几何压根不可信）就返回 null，让调用方退回不依赖节点几何的路径。
+ *
+ * 先试不折算的候选：那是规范里本来的语义。
+ */
+export function getElementScreenRect(el: UniElement, probe: TouchPoint): ScreenRect | null {
+    // 鸿蒙 dom2 运行时（本项目 vapor + bytecode 用的就是它）这几个几何属性全部走原生：
+    // 拿不到时 `getBoundingClientRect()` 会 `?? new DOMRect()` 返回全 0，运气差还可能直接抛。
+    // 而**事件监听器里抛出的异常会被运行时吞掉**（dispatchEvent 里是个空 catch），
+    // 表现是「长按毫无反应」，极难定位 —— 所以整段兜起来，失败一律退化成 null。
+    try {
+        const rect = el.getBoundingClientRect()
+        let width = rect.width
+        let height = rect.height
+        if (width <= 0 || height <= 0) {
+            // 节点还没排版好时 rect 是 0，退回布局尺寸（布局坐标恒为逻辑像素）
+            width = el.offsetWidth
+            height = el.offsetHeight
+        }
+        if (width <= 0 || height <= 0) {
+            return null
+        }
+        const ratio = pixelRatio()
+        const candidates: ScreenRect[] = [
+            new ScreenRect(rect.x, rect.y, width, height),
+            new ScreenRect(rect.x / ratio, rect.y / ratio, width, height)
+        ]
+        for (let i = 0; i < candidates.length; i++) {
+            const c = candidates[i]
+            if (rectContainsPoint(c, probe)) {
+                return c
+            }
+        }
+        // 框不住触点 = 拿到的几何不可信，调用方有不依赖节点几何的后路。
+        // 临时诊断（定位准了就删）：鸿蒙上想知道原生给回来的到底是全 0、还是别的坐标系里的
+        // 有效值 —— 后者的话就能直接换算，不用绕布局坐标。android 命中候选后不会走到这里。
+        console.log('[anchor] 节点矩形不可信 rect=', rect.x, rect.y, width, height,
+            'probe=', probe.x, probe.y, 'ratio=', ratio)
+        return null
+    } catch (e) {
+        console.log('getElementScreenRect: 读节点几何失败', e)
+        return null
+    }
 }

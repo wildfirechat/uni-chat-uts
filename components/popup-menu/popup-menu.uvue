@@ -42,11 +42,19 @@
  * 这里**没有**把它一起搬过来：uni 侧的 [main-action-menu](../main-action-menu/main-action-menu.uvue)
  * 早就是那个形态了，且它锚在导航栏按钮上、不需要目标矩形，搬过来只会多一层参数。
  *
- * ## 与 flutter 的一处刻意差异：锚点是触点而不是气泡矩形
+ * ## 锚点：不想被菜单盖住的目标，必须传真实的 targetY/targetHeight
  *
- * flutter 传的是气泡的全局 Rect，菜单指向气泡中心。uni-app x vapor 下本项目没有用过
- * element API，拿不到节点矩形，所以这里传 longpress 的触点坐标，退化成一个零尺寸的
- * 矩形。效果是三角指向手指而不是气泡中心 —— 位置更贴手，可接受。
+ * [showAbove] / [panelTop] 的取舍是「上方放得下就放上方，否则放下方，两边都放不下才
+ * 压到目标身上并夹进安全区」—— 也就是微信长按菜单的行为。**这套取舍避开的是
+ * targetY..targetY+targetHeight 这一段，不是手指**：传一个零高度的触点矩形，菜单就会贴着
+ * 手指展开，正好盖住被长按的那条消息（会话页最初就是这么传的）。
+ *
+ * 所以：锚在按钮上的场景（[moment-feed-item](../moment-feed-item/moment-feed-item.uvue) 的「更多」）
+ * 传触点、宽高给 0 就够了，反正菜单盖住那个小按钮无所谓；会话页长按气泡则必须传气泡的
+ * 真实上下沿，取法见 `ConversationPage.uvue` 的 `messageAnchorRect`。
+ *
+ * 横向没有这个约束：会话页传的是触点 x + 宽 0，于是三角指向手指而不是气泡中心
+ * （flutter 传的是气泡 Rect，指向气泡中心）—— 宽气泡上指手指更贴手。
  *
  * ## 尺寸不跟字号档位放大
  *
@@ -70,7 +78,11 @@ defineOptions({
 const props = withDefaults(defineProps<{
     modelValue?: boolean
     items?: PopupMenuItem[]
-    /** 目标（气泡/按钮）在屏幕坐标系里的矩形；长按场景传触点，宽高给 0 即可 */
+    /**
+     * 目标（气泡/按钮）在屏幕坐标系里的矩形。
+     * 菜单避开的是 targetY..targetY+targetHeight 这一段，不想被盖住就传真实上下沿（见上面「锚点」一节）；
+     * targetX/targetWidth 只决定横向居中和三角的落点，传触点亦可。
+     */
     targetX?: number
     targetY?: number
     targetWidth?: number
@@ -118,7 +130,8 @@ const targetCenterX = computed<number>((): number => props.targetX + props.targe
 
 /**
  * 上方放得下就放上方（与 flutter 一致：优先上方，长按时手指不会挡住菜单），
- * 否则放下方；都放不下就选空间大的一侧并夹进安全区。
+ * 否则放下方；两边都放不下才选空间大的一侧，由 [panelTop] 夹进安全区
+ * —— 这一档会压到目标身上，是刻意的兜底，不是没考虑到。
  */
 const showAbove = computed<boolean>((): boolean => {
     const sysInfo = uni.getSystemInfoSync()
