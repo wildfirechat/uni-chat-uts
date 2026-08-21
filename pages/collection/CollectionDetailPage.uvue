@@ -1,0 +1,428 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('collection.detail')" :show-back="true" :right-text="submitLabel"
+            :right-text-disabled="!canSubmit" @rightTextTap="onSubmit" />
+
+        <view v-if="collection == null" class="center">
+            <text
+                :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ loading ? t('common.loading') : t('collection.load_failed') }}</text>
+        </view>
+
+        <scroll-view v-else class="body" direction="vertical">
+            <!-- 头部：标题 / 描述 / 模板 / 发起人 + 参与人数 -->
+            <view class="card" :style="{ backgroundColor: c.surface }">
+                <text class="collection-title"
+                    :style="{ color: c.textPrimary, fontSize: fontPx(FONT_XL) }">{{ title }}</text>
+                <text v-if="desc != ''" class="collection-desc"
+                    :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ desc }}</text>
+                <view v-if="template != ''" class="template-chip" :style="{ backgroundColor: c.accentSoft }">
+                    <text :style="{ color: c.accent, fontSize: fontPx(FONT_XS) }">{{ templateLabel }}</text>
+                </view>
+                <view class="creator-line">
+                    <image class="creator-portrait" :src="creatorPortrait" :style="{ backgroundColor: c.inputBg }" />
+                    <text class="creator-name"
+                        :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ creatorText }}</text>
+                    <text class="participant-count"
+                        :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ countText }}</text>
+                </view>
+            </view>
+
+            <!-- 参与清单。自己那行在接龙进行中时是输入框，其余是纯文本 -->
+            <view class="card card-tight" :style="{ backgroundColor: c.surface }">
+                <view v-for="(row, i) in rows" :key="i" class="entry-row"
+                    :style="{ backgroundColor: row.editable ? c.accentSoft : 'transparent' }">
+                    <view v-if="i > 0" class="entry-divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
+                    <view class="index-badge"
+                        :style="{ backgroundColor: row.editable ? c.accent : c.hairlineSoft, width: iconPx(22), height: iconPx(22) }">
+                        <text
+                            :style="{ color: row.editable ? c.onAccent : c.textSecondary, fontSize: fontPx(FONT_XXS) }">{{ row.indexText }}</text>
+                    </view>
+                    <input v-if="row.editable" class="entry-input" :value="editContent" :placeholder="entryPlaceholder"
+                        :placeholder-style="placeholderStyle" :maxlength="200"
+                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }" @input="onEntryInput" />
+                    <text v-else class="entry-text"
+                        :style="{ color: c.textPrimary, fontSize: fontPx(FONT_LG) }">{{ row.content }}</text>
+                </view>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 接龙详情：接龙内容 + 参与清单，自己那条可就地编辑。
+ * 对齐 flutter `collection/collection_detail_screen.dart`。
+ *
+ * **清空自己的内容再提交 = 退出接龙**（与 android 一致），所以右上角的按钮是「提交」不是「参与」。
+ * 未参与时，清单末尾会多挂一行空的编辑位（「轮到你了」）。
+ *
+ * 与 flutter 的刻意差异：
+ * - 参与内容用**单行 `<input>`**，不是 flutter 的 `maxLines: 3` 自增高文本框。uni-app x 的
+ *   textarea `auto-height` 在鸿蒙 vapor 下会和外层 scroll-view 反复重算高度打架（见
+ *   form-text-row 的注释），而参与内容本来就是「姓名-电话」这种一行的东西。
+ * - 「结束接龙」入口不放：flutter 的移动端详情页同样没有（service 里有 close，但没人调）。
+ *
+ * 详情**不回写本地消息快照** —— android / flutter 两边都不回写，参与后由服务端重新投递消息。
+ */
+import collectionServerApi from "@/api/collectionServerApi.uts";
+import { Collection } from "@/api/collectionModel.uts";
+import { CollectionEntry } from "@/wfc/messages/collectionMessageContent.uts";
+import { AuthCodeApiError } from "@/api/authCodeApiClient.uts";
+import wfc from "@/wfc/client/wfc.uts";
+import Config from "@/config.uts";
+import NavBar from "@/pages/common/NavBar.uvue";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, iconPx, FONT_LG, FONT_XL, FONT_XS, FONT_XXS } from "@/common/layoutScale.uts";
+import { showConfirmDialog, toast } from "@/common/prompt.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "CollectionDetailPage"
+})
+
+/** 服务端「你已不在该群组中」的错误码，接龙里很常见，单独给一句人话 */
+const ERROR_NOT_IN_GROUP = 3003
+
+/** 清单里的一行。序号预先编好，模板里不做拼接 */
+class EntryRow {
+    indexText = ''
+    content = ''
+    /** 自己那行 + 接龙进行中 = 可编辑（渲染成输入框，底色是 accentSoft） */
+    editable = false
+
+    constructor(indexText: string, content: string, editable: boolean) {
+        this.indexText = indexText
+        this.content = content
+        this.editable = editable
+    }
+}
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const collectionId = ref<number>(0)
+const groupId = ref<string>('')
+const collection = ref<Collection | null>(null)
+const loading = ref<boolean>(true)
+/** 输入框里的当前值 */
+const editContent = ref<string>('')
+/** 拉取到的自己那条参与内容，用来判断「改了没有」；没参与时是 '' */
+const originalContent = ref<string>('')
+
+const currentUserId = wfc.getUserId()
+
+const placeholderStyle = computed<string>((): string => 'color: ' + colors().textTertiary)
+
+const title = computed<string>((): string => collection.value?.title ?? '')
+const desc = computed<string>((): string => collection.value?.desc ?? '')
+const template = computed<string>((): string => collection.value?.template ?? '')
+const templateLabel = computed<string>((): string => t('collection.template_label') + template.value)
+
+/** 自己那条参与记录（软删的不算），没参与是 null */
+const myEntry = computed<CollectionEntry | null>((): CollectionEntry | null => {
+    const col = collection.value
+    return col == null ? null : col!.getEntryForUser(currentUserId)
+})
+
+const hasJoined = computed<boolean>((): boolean => myEntry.value != null)
+
+const isJoinable = computed<boolean>((): boolean => {
+    const col = collection.value
+    return col != null && col!.isJoinable()
+})
+
+const creatorPortrait = computed<string>((): string => {
+    const creatorId = collection.value?.creatorId ?? ''
+    if (creatorId == '') {
+        return Config.DEFAULT_PORTRAIT_URL
+    }
+    const portrait = wfc.getUserInfo(creatorId, false).portrait
+    return portrait == '' ? Config.DEFAULT_PORTRAIT_URL : portrait
+})
+
+const creatorText = computed<string>((): string => {
+    const creatorId = collection.value?.creatorId ?? ''
+    if (creatorId == '') {
+        return ''
+    }
+    const name = wfc.getUserDisplayName(creatorId)
+    return t1('collection.creator_suffix', name == '' ? creatorId : name)
+})
+
+const countText = computed<string>((): string => {
+    const col = collection.value
+    return (col == null ? 0 : col!.participantCount) + t('collection.people_count')
+})
+
+const entryPlaceholder = computed<string>((): string => {
+    return template.value != '' ? template.value : t('collection.join_hint')
+})
+
+/** 参与清单；未参与且接龙进行中时，末尾挂一行空的编辑位 */
+const rows = computed<EntryRow[]>((): EntryRow[] => {
+    const col = collection.value
+    if (col == null) {
+        return [] as EntryRow[]
+    }
+    const joinable = col!.isJoinable()
+    const entries: CollectionEntry[] = col!.validEntries()
+    const list: EntryRow[] = []
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i]
+        const mine = entry.userId == currentUserId
+        list.push(new EntryRow('' + (i + 1), entry.content, mine && joinable))
+    }
+    if (joinable && !hasJoined.value) {
+        list.push(new EntryRow('' + (entries.length + 1), '', true))
+    }
+    return list
+})
+
+/** 接龙不可参与时右上角不出现操作按钮（NavBar 的 rightText 为空即隐藏） */
+const submitLabel = computed<string>((): string => isJoinable.value ? t('collection.submit') : '')
+
+/**
+ * 未参与：有内容才能提交；已参与：内容变了才能提交（清空 = 退出接龙）。
+ * 与 flutter 的 `_canSubmit` 一致。
+ */
+const canSubmit = computed<boolean>((): boolean => {
+    if (!isJoinable.value) {
+        return false
+    }
+    const current = editContent.value.trim()
+    if (hasJoined.value) {
+        // 清空 = 退出接龙，所以原本有内容时「清空」也算一次可提交的改动
+        return current == '' ? originalContent.value != '' : current != originalContent.value
+    }
+    return current != ''
+})
+
+const onEntryInput = (e: UniInputEvent) => {
+    editContent.value = e.detail.value
+}
+
+/**
+ * 3003（已不在该群）单独给一句人话 —— 这个错在接龙里很常见（退群后消息还留在会话里）。
+ * 其余一律用调用方给的兜底文案，不像 flutter 那样把原始异常字符串拼进 toast。
+ */
+const toastError = (err: any | null, fallback: string) => {
+    if (err != null && err instanceof AuthCodeApiError && (err as AuthCodeApiError).errorCode == ERROR_NOT_IN_GROUP) {
+        toast(t('collection.not_in_group'))
+        return
+    }
+    toast(fallback)
+}
+
+const fetchDetail = () => {
+    if (!collectionServerApi.isAvailable()) {
+        loading.value = false
+        toast(t('collection.service_not_configured'))
+        return
+    }
+    loading.value = true
+    collectionServerApi.getCollection(collectionId.value, groupId.value)
+        .then((result: Collection): void => {
+            loading.value = false
+            collection.value = result
+            const mine = result.getEntryForUser(currentUserId)
+            const content = mine == null ? '' : mine!.content
+            originalContent.value = content
+            editContent.value = content
+        })
+        .catch((err: any | null): void => {
+            loading.value = false
+            console.log('get collection fail', err)
+            toastError(err, t('collection.load_failed'))
+        })
+}
+
+onLoad((options: OnLoadOptions) => {
+    collectionId.value = parseInt(options['collectionId'] ?? '0')
+    groupId.value = options['groupId'] ?? ''
+    fetchDetail()
+})
+
+/** 参与与修改是同一个接口，只有提示语不同 */
+const submitEntry = (content: string, successMsg: string, failedMsg: string) => {
+    collectionServerApi.join(collectionId.value, groupId.value, content)
+        .then((_): void => {
+            toast(successMsg)
+            uni.navigateBack({
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+        })
+        .catch((err: any | null): void => {
+            console.log('join collection fail', err)
+            toastError(err, failedMsg)
+        })
+}
+
+const doDeleteEntry = () => {
+    collectionServerApi.deleteEntry(collectionId.value, groupId.value)
+        .then((_): void => {
+            toast(t('collection.delete_success'))
+            fetchDetail()
+        })
+        .catch((err: any | null): void => {
+            console.log('delete collection entry fail', err)
+            toastError(err, t('collection.delete_failed'))
+        })
+}
+
+const onSubmit = () => {
+    if (!canSubmit.value) {
+        return
+    }
+    if (!collectionServerApi.isAvailable()) {
+        toast(t('collection.service_not_configured'))
+        return
+    }
+
+    const content = editContent.value.trim()
+
+    if (hasJoined.value) {
+        if (content == '') {
+            // 清空 = 退出接龙，删之前先问一句
+            showConfirmDialog(t('common.confirm'), t('collection.confirm_delete_entry'), true, () => {
+                doDeleteEntry()
+            })
+        } else {
+            submitEntry(content, t('collection.update_success'), t('collection.update_failed'))
+        }
+        return
+    }
+
+    if (content == '') {
+        toast(t('collection.join_hint'))
+        return
+    }
+    submitEntry(content, t('collection.join_success'), t('collection.join_failed'))
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.center {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.body {
+    width: 100%;
+    flex: 1;
+}
+
+.card {
+    margin: 16px 16px 0 16px;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 清单卡片自己给行留内边距，卡片本身不再留 */
+.card-tight {
+    margin-top: 12px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.collection-title {
+    font-weight: 600;
+}
+
+.collection-desc {
+    margin-top: 6px;
+}
+
+/* 模板徽标：宽度只包住文字，不能撑满整行 */
+.template-chip {
+    align-self: flex-start;
+    margin-top: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.creator-line {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-top: 14px;
+}
+
+.creator-portrait {
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+/* 名字吃掉剩余宽度，人数定宽在右 —— 不用占位 view，见 option-item 的注释 */
+.creator-name {
+    flex: 1;
+    margin-left: 8px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.participant-count {
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.entry-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 12px;
+    position: relative;
+}
+
+.entry-divider {
+    position: absolute;
+    left: 12px;
+    right: 0;
+    top: 0;
+    height: 0.5px;
+}
+
+.index-badge {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border-radius: 100px;
+    flex-shrink: 0;
+    margin-right: 10px;
+}
+
+.entry-input {
+    flex: 1;
+    background-color: transparent;
+    padding: 0;
+}
+
+.entry-text {
+    flex: 1;
+}
+
+.tail {
+    width: 100%;
+    height: 24px;
+}
+</style>

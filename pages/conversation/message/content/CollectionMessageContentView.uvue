@@ -1,0 +1,214 @@
+<template>
+    <view class="collection-content-container" @tap="openDetail"
+        :style="{ backgroundColor: isOut ? c.bubbleSent : c.bubbleReceived }">
+        <view class="head">
+            <text class="icomoon collection-icon" :style="{ fontSize: fontPx(16), color: onBubble }">&#xf391;</text>
+            <text class="collection-title" :style="{ fontSize: fontPx(15), color: onBubble }">{{ title }}</text>
+            <text class="collection-count" :style="{ fontSize: fontPx(12), color: onBubbleWeak }">{{ countText }}</text>
+        </view>
+
+        <text v-if="desc != ''" class="collection-desc"
+            :style="{ fontSize: fontPx(12), color: onBubbleWeak }">{{ desc }}</text>
+
+        <view class="divider" :style="{ backgroundColor: onBubble + '26' }"></view>
+
+        <text v-if="previewLines.length == 0" class="collection-empty"
+            :style="{ fontSize: fontPx(12), color: onBubbleWeak }">{{ t('collection.empty_hint') }}</text>
+        <view v-else class="preview">
+            <text v-for="(line, i) in previewLines" :key="i" class="preview-line"
+                :style="{ fontSize: fontPx(12), color: onBubble }">{{ line }}</text>
+            <text v-if="moreText != ''" class="preview-more"
+                :style="{ fontSize: fontPx(12), color: onBubbleWeak }">{{ moreText }}</text>
+        </view>
+
+        <view class="divider" :style="{ backgroundColor: onBubble + '26' }"></view>
+
+        <text class="collection-action" :style="{ fontSize: fontPx(12), color: onBubble }">{{ actionText }}</text>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 接龙消息气泡。对齐 flutter `conversation/cell_builder/collection_cell_builder.dart`。
+ *
+ * 与投票气泡同一条规则：气泡内一律继承气泡的前景色（[onBubble]），层级用透明度表达、
+ * 不用色相 —— 深色下发送气泡是实心蓝，任何固定的灰或主色都会糊到读不出来。
+ *
+ * 气泡里的参与清单是**服务端投递那一刻的快照**，最多预览 5 条，点进详情页拉实时数据。
+ *
+ * class 类型的 props 在 android 上编译成 Any，模板里取不到成员（更别说调方法），
+ * 所以这里把要显示的东西全部在 script 里算成 string / string[] 再暴露给模板。
+ */
+import Message from "@/wfc/messages/message.uts";
+import CollectionMessageContent from "@/wfc/messages/collectionMessageContent.uts";
+import collectionServerApi from "@/api/collectionServerApi.uts";
+
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+import { t, t1 } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "CollectionMessageContentView",
+    styleIsolation: 'app'
+})
+
+/** 与 flutter 的 maxPreviewEntries 一致 */
+const MAX_PREVIEW_ENTRIES = 5
+
+const c = computed<AppColors>((): AppColors => colors())
+const props = defineProps<{
+    message: Message
+}>()
+
+const isOut = computed<boolean>((): boolean => (props.message as Message).direction == 0)
+
+const content = computed<CollectionMessageContent>((): CollectionMessageContent => {
+    const message = props.message as Message
+    return message.messageContent as CollectionMessageContent
+})
+
+const onBubble = computed<string>((): string => {
+    const message = props.message as Message
+    return message.direction == 0 ? colors().bubbleSentText : colors().bubbleReceivedText
+})
+
+/** 次要信息：同一个前景色压到 70% 透明度，不另起色相 */
+const onBubbleWeak = computed<string>((): string => onBubble.value + 'B3')
+
+const title = computed<string>((): string => content.value.title)
+const desc = computed<string>((): string => content.value.desc)
+
+const countText = computed<string>((): string => {
+    return content.value.participantCount() + t('collection.people_count')
+})
+
+/** 前 5 条参与内容，编好序号直接给模板 —— 模板里不做取值/拼接 */
+const previewLines = computed<string[]>((): string[] => {
+    const entries = content.value.validEntries()
+    const lines: string[] = []
+    const count = entries.length < MAX_PREVIEW_ENTRIES ? entries.length : MAX_PREVIEW_ENTRIES
+    for (let i = 0; i < count; i++) {
+        lines.push((i + 1) + '. ' + entries[i].content)
+    }
+    return lines
+})
+
+const moreText = computed<string>((): string => {
+    const remaining = content.value.participantCount() - previewLines.value.length
+    return remaining > 0 ? t1('collection.more_participants', '' + remaining) : ''
+})
+
+const actionText = computed<string>((): string => {
+    const status = content.value.status
+    if (status == 1) {
+        return t('collection.status_ended')
+    }
+    if (status == 2) {
+        return t('collection.status_cancelled')
+    }
+    return t('collection.join_action')
+})
+
+const openDetail = () => {
+    // 服务没配就点不动，和 flutter 的 `if (!CollectionService.isAvailable) return;` 一致
+    if (!collectionServerApi.isAvailable()) {
+        return
+    }
+    const collectionId = parseInt(content.value.collectionId)
+    if (isNaN(collectionId) || collectionId <= 0) {
+        return
+    }
+    // groupId 取会话 target 而不是消息体里的 groupId：与 flutter 一致，
+    // 消息被转发到别的群时，接口要的是「当前这个群」
+    const message = props.message as Message
+    uni.navigateTo({
+        url: '/pages/collection/CollectionDetailPage?collectionId=' + collectionId
+            + '&groupId=' + message.conversation.target,
+        fail: (err) => {
+            console.log('nav to CollectionDetailPage err', err)
+        }
+    } as NavigateToOptions)
+}
+</script>
+
+<style scoped>
+.collection-content-container {
+    width: 220px;
+    margin: 0 10px;
+    padding: 12px;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+.head {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.icomoon {
+    font-family: "icomoon";
+}
+
+.collection-icon {
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+
+/* 标题吃掉剩余宽度；两行截断用 lines 在鸿蒙 vapor 下无效，只能单行 nowrap */
+.collection-title {
+    flex: 1;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.collection-count {
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.collection-desc {
+    margin-top: 4px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* 分隔线是气泡前景色压到 15% 透明度（对齐 flutter 的 Opacity(0.15)），
+ * 不另起色相 —— 深色下发送气泡是实心蓝，固定的灰会糊掉 */
+.divider {
+    width: 100%;
+    height: 0.5px;
+    margin: 8px 0;
+}
+
+.collection-empty {
+    width: 100%;
+}
+
+.preview {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-line {
+    width: 100%;
+    padding: 2px 0;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.preview-more {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.collection-action {
+    font-weight: 500;
+}
+</style>

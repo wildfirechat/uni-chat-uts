@@ -1,0 +1,185 @@
+import MessageContent from "./messageContent.uts";
+import MessageContentType from "./messageContentType.uts";
+import MessagePayload from './messagePayload.uts';
+import { utf8_to_b64, b64_to_utf8 } from '../util/base64.uts'
+
+/**
+ * 接龙的一条参与记录。对齐 android `client/.../CollectionEntry.java`。
+ *
+ * 服务端返回的主键字段名是 `id`，消息体里（被别的端 encode 过的）可能是 `entryId`，两个都认。
+ */
+export class CollectionEntry {
+    entryId = 0;
+    collectionId = 0;
+    userId = '';
+    /** 参与内容，就是用户按模板填的那行字 */
+    content = '';
+    createdAt = 0;
+    updatedAt = 0;
+    /** 0=未删除，1=已删除。退出接龙是软删，列表要自己过滤 */
+    deleted = 0;
+
+    static fromJson(o: UTSJSONObject): CollectionEntry {
+        const entry = new CollectionEntry();
+        entry.entryId = o.getNumber('id') ?? o.getNumber('entryId') ?? 0;
+        entry.collectionId = o.getNumber('collectionId') ?? 0;
+        entry.userId = o.getString('userId') ?? '';
+        entry.content = o.getString('content') ?? '';
+        entry.createdAt = o.getNumber('createdAt') ?? 0;
+        entry.updatedAt = o.getNumber('updatedAt') ?? 0;
+        entry.deleted = o.getNumber('deleted') ?? 0;
+        return entry;
+    }
+
+    /**
+     * 只写 `userId` / `content` / `createdAt` 三个字段 —— 对齐 android `CollectionEntry.toJson()`
+     * 注释里说的「只包含与 iOS 兼容的字段」。flutter 那边写全了七个，按 §六 的规矩以 android 为准。
+     */
+    toJson(): UTSJSONObject {
+        return {
+            userId: this.userId,
+            content: this.content,
+            createdAt: this.createdAt
+        } as UTSJSONObject;
+    }
+}
+
+/**
+ * 群接龙消息。对齐 android `CollectionMessageContent.java`（消息类型 17）。
+ *
+ * 这条消息**不是客户端发的** —— 客户端只调 `POST /api/collections` 创建接龙，由接龙服务端
+ * 往群里投递这条消息。所以 [encode] 实际只在转发/收藏这类场景走到。
+ *
+ * 报文形状：`title` 放 searchableContent（供搜索），其余字段 JSON 编码后放 binaryContent。
+ * android 与 flutter 两边一致，这里照抄 android。
+ *
+ * 消息体是**快照**：`entries` / `status` 是服务端投递那一刻的值。详情页每次进入都重新拉
+ * `/detail`，不回写本地消息（与 android / flutter 一致）。
+ */
+export default class CollectionMessageContent extends MessageContent {
+    /** 接龙 ID。消息里是字符串，接龙服务的接口里是整数。 */
+    collectionId = '';
+    groupId = '';
+    creatorId = '';
+    title = '';
+    desc = '';
+    /** 参与模板，如「姓名-电话」。参与时作为输入框的占位提示 */
+    template = '';
+    /** 过期类型：0=无限期，1=有限期 */
+    expireType = 0;
+    /** 过期时间，毫秒时间戳 */
+    expireAt = 0;
+    /** 最大参与人数，0 表示无限制 */
+    maxParticipants = 0;
+    /** 状态：0=进行中，1=已结束，2=已取消 */
+    status = 0;
+    createdAt = 0;
+    updatedAt = 0;
+    entries: CollectionEntry[] = [];
+
+    constructor() {
+        super(MessageContentType.Collection);
+    }
+
+    override encode(): MessagePayload {
+        const payload = super.encode();
+        payload.searchableContent = this.title;
+
+        const obj = {
+            collectionId: this.collectionId,
+            groupId: this.groupId,
+            creatorId: this.creatorId,
+            desc: this.desc,
+            template: this.template,
+            expireType: this.expireType,
+            expireAt: this.expireAt,
+            maxParticipants: this.maxParticipants,
+            status: this.status,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt
+        } as UTSJSONObject;
+        // 与 android 一致：没有参与记录时不写这个字段
+        if (this.entries.length > 0) {
+            const entryJsons: UTSJSONObject[] = [];
+            for (let i = 0; i < this.entries.length; i++) {
+                entryJsons.push(this.entries[i].toJson());
+            }
+            obj['entries'] = entryJsons;
+        }
+
+        payload.binaryContent = utf8_to_b64(JSON.stringify(obj)!);
+        return payload;
+    }
+
+    override decode(payload: MessagePayload): void {
+        super.decode(payload);
+        this.title = payload.searchableContent;
+
+        const obj = JSON.parseObject(b64_to_utf8(payload.binaryContent));
+        if (obj == null) {
+            return;
+        }
+        this.collectionId = obj.getString('collectionId') ?? '';
+        this.groupId = obj.getString('groupId') ?? '';
+        this.creatorId = obj.getString('creatorId') ?? '';
+        this.desc = obj.getString('desc') ?? '';
+        this.template = obj.getString('template') ?? '';
+        this.expireType = obj.getNumber('expireType') ?? 0;
+        this.expireAt = obj.getNumber('expireAt') ?? 0;
+        this.maxParticipants = obj.getNumber('maxParticipants') ?? 0;
+        this.status = obj.getNumber('status') ?? 0;
+        this.createdAt = obj.getNumber('createdAt') ?? 0;
+        this.updatedAt = obj.getNumber('updatedAt') ?? 0;
+
+        const entries: CollectionEntry[] = [];
+        const value = obj['entries'];
+        if (value != null && value instanceof Array) {
+            const arr = value as Array<any>;
+            for (let i = 0; i < arr.length; i++) {
+                const e = arr[i];
+                if (e instanceof UTSJSONObject) {
+                    entries.push(CollectionEntry.fromJson(e as UTSJSONObject));
+                }
+            }
+        }
+        this.entries = entries;
+    }
+
+    override digest(message: any | null): string {
+        return '[接龙]' + this.title;
+    }
+
+    /** 参与人数，排除软删的记录 */
+    participantCount(): number {
+        let count = 0;
+        for (let i = 0; i < this.entries.length; i++) {
+            if (this.entries[i].deleted == 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** 有效的参与记录 */
+    validEntries(): CollectionEntry[] {
+        const list: CollectionEntry[] = [];
+        for (let i = 0; i < this.entries.length; i++) {
+            if (this.entries[i].deleted == 0) {
+                list.push(this.entries[i]);
+            }
+        }
+        return list;
+    }
+
+    /** 到了截止时间但服务端还没把 status 改成 1 时，本地也算已结束 */
+    isExpired(): boolean {
+        if (this.expireType == 0) {
+            return false;
+        }
+        return this.expireAt > 0 && this.expireAt < new Date().getTime();
+    }
+
+    isActive(): boolean {
+        return this.status == 0 && !this.isExpired();
+    }
+}

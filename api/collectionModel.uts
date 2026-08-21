@@ -1,0 +1,129 @@
+import { CollectionEntry } from "../wfc/messages/collectionMessageContent.uts";
+
+/**
+ * 群接龙服务的数据模型。对齐 flutter `chat/lib/collection/collection_model.dart`。
+ *
+ * 与消息里的 [CollectionMessageContent] 的关系：消息体是**服务端投递那一刻的快照**，
+ * 这里是**服务端的实时状态**（完整参与清单 + 参与人数）。详情页每次进入都重新拉一次，
+ * 不回写消息快照（与 android / flutter 一致）。
+ *
+ * [CollectionEntry] 直接复用消息层那份（flutter 也是从 imclient 导出的），避免两套同名模型。
+ */
+export class Collection {
+    collectionId = 0
+    groupId = ''
+    creatorId = ''
+    title = ''
+    desc = ''
+    /** 参与模板，如「姓名-电话」 */
+    template = ''
+    /** 过期类型：0=无限期，1=有限期 */
+    expireType = 0
+    /** 过期时间，毫秒时间戳 */
+    expireAt = 0
+    /** 最大参与人数，0 表示无限制 */
+    maxParticipants = 0
+    /** 状态：0=进行中，1=已结束，2=已取消 */
+    status = 0
+    createdAt = 0
+    updatedAt = 0
+    entries: CollectionEntry[] = []
+    /** 参与人数，服务端算好的统计值 */
+    participantCount = 0
+
+    /** 有效的参与记录（排除软删的） */
+    validEntries(): CollectionEntry[] {
+        const list: CollectionEntry[] = []
+        for (let i = 0; i < this.entries.length; i++) {
+            if (this.entries[i].deleted == 0) {
+                list.push(this.entries[i])
+            }
+        }
+        return list
+    }
+
+    /** 本地按清单算的参与人数。服务端的 participantCount 缺失时兜底 */
+    calculateParticipantCount(): number {
+        return this.validEntries().length
+    }
+
+    /** 到了截止时间但服务端还没把 status 改掉时，本地也算已过期 */
+    isExpired(): boolean {
+        if (this.expireType == 0) {
+            return false
+        }
+        return this.expireAt > 0 && this.expireAt < new Date().getTime()
+    }
+
+    /** 已达最大参与人数 */
+    isFull(): boolean {
+        if (this.maxParticipants <= 0) {
+            return false
+        }
+        return this.calculateParticipantCount() >= this.maxParticipants
+    }
+
+    /** 还能不能参与：进行中 + 没过期 + 没满 */
+    isJoinable(): boolean {
+        return this.status == 0 && !this.isExpired() && !this.isFull()
+    }
+
+    /** 当前用户的参与记录，没参与返回 null */
+    getEntryForUser(userId: string): CollectionEntry | null {
+        const list = this.validEntries()
+        for (let i = 0; i < list.length; i++) {
+            if (list[i].userId == userId) {
+                return list[i]
+            }
+        }
+        return null
+    }
+}
+
+/**
+ * 把 any 收成 UTSJSONObject 数组。响应里的数组元素在各端可能不是 UTSJSONObject 实例，
+ * 逐个判类型，与 pollModel 同一处理。
+ */
+function jsonObjectList(value: any | null): UTSJSONObject[] {
+    const list: UTSJSONObject[] = []
+    if (value != null && value instanceof Array) {
+        const arr = value as Array<any>
+        for (let i = 0; i < arr.length; i++) {
+            const o = arr[i]
+            if (o instanceof UTSJSONObject) {
+                list.push(o as UTSJSONObject)
+            }
+        }
+    }
+    return list
+}
+
+export function collectionFromJson(o: UTSJSONObject): Collection {
+    const collection = new Collection()
+    // 服务端列表接口返回 id，详情接口返回 collectionId，两个都认（与 flutter 一致）
+    collection.collectionId = o.getNumber('id') ?? o.getNumber('collectionId') ?? 0
+    collection.groupId = o.getString('groupId') ?? ''
+    collection.creatorId = o.getString('creatorId') ?? ''
+    collection.title = o.getString('title') ?? ''
+    collection.desc = o.getString('description') ?? o.getString('desc') ?? ''
+    collection.template = o.getString('template') ?? ''
+    collection.expireType = o.getNumber('expireType') ?? 0
+    collection.expireAt = o.getNumber('expireAt') ?? 0
+    collection.maxParticipants = o.getNumber('maxParticipants') ?? 0
+    collection.status = o.getNumber('status') ?? 0
+    collection.createdAt = o.getNumber('createdAt') ?? 0
+    collection.updatedAt = o.getNumber('updatedAt') ?? 0
+
+    const entries: CollectionEntry[] = []
+    const entryJsons = jsonObjectList(o['entries'])
+    for (let i = 0; i < entryJsons.length; i++) {
+        entries.push(CollectionEntry.fromJson(entryJsons[i]))
+    }
+    collection.entries = entries
+
+    // 服务端不下发统计值时，按清单自己算 —— 头部那行「N人」不能是 0
+    const count = o.getNumber('participantCount')
+    collection.participantCount = count ?? collection.calculateParticipantCount()
+
+    return collection
+}

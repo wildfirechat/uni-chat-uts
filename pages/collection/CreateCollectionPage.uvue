@@ -1,0 +1,242 @@
+<template>
+    <view class="page" :style="{ backgroundColor: c.primaryBackground }">
+        <NavBar :title="t('collection.create')" :show-back="true" :right-text="t('common.done')"
+            :right-text-disabled="!canSubmit" @rightTextTap="createCollection" />
+
+        <scroll-view class="body" direction="vertical">
+            <view class="section">
+                <form-card :radius="8">
+                    <form-text-row :value="title" :placeholder="t('collection.title_hint')" :maxlength="60"
+                        @input="onTitleInput" />
+                    <form-text-row :value="desc" :placeholder="t('collection.desc_hint')" :multiline="true"
+                        :font-size="FONT_BASE" :maxlength="200" :show-bottom-divider="false" @input="onDescInput" />
+                </form-card>
+            </view>
+
+            <text class="section-label"
+                :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ t('collection.template') }}</text>
+            <view class="section section-tight">
+                <form-card :radius="8">
+                    <form-text-row :value="template" :placeholder="t('collection.template_example')" :maxlength="60"
+                        :font-size="FONT_BASE" :show-bottom-divider="false" @input="onTemplateInput" />
+                </form-card>
+            </view>
+            <text class="section-hint"
+                :style="{ color: c.textTertiary, fontSize: fontPx(FONT_XS) }">{{ t('collection.template_hint') }}</text>
+
+            <view class="section">
+                <form-card :radius="8">
+                    <!-- flutter 是「先选日期弹窗、再选时间弹窗」两步；uni 侧没法在第一个 picker 关闭后
+                         自动拉起第二个，改成一个三列 picker 一次选完，第一列的「不设置」等价于清空截止时间 -->
+                    <picker mode="multiSelector" :range="endTimeRange" :value="endTimeIndexes"
+                        @change="onEndTimeChange">
+                        <option-item :title="t('collection.end_time')" :desc="endTimeDesc"
+                            :show-bottom-divider="false" />
+                    </picker>
+                </form-card>
+            </view>
+
+            <view class="tail"></view>
+        </scroll-view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 发起接龙。对齐 flutter `collection/create_collection_screen.dart`（移动端整页表单 + 右上角「完成」）。
+ *
+ * 创建成功后**不需要自己发消息** —— 接龙服务端会往群里投一条 type=17 的接龙消息，
+ * 所以这里只 `POST /api/collections` 然后关页面。
+ *
+ * 与 flutter 的刻意差异：截止时间用一个三列（日期 / 时 / 分）的 multiSelector，
+ * 第一列的「不设置」用来清掉截止时间 —— 与创建投票页同一套控件，理由见 CreatePollPage 的注释。
+ *
+ * 「最大参与人数」flutter 移动端的创建页没有这一项（service 支持，但表单固定传 0），这里同样不放。
+ */
+import collectionServerApi from "@/api/collectionServerApi.uts";
+import NavBar from "@/pages/common/NavBar.uvue";
+import { colors, AppColors } from "@/common/theme.uts";
+import { fontPx, FONT_BASE, FONT_XS } from "@/common/layoutScale.uts";
+import { toast } from "@/common/prompt.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "CreateCollectionPage"
+})
+
+/** 截止时间最远可选一年，与 flutter 的 lastDate 一致 */
+const MAX_END_DAYS = 365
+/** 不限参与人数。flutter 移动端创建页也是固定传 0 */
+const NO_PARTICIPANT_LIMIT = 0
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const groupId = ref<string>('')
+const title = ref<string>('')
+const desc = ref<string>('')
+const template = ref<string>('')
+/** 毫秒时间戳，0 = 无截止时间 */
+const expireAt = ref<number>(0)
+const creating = ref<boolean>(false)
+
+onLoad((options: OnLoadOptions) => {
+    groupId.value = options['groupId'] ?? ''
+})
+
+function pad2(n: number): string {
+    return n < 10 ? '0' + n : '' + n
+}
+
+const canSubmit = computed<boolean>((): boolean => {
+    return !creating.value && title.value.trim() != ''
+})
+
+const endTimeDesc = computed<string>((): string => {
+    const ts = expireAt.value
+    if (ts <= 0) {
+        return t('collection.no_end_time')
+    }
+    const d = new Date(ts)
+    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+})
+
+/**
+ * 三列 picker 的候选值。日期列第 0 项是「不设置」，其后是今天起的 365 天，
+ * 所以第 n 项（n >= 1）对应今天 + (n - 1) 天。
+ */
+const endTimeRange = computed<string[][]>((): string[][] => {
+    const days: string[] = [t('collection.not_set')]
+    const base = new Date()
+    base.setHours(0, 0, 0, 0)
+    const baseTime = base.getTime()
+    for (let i = 0; i <= MAX_END_DAYS; i++) {
+        const d = new Date(baseTime + i * 86400000)
+        days.push(d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()))
+    }
+    const hours: string[] = []
+    for (let h = 0; h < 24; h++) {
+        hours.push(pad2(h))
+    }
+    const minutes: string[] = []
+    for (let m = 0; m < 60; m++) {
+        minutes.push(pad2(m))
+    }
+    return [days, hours, minutes]
+})
+
+/** picker 打开时定位到当前值；没设过截止时间就停在「不设置」+ 18:00 */
+const endTimeIndexes = computed<number[]>((): number[] => {
+    const ts = expireAt.value
+    if (ts <= 0) {
+        return [0, 18, 0]
+    }
+    const d = new Date(ts)
+    const dayStart = new Date(ts)
+    dayStart.setHours(0, 0, 0, 0)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const offset = Math.round((dayStart.getTime() - today.getTime()) / 86400000)
+    const dayIndex = offset < 0 ? 1 : offset + 1
+    return [dayIndex, d.getHours(), d.getMinutes()]
+})
+
+const onTitleInput = (value: string) => {
+    title.value = value
+}
+
+const onDescInput = (value: string) => {
+    desc.value = value
+}
+
+const onTemplateInput = (value: string) => {
+    template.value = value
+}
+
+const onEndTimeChange = (e: UniPickerChangeEvent) => {
+    const picked = e.detail.value as number[]
+    if (picked.length < 3 || picked[0] == 0) {
+        expireAt.value = 0
+        return
+    }
+    const base = new Date()
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + picked[0] - 1)
+    d.setHours(picked[1], picked[2], 0, 0)
+    expireAt.value = d.getTime()
+}
+
+const createCollection = () => {
+    if (!canSubmit.value) {
+        return
+    }
+    if (!collectionServerApi.isAvailable()) {
+        toast(t('collection.service_not_configured'))
+        return
+    }
+
+    let expireType = 0
+    let expire = 0
+    if (expireAt.value > 0) {
+        // 三列 picker 能选到今天的过去时刻，这里和 flutter 一样再挡一道
+        if (expireAt.value < new Date().getTime()) {
+            toast(t('collection.expire_time_invalid'))
+            return
+        }
+        expireType = 1
+        expire = expireAt.value
+    }
+
+    creating.value = true
+    collectionServerApi.create(groupId.value, title.value.trim(), desc.value.trim(), template.value.trim(),
+        expireType, expire, NO_PARTICIPANT_LIMIT)
+        .then((_): void => {
+            creating.value = false
+            toast(t('collection.create_success'))
+            uni.navigateBack({
+                fail: (err) => {
+                    console.log('nav back err', err)
+                }
+            } as NavigateBackOptions)
+        })
+        .catch((err: any | null): void => {
+            creating.value = false
+            console.log('create collection fail', err)
+            toast(t('collection.create_failed'))
+        })
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.body {
+    width: 100%;
+    flex: 1;
+}
+
+.section {
+    margin: 16px 16px 0 16px;
+}
+
+/* 分组标题下面的卡片贴着标题走，不再留 16px */
+.section-tight {
+    margin-top: 0;
+}
+
+.section-label {
+    margin: 16px 20px 8px 20px;
+}
+
+.section-hint {
+    margin: 6px 20px 0 20px;
+}
+
+.tail {
+    width: 100%;
+    height: 24px;
+}
+</style>

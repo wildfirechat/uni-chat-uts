@@ -201,6 +201,24 @@
             }
         },
         {
+            // 右上角「完成」按钮要自定义导航栏
+            "path": "pages/collection/CreateCollectionPage",
+            "style": {
+                "navigationBarTitleText": "发起接龙",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
+            // 右上角「提交」按钮要自定义导航栏
+            "path": "pages/collection/CollectionDetailPage",
+            "style": {
+                "navigationBarTitleText": "接龙详情",
+                "navigationStyle": "custom",
+                "disableScroll": true
+            }
+        },
+        {
             "path": "pages/poll/PollHomePage",
             "style": {
                 "navigationBarTitleText": "群投票"

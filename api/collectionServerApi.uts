@@ -1,0 +1,95 @@
+import Config from "../config.uts";
+import { redirectMediaUrl } from "../common/mediaUrlRedirector.uts";
+import { AuthCodeApiClient, AuthCodeApiError } from "./authCodeApiClient.uts";
+import { Collection, collectionFromJson } from "./collectionModel.uts";
+
+/**
+ * 群接龙服务。对齐 flutter `chat/lib/collection/collection_service.dart`。
+ *
+ * 独立后端（[Config.COLLECTION_SERVER]），不走 IM 协议栈、不需要动原生插件；
+ * 鉴权走 authCode（appId = 'collection'，appType = 2），见 [AuthCodeApiClient]。
+ *
+ * 创建接龙后**客户端不发消息** —— 接龙服务端会自己往群里投一条 type=17 的接龙消息。
+ */
+export class CollectionServerApi {
+    private client = new AuthCodeApiClient('collection', 2, (): string => redirectMediaUrl(Config.COLLECTION_SERVER))
+
+    /** 接龙服务是否配置。没配时输入框扩展面板不显示「群接龙」，消息气泡也不可点。 */
+    isAvailable(): boolean {
+        return this.client.isAvailable()
+    }
+
+    /** 创建接龙。`POST /api/collections` */
+    create(groupId: string, title: string, desc: string, template: string,
+        expireType: number, expireAt: number, maxParticipants: number): Promise<Collection> {
+        const params = {
+            groupId: groupId,
+            title: title,
+            expireType: expireType,
+            maxParticipants: maxParticipants
+        } as UTSJSONObject
+        // 与 flutter 一致：空值不写字段，有限期才带 expireAt
+        if (desc != '') {
+            params['description'] = desc
+        }
+        if (template != '') {
+            params['template'] = template
+        }
+        if (expireType == 1) {
+            params['expireAt'] = expireAt
+        }
+        return this._collection('/api/collections', params)
+    }
+
+    /** 接龙详情（含完整参与清单）。`POST /api/collections/{collectionId}/detail` */
+    getCollection(collectionId: number, groupId: string): Promise<Collection> {
+        return this._collection('/api/collections/' + collectionId + '/detail', { groupId: groupId } as UTSJSONObject)
+    }
+
+    /**
+     * 参与接龙或更新自己的参与内容 —— 两者是同一个接口，只有提示语不同。
+     * `POST /api/collections/{collectionId}/join`
+     */
+    join(collectionId: number, groupId: string, content: string): Promise<UTSJSONObject | null> {
+        return this.client.post('/api/collections/' + collectionId + '/join',
+            { groupId: groupId, content: content } as UTSJSONObject)
+    }
+
+    /** 删除自己的参与记录（= 退出接龙）。`POST /api/collections/{collectionId}/delete` */
+    deleteEntry(collectionId: number, groupId: string): Promise<UTSJSONObject | null> {
+        return this.client.post('/api/collections/' + collectionId + '/delete',
+            { groupId: groupId } as UTSJSONObject)
+    }
+
+    /**
+     * 关闭接龙（仅创建者）。`POST /api/collections/{collectionId}/close`
+     *
+     * ⚠️ 目前**没有 UI 入口** —— flutter 的移动端也只在 service 里留了这个方法，详情页没有
+     * 「结束接龙」按钮（按 §一 的规矩，uni 侧同样不放）。保留方法是为了让 API 层与服务端
+     * 接口对齐，将来要加管理入口时不用再回来补。
+     */
+    close(collectionId: number, groupId: string): Promise<UTSJSONObject | null> {
+        return this.client.post('/api/collections/' + collectionId + '/close',
+            { groupId: groupId } as UTSJSONObject)
+    }
+
+    private _collection(path: string, params: UTSJSONObject): Promise<Collection> {
+        return new Promise<Collection>((resolve, reject) => {
+            this.client.post(path, params)
+                .then((body: UTSJSONObject | null): void => {
+                    const data = body?.getJSON('data')
+                    if (data == null) {
+                        reject(new AuthCodeApiError(-1, 'empty collection data'))
+                        return
+                    }
+                    resolve(collectionFromJson(data))
+                })
+                .catch((err: any | null): void => {
+                    reject(err)
+                })
+        })
+    }
+}
+
+const collectionServerApi = new CollectionServerApi();
+export default collectionServerApi;

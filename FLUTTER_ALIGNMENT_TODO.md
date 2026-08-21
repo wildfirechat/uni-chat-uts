@@ -1,7 +1,7 @@
 # uni-chat-uts 对齐 flutter-chat 移动端 · 实施 TODO
 
 > **基线**：`../flutter-chat` 的移动端形态（`chat/lib` 去掉 `pc/` 目录 + `moment/` 模块）。
-> **最后核对**：2026-08-20，逐模块对照 flutter-chat `master` 当前状态。
+> **最后核对**：2026-08-20，逐模块对照 flutter-chat `master` 当前状态（当天落地群接龙）。
 > **状态**：原 M0~M7 主体全部落地。剩余工作见 §三，按「能不能立刻开工」重排成三个批次，不再按里程碑编号。
 >
 > flutter 侧 2026-08-05 之后只增加了 Pad 适配（P0~P5）与 PC 设置页改动，两者都在 §一 排除范围内 —— 基线未变。
@@ -77,7 +77,7 @@
 - **会话页**：文本、图片、视频、语音(AMR)、文件、表情贴纸、链接、名片、合并转发、引用、@提醒（含@全体）、撤回+重新编辑、多选、草稿、下拉加载历史、向下翻页、消息定位高亮、未读/@我提示条、正在输入提示、对方在线状态、已读回执（含群已读详情页）、清空聊天记录、保存到相册/本地
 - **频道菜单栏（公众号底部菜单）**：[components/channel-menu-bar](components/channel-menu-bar/channel-menu-bar.uvue) + [MessageInputView](pages/conversation/MessageInputView.uvue)。频道配了 menus 时输入栏出现「菜单/键盘」切换按钮，进会话默认就是菜单态；一级菜单等分排列，带子菜单的项点开在上方弹出；`view` → 内嵌 WebView、`click` → 发一条 `ChannelMenuEventMessageContent` 透传消息、其它类型给提示。点/拖消息列表会退回输入态（对齐 flutter 的 `resetStatus()`）
 - **消息长按菜单**：删除（再选本地/远程）→ 复制 → 转文字 → 转发 → 撤回 → 多选 → 引用 → 收藏 → 举报 → 保存
-- **消息类型注册**：64 项；渲染器覆盖 flutter 除 `collection_cell_builder`（随接龙）之外的全部
+- **消息类型注册**：65 项；渲染器覆盖 flutter 侧的全部（含接龙 `collection_cell_builder`）
 - **我的与设置**：[MePage](pages/me/MePage.uvue)、[GeneralSettingsPage](pages/me/GeneralSettingsPage.uvue)、[MessageNotificationSettingsPage](pages/me/MessageNotificationSettingsPage.uvue)、[PrivacySettingsPage](pages/me/PrivacySettingsPage.uvue)、[PrivacyFindMePage](pages/me/PrivacyFindMePage.uvue)、[BlacklistPage](pages/me/BlacklistPage.uvue)、[AccountSafetyPage](pages/me/AccountSafetyPage.uvue) + [ChangePasswordPage](pages/me/ChangePasswordPage.uvue)、[DestroyAccountPage](pages/me/DestroyAccountPage.uvue)、[FontSizeSettingsPage](pages/me/FontSizeSettingsPage.uvue)、[FileRecordsPage](pages/me/FileRecordsPage.uvue) + [FileListPage](pages/me/FileListPage.uvue)、[FavoriteListPage](pages/me/FavoriteListPage.uvue)
 - **会话信息与群管理**：[SingleConversationInfoPage](pages/conversation/SingleConversationInfoPage.uvue)、[GroupConversationInfoPage](pages/conversation/GroupConversationInfoPage.uvue)、[ChannelConversationInfoPage](pages/conversation/ChannelConversationInfoPage.uvue)、[GroupManagePage](pages/conversation/GroupManagePage.uvue)、[GroupManagerPage](pages/conversation/GroupManagerPage.uvue)、[GroupMutePage](pages/conversation/GroupMutePage.uvue)、[GroupMemberListPage](pages/conversation/GroupMemberListPage.uvue)、[GroupAnnouncementPage](pages/conversation/GroupAnnouncementPage.uvue)、[GroupQrCodePage](pages/conversation/GroupQrCodePage.uvue)
 - **会话内检索**：[SearchConversationMessagePage](pages/search/SearchConversationMessagePage.uvue)（全部/文件/图片与视频/链接/日期 五个标签 + 搜索历史）+ [conversation-links](components/conversation-links/conversation-links.uvue)、[conversation-media-grid](components/conversation-media-grid/conversation-media-grid.uvue)、[conversation-calendar](components/conversation-calendar/conversation-calendar.uvue)、[ConversationLinksPage](pages/conversation/ConversationLinksPage.uvue)
@@ -86,6 +86,7 @@
 - **登录**：[LoginPage](pages/login/LoginPage.uvue) —— 密码/验证码两种模式、60s 倒计时、协议勾选、滑块验证
 - **扫码**：用户 / 群 / 频道 / PC 扫码登录四类分支 + [PcLoginConfirmPage](pages/me/PcLoginConfirmPage.uvue)
 - **群投票**：[PollHomePage](pages/poll/PollHomePage.uvue) / [CreatePollPage](pages/poll/CreatePollPage.uvue) / [PollListPage](pages/poll/PollListPage.uvue) / [PollDetailPage](pages/poll/PollDetailPage.uvue) + [PollMessageContentView](pages/conversation/message/content/PollMessageContentView.uvue) + 扩展面板入口（群会话且配了 `POLL_SERVER`）
+- **群接龙**：[CreateCollectionPage](pages/collection/CreateCollectionPage.uvue) / [CollectionDetailPage](pages/collection/CollectionDetailPage.uvue) + [CollectionMessageContentView](pages/conversation/message/content/CollectionMessageContentView.uvue) + [api/collectionServerApi.uts](api/collectionServerApi.uts) + 消息类型 17（[collectionMessageContent.uts](wfc/messages/collectionMessageContent.uts)）+ 扩展面板入口（群会话且配了 `COLLECTION_SERVER`，排在「群投票」前面）
 - **朋友圈**（iOS 除外，见 §三批次 A）：[wfc/moment/momentClient.uts](wfc/moment/momentClient.uts) + 时间线 / 个人朋友圈 / 发布 / 点赞 / 评论 / 回复 / 删除 / 可见范围 / 提醒谁看 / 消息列表 / 封面 / 隐私设置、消息类型 501·502
 - **音视频**：单人/多人通话、对讲 PTT
 - **音视频会议**：[ConferencePortalPage](pages/voip/conference/ConferencePortalPage.uvue) / [CreateConferencePage](pages/voip/conference/CreateConferencePage.uvue) / [OrderConferencePage](pages/voip/conference/OrderConferencePage.uvue) / [JoinConferencePage](pages/voip/conference/JoinConferencePage.uvue) / [ConferenceInfoPage](pages/voip/conference/ConferenceInfoPage.uvue) / [ConferencePage](pages/voip/conference/ConferencePage.uvue) / [ConferenceManagePage](pages/voip/conference/ConferenceManagePage.uvue) + [api/conferenceApi.uts](api/conferenceApi.uts)（11 个接口，含 recording / focus）+ 三端 `wfc-av-client` 各 35 个导出（`startConference` / `joinConference` / `dispatchConferenceEvent` 齐全）
@@ -122,9 +123,6 @@
 
 - [ ] **创建频道 / 搜索频道** ← `channel/search_channel.dart`
   - 三端插件的 `createChannel` / `searchChannel` **都已导出**，只缺页面。[ChannelDetailPage](pages/contact/ChannelDetailPage.uvue) 已落地，这两个是它的上游入口
-- [ ] **接龙** `[API❌ COLLECTION_SERVER]` ← `collection/`（6 个文件，1.1k 行）
-  - 含：创建接龙、接龙详情、`collection_cell_builder` 消息气泡、扩展面板入口（群会话 + 配了服务地址才出现）
-  - 接口 `/api/collections`，鉴权直接复用 [api/authCodeApiClient.uts](api/authCodeApiClient.uts)；创建页可复用 [form-text-row](components/form-text-row/form-text-row.uvue)
 - [ ] **网盘** `[API❌ PAN_SERVER]` ← `pan/pan_home_screen.dart`（1060 行）+ `pan_service.dart`（755 行）
   - 认证走 `getAuthCode`（门面已有），含空间列表、目录浏览、上传下载、大文件预签名上传
 - [ ] **发现页补「云盘」一行** —— flutter 是 朋友圈/聊天室/机器人/会议/开发文档/**云盘**，uni 现有六项里缺云盘（多一项频道，保留）。随网盘一起做
@@ -137,7 +135,7 @@
 ### 批次 C · 横切，持续做
 
 - [ ] **i18n 词条补齐**
-  - 现状：uni 597 条 × 3 语言；flutter `app_zh.arb` 1074 条（含 PC 专用）。仍有 127 个 uvue 带硬编码中文，约 244 处字符串字面量
+  - 现状：uni 608 条 × 3 语言；flutter `app_zh.arb` 1074 条（含 PC 专用）。仍有 127 个 uvue 带硬编码中文，约 244 处字符串字面量
   - ⚠️ **已知限制**：`t()` 不是响应式的，切语言只改本地存的 locale，**已渲染的页面不会重刷**，重启才全量生效。通用设置页切完会给一条提示。要即时生效得把 `currentLocale` 换成 `ref` 并让 `t()` 读它
   - **规则**：每做一个新页面，同批补齐该页面词条，禁止新增硬编码中文
 - [ ] **验收扫尾** —— 见 §八
@@ -172,8 +170,8 @@
 
 ### 独立服务
 
-- 已有：`poll` → [api/pollServerApi.uts](api/pollServerApi.uts)、会议 → [api/conferenceApi.uts](api/conferenceApi.uts)、组织 → [api/organizationServerApi.uts](api/organizationServerApi.uts)、ASR → `Config.ASR_SERVER`（[common/asr.uts](common/asr.uts)）
-- 待补：`collection` → `/api/collections`、`pan` → 网盘接口。两者都复用 [api/authCodeApiClient.uts](api/authCodeApiClient.uts)
+- 已有：`poll` → [api/pollServerApi.uts](api/pollServerApi.uts)、`collection` → [api/collectionServerApi.uts](api/collectionServerApi.uts)（`Config.COLLECTION_SERVER`，`/api/collections`）、会议 → [api/conferenceApi.uts](api/conferenceApi.uts)、组织 → [api/organizationServerApi.uts](api/organizationServerApi.uts)、ASR → `Config.ASR_SERVER`（[common/asr.uts](common/asr.uts)）
+- 待补：`pan` → 网盘接口，复用 [api/authCodeApiClient.uts](api/authCodeApiClient.uts)
 
 ---
 
@@ -202,6 +200,10 @@
 | 投票 | 导出明细走 `uni.openDocument` | flutter 缺 share_plus，只把 CSV 落到临时目录再 toast 路径 |
 | 投票 | 类型/最多选几项用 actionSheet；气泡标题单行截断 | 当前值已显示在行右侧 desc；`lines` 鸿蒙 vapor 无效 |
 | 投票 | 创建后客户端不发消息 | 投票服务端自己往群里投那条 type=18 的消息 |
+| 接龙 | 参与内容用单行 `<input>`，不是 flutter 的 `maxLines: 3` 自增高框 | textarea 的 `auto-height` 在鸿蒙 vapor 下会和外层 scroll-view 反复重算高度打架（见 form-text-row 注释）；参与内容本来就是「姓名-电话」这种一行的东西 |
+| 接龙 | 截止时间是一个三列 picker 不是两步弹窗 | 同投票：`<picker>` 没法程序化拉起下一个。日期列第一项「不设置」用来清掉截止时间 |
+| 接龙 | 不放「结束接龙」入口；创建页没有「最大参与人数」 | flutter 移动端两者都没有（`CollectionService.close` 零调用方，创建表单固定传 `maxParticipants: 0`）。API 层保留了 `close()` 方法，只是没有入口 |
+| 接龙 | 详情页不回写本地消息快照 | android / flutter 两边都不回写，参与后由服务端重新往群里投消息 |
 | 朋友圈 | 上传用 `MessageContentMediaType.Moments`(8) | 与 android `momentclient` 一致；flutter 传 IMAGE/VIDEO 会落到别的桶 |
 | 朋友圈 | 缩略图用 `uni.compressImage`；取不到图片信息或压缩失败**不阻断发布** | 不做 flutter 那套自己解码再编 PNG |
 | 朋友圈 | 评论输入用 `showModal({editable:true})` | 少一个组件，键盘避让交给系统 |
@@ -221,6 +223,9 @@
 ## 六、消息层：**不能以 flutter 为准**
 
 flutter 的 imclient 是 Dart 手写移植，**有几处它自己就是错的**。判定基准是 `../android-chat/client`（uni 三端插件包的就是这套原生 SDK，也是服务端实际下发的报文格式），flutter 只在与 android 一致时才作为参照。
+
+（接龙消息 17 是两边一致的：`searchableContent` 放标题、`binaryContent` 放 JSON。uni 侧照抄 android，
+区别只在 `CollectionEntry.toJson()` 只写 `userId`/`content`/`createdAt` 三个 iOS 兼容字段 —— flutter 写了全部七个。）
 
 已确认 flutter 写错、因而 **uni 侧刻意没补** 的三项（照抄会得到一个永远解不出内容的类，比落到 `UnknownMessageContent` 更糟）：
 

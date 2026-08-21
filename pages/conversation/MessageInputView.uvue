@@ -105,6 +105,7 @@ import { toLocalFilePath } from "../../common/filePath.uts";
 
 import { toast } from "../../common/prompt.uts";
 import { t } from "../../i18n/i18n.uts";
+import collectionServerApi from "../../api/collectionServerApi.uts";
 import pollServerApi from "../../api/pollServerApi.uts";
 import ChannelMenu from "../../wfc/model/channelMenu.uts";
 import ChannelMenuEventMessageContent from "../../wfc/messages/channelMenuEventMessageContent.uts";
@@ -167,7 +168,8 @@ const subMenus = ref<ChannelMenu[]>([] as ChannelMenu[])
 const subMenuX = ref<number>(0)
 const subMenuY = ref<number>(0)
 const subMenuTargetX = computed<number>((): number => subMenuX.value - SUB_MENU_WIDTH / 2)
-// 「群投票」只在群会话且配了投票服务时才出现，与 flutter `input_bar/plugin_board.dart` 一致
+// 「群接龙」「群投票」只在群会话且配了对应服务时才出现，与 flutter `input_bar/plugin_board.dart` 一致
+// （顺序也一致：接龙在前、投票在后）
 const extList = computed<ExtItem[]>((): ExtItem[] => {
     const items = [
         new ExtItem('相册', 'image', ''),
@@ -179,7 +181,11 @@ const extList = computed<ExtItem[]>((): ExtItem[] => {
         new ExtItem('名片', 'userCard', ''),
     ] as ExtItem[]
     let converstionInfo = props.conversationInfo as ConversationInfo;
-    if (converstionInfo.conversation.type == ConversationType.Group && pollServerApi.isAvailable()) {
+    const isGroup = converstionInfo.conversation.type == ConversationType.Group
+    if (isGroup && collectionServerApi.isAvailable()) {
+        items.push(new ExtItem(t('collection.collection'), 'collection', '\uf391', 'icomoon'))
+    }
+    if (isGroup && pollServerApi.isAvailable()) {
         items.push(new ExtItem(t('poll.poll'), 'poll', '\uf2b5', 'icomoon'))
     }
     return items
@@ -541,6 +547,17 @@ const onSubMenuSelect = (item: PopupMenuItem) => {
     handleChannelMenu(subMenus.value[index])
 }
 
+/** 群接龙入口：直接进发起接龙页，对齐 flutter `CreateCollectionScreen.show` */
+const openCollection = () => {
+    const conversationInfo = props.conversationInfo as ConversationInfo
+    uni.navigateTo({
+        url: '/pages/collection/CreateCollectionPage?groupId=' + conversationInfo.conversation.target,
+        fail: (err) => {
+            console.log('nav to CreateCollectionPage err', err)
+        }
+    } as NavigateToOptions)
+}
+
 /** 群投票入口：发起投票 / 我的投票，对齐 flutter `PollHomeScreen.show` */
 const openPoll = () => {
     const conversationInfo = props.conversationInfo as ConversationInfo
@@ -755,6 +772,9 @@ const onClickExt = (ext: ExtItem) => {
             break;
         case 'userCard':
             pickUserCard();
+            break;
+        case 'collection':
+            openCollection();
             break;
         case 'poll':
             openPoll();
