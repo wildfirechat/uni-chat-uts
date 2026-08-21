@@ -288,8 +288,9 @@ export function isSupportConference(): boolean {
 }
 
 export function setVideoProfile(profile: number, swapWidthHeight: boolean): void {
-    // profile 数值和 Android VideoProfile 常量、iOS WFAVVideoProfile 枚举原始值保持一致（见头文件注释）
-    WFAVEngineKit.shared().setVideoProfile(profile as WFAVVideoProfile, swapWidthHeight = swapWidthHeight)
+    // profile 数值和 Android VideoProfile 常量、iOS WFAVVideoProfile 枚举原始值保持一致（见头文件注释）。
+    // 注意不能写 profile as WFAVVideoProfile：那会编译成 NSNumber as! 枚举，运行时直接崩，必须用 rawValue 初始化。
+    WFAVEngineKit.shared().setVideoProfile(WFAVVideoProfile(rawValue = profile.toInt())!, swapWidthHeight = swapWidthHeight)
 }
 
 function currentSessionOrNull(): WFAVCallSession | null {

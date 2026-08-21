@@ -35,8 +35,10 @@ function conversationJson(conv: WFCCConversation): string {
 }
 
 function toConversation(type: number, target: string, line: number): WFCCConversation {
-    // Swift 里 conversationWithType(_:target:line:) 已替换为 init(type:target:line:)，用构造器创建
-    return new WFCCConversation(type = type as WFCCConversationType, target = target, line = line as Int32)
+    // Swift 里 conversationWithType(_:target:line:) 已替换为 init(type:target:line:)，用构造器创建。
+    // 注意不能写 type as WFCCConversationType：那会编译成 NSNumber as! 枚举，运行时直接崩。
+    // 用 rawValue 初始化（toInt() 得到 Swift Int），rawValue init 是可选返回，加 ! 解包。
+    return new WFCCConversation(type = WFCCConversationType(rawValue = type.toInt())!, target = target, line = line.toInt32())
 }
 
 class NativePttDelegate implements WFPttDelegate {
