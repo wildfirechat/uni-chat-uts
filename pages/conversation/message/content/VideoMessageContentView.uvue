@@ -10,6 +10,7 @@ import Message from "@/wfc/messages/message.uts";
 import MessageStatus from "../../../../wfc/messages/messageStatus.uts";
 import VideoMessageContent from "../../../../wfc/messages/videoMessageContent.uts";
 import Config from "../../../../config.uts";
+import store from "../../../../store.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
@@ -48,12 +49,8 @@ const preview = () => {
     if (props.isInCompositeView) {
         emit('previewCompositeMessage', message.messageUid);
     } else {
-        uni.navigateTo({
-            url: `/pages/misc/PreviewVideoPage?url=${encodeURIComponent(content.value.remotePath)}`,
-            fail: (e) => {
-                console.log('navigate to PreviewVideoPage error', e)
-            }
-        } as NavigateToOptions);
+        // 和图片消息共用一个预览页，会话里的图片/视频串成一组左右滑动（PreviewMediaPage）
+        store.previewMessage(message, true)
     }
 }
 </script>

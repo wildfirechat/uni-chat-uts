@@ -9,7 +9,7 @@
 import Message from "../../../../wfc/messages/message.uts";
 import ImageMessageContent from "../../../../wfc/messages/imageMessageContent.uts";
 import Config from "../../../../config.uts";
-import { conversationState } from "../../../../store.uts";
+import store from "../../../../store.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 defineOptions({
@@ -72,29 +72,8 @@ const preview = () => {
         emit('previewCompositeMessage', message.messageUid);
         return
     }
-    // 会话内的图片消息串成一组，支持左右滑动切换
-    const currentUrl = content.value.remotePath
-    const urls: string[] = []
-    const msgs = conversationState.currentConversationMessageList
-    for (let i = 0; i < msgs.length; i++) {
-        const c = msgs[i].messageContent
-        if (c instanceof ImageMessageContent) {
-            const path = (c as ImageMessageContent).remotePath
-            if (path != '') {
-                urls.push(path)
-            }
-        }
-    }
-    // 必须显式标 number：indexOf 在 android 上返回 Int，不标类型后面赋 urls.length - 1（Number）会类型不匹配
-    let current: number = urls.indexOf(currentUrl)
-    if (current < 0) {
-        urls.push(currentUrl)
-        current = urls.length - 1
-    }
-    uni.previewImage({
-        urls: urls,
-        current: current,
-    } as PreviewImageOptions);
+    // 会话内的图片和视频消息串成一组，支持左右滑动切换（PreviewMediaPage）
+    store.previewMessage(message, true)
 }
 </script>
 

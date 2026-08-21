@@ -47,6 +47,13 @@ export function saveMessageMediaToAlbum(message: Message): void {
         url = (content as VideoMessageContent).remotePath
         isVideo = true
     }
+    saveMediaUrlToAlbum(url, isVideo)
+}
+
+/**
+ * 保存图片/视频到相册（只有 url、没有对应消息时用，如朋友圈的媒体预览）
+ */
+export function saveMediaUrlToAlbum(url: string, isVideo: boolean): void {
     if (url == '') {
         toast('文件地址为空，无法保存')
         return

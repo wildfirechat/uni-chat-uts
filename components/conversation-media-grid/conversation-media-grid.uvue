@@ -25,21 +25,18 @@
  * 三列方形缩略图，滚到底翻页。缩略图优先用消息里的 base64 缩略图（本地就有，不发网络请求），
  * 没有才退回 remotePath。
  *
- * ## 与 flutter 的差异：预览
+ * ## 预览
  *
- * flutter 用自己的 `MMPreviewView` 图片视频混合预览（捏合缩放、下拉关闭、翻到两端继续翻页）。
- * uni-app x 没有等价能力，这里沿用本项目已有的两条路径：
- * - 图片 → `uni.previewImage`（系统预览，串起当前已加载的**全部图片**）
- * - 视频 → [PreviewVideoPage](../../pages/misc/PreviewVideoPage.uvue)
- *
- * 代价是图片和视频不在同一个预览序列里滑动。这属于 §1「接受不同」里的「媒体浏览器手势」。
+ * 图片和视频走同一个 [PreviewMediaPage](../../pages/misc/PreviewMediaPage.uvue)，
+ * 已加载出来的媒体串成一个序列左右滑动，和 flutter 的 `MMPreviewView` 一致
+ * （手势细节仍有差异：没有下拉关闭、翻到两端不会继续翻页）。
  *
  * 用 `scroll-view` 而不是 `list-view`：见 [conversation-links](../conversation-links/conversation-links.uvue) 的说明。
  *
  * 方格是**算出来的像素宽高**，不是 `aspect-ratio` —— uni-app x 三端都不支持 aspect-ratio
  * （`node scripts/check-uvue-css.js` 会报），百分比宽也撑不出正方形。
  */
-import store from "@/store.uts";
+import store, { PreviewMediaItem } from "@/store.uts";
 import Config from "@/config.uts";
 import Conversation from "@/wfc/model/conversation.uts";
 import Message from "@/wfc/messages/message.uts";
@@ -73,6 +70,8 @@ class MediaItem {
     remoteUrl = ''
     /** 网格里显示的缩略图 */
     _thumbnail = ''
+    /** 对应的消息，预览页要用它做保存/转发 */
+    message: Message | null = null
 }
 
 /** 三列方格的边长：(屏宽 - 容器左右 padding) / 3，随屏幕宽度算一次。 */
@@ -87,6 +86,7 @@ let offset = 0
 const toItem = (message: Message): MediaItem => {
     const item = new MediaItem()
     item.messageUid = message.messageUid
+    item.message = message
     const content = message.messageContent
     let thumbnail = ''
     if (content instanceof VideoMessageContent) {
@@ -134,33 +134,22 @@ const preview = (item: MediaItem) => {
     if (item.remoteUrl == '') {
         return
     }
-    if (item.isVideo) {
-        uni.navigateTo({
-            url: '/pages/misc/PreviewVideoPage?url=' + encodeURIComponent(item.remoteUrl),
-            fail: (err) => {
-                console.log('nav to PreviewVideoPage err', err)
-            }
-        } as NavigateToOptions)
-        return
-    }
-    // 已加载的图片串成一组，支持左右滑动切换（与会话页图片气泡的行为一致）
-    const urls: string[] = []
+    // 已加载的图片和视频串成一组，支持左右滑动切换（与会话页媒体气泡的行为一致）
+    const medias: PreviewMediaItem[] = []
+    // 显式标 number：数组 length 在 android 上是 Int，不标类型后面参与 Number 运算会不匹配
+    let current: number = 0
     const list = items.value
     for (let i = 0; i < list.length; i++) {
-        if (!list[i].isVideo && list[i].remoteUrl != '') {
-            urls.push(list[i].remoteUrl)
+        const it = list[i]
+        if (it.remoteUrl == '') {
+            continue
         }
+        if (it.messageUid == item.messageUid) {
+            current = medias.length
+        }
+        medias.push(new PreviewMediaItem(it.remoteUrl, it._thumbnail, true, it.isVideo, it.message))
     }
-    // 必须显式标 number：indexOf 在 android 上返回 Int，不标类型后面赋 urls.length - 1（Number）会类型不匹配
-    let current: number = urls.indexOf(item.remoteUrl)
-    if (current < 0) {
-        urls.push(item.remoteUrl)
-        current = urls.length - 1
-    }
-    uni.previewImage({
-        urls: urls,
-        current: current
-    } as PreviewImageOptions)
+    store.previewMedias(medias, current)
 }
 
 onMounted(() => {

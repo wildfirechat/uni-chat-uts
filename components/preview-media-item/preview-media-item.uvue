@@ -1,0 +1,418 @@
+<template>
+    <view class="item-root">
+        <!-- 视频：只有当前这页才真的挂 video 元素。swiper 会把所有 swiper-item 一起建出来，
+             一个会话里几十条视频消息全挂上播放器，内存和解码器都撑不住 -->
+        <video v-if="isVideo && active" class="media-fill" :src="src" :poster="thumb" :autoplay="autoplay"
+            :controls="true" object-fit="contain" />
+        <image v-else-if="isVideo" class="media-fill" :src="thumb" mode="aspectFit" />
+        <image v-else ref="imageEl" class="media-image" :src="src" mode="aspectFit" @load="onImageLoad" />
+        <!-- 手势层只盖在图片上：盖住 video 的话原生播放控件就点不到了 -->
+        <view v-if="!isVideo" ref="maskEl" class="gesture-mask" @touchstart="onTouchStart" @touchmove="onTouchMove"
+            @touchend="onTouchEnd" @touchcancel="onTouchCancel"></view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 媒体预览里的一页：图片（双指缩放/拖动/双击放大/单击关闭）或视频（原生播放控件）。
+ * 由 [PreviewMediaPage](../../pages/misc/PreviewMediaPage.uvue) 放进 swiper 里用。
+ *
+ * ## 缩放怎么做的
+ *
+ * uni-app x 的 App 端没有 `movable-view`（`unixVer: "x"`，见 uni_vue_tag/movable-view.json），
+ * 图片也没有内置缩放，只能自己接 touch 事件算 transform。做法照抄官方 `uni.previewImage`
+ * 的页面实现（`uni_modules/uni-previewImage/components/uni-previewImageItem`，编译产物在
+ * HBuilderX 的 `uni-app-x-framework-vapor-dev.js` 里可读）：
+ *
+ * - 图片加载出来后，把 `<image>` 节点的**尺寸**改成「宽度铺满、高度按原图比例」并居中放置
+ *   （长图就会高过屏幕，靠上下拖动看，和微信一致）。这一步是改布局不是改 transform ——
+ *   用 transform 放大只会把已经按小尺寸栅格化的位图拉糊；
+ * - 在这个「静止态 = 1 倍」的基础上，缩放/平移走 `transform`，`transform-origin` 用默认的
+ *   中心点（节点中心正好落在页面中心），数学上就是「内容点 p → 中心 + t + s·p」；
+ * - 逐帧直接 `element.style.setProperty(...)` 写节点，不走响应式，touchmove 才跟得上手；
+ * - 缩放到能横向拖动时，向父级抛 `zoomChange`，由页面把 swiper 的 `disable-touch` 打开，
+ *   否则横拖会被 swiper 抢去翻页。
+ *
+ * ## 坐标单位
+ *
+ * touch 的 clientX/clientY 在鸿蒙上是**物理像素**，节点布局尺寸是逻辑像素，两者不能直接相减，
+ * 所有触点一律先过 [getTouchPoints] 归一化，见 common/touch.uts 的说明。
+ */
+import { PreviewMediaItem } from "@/store.uts";
+import { getTouchPoints, TouchPoint } from "@/common/touch.uts";
+
+defineOptions({
+    name: "preview-media-item"
+})
+
+const props = withDefaults(defineProps<{
+    item: PreviewMediaItem
+    /** 是否是 swiper 当前页：视频只在当前页挂播放器，翻走时复位缩放 */
+    active?: boolean
+    /** 手势层尺寸（逻辑像素）。首屏排版完没有回调可用，先由页面算好传进来，真按下时再用布局尺寸校准 */
+    viewWidth?: number
+    viewHeight?: number
+}>(), {
+    active: false,
+    viewWidth: 0,
+    viewHeight: 0
+})
+
+const emit = defineEmits(['close', 'zoomChange'])
+
+/** 双击判定窗口，也是单击关闭的延时 */
+const DOUBLE_TAP_INTERVAL: number = 260
+/** 超过这个位移就不算点击了 */
+const TAP_SLOP: number = 8
+/** 双击放大的倍数 */
+const DOUBLE_TAP_SCALE: number = 2.5
+/** 双指最多放到几倍。静止态是「宽度铺满」，3 倍够看清长截图里的字了 */
+const MAX_SCALE: number = 3
+/** 缩放动画时长 */
+const ANIMATION_DURATION: number = 200
+
+// class 类型的 props 在模板里会被抹成 Any（android 落 Kotlin 后取不到成员），统一在 script 里取好
+const src = computed<string>((): string => (props.item as PreviewMediaItem).src)
+const thumb = computed<string>((): string => (props.item as PreviewMediaItem).thumb)
+const isVideo = computed<boolean>((): boolean => (props.item as PreviewMediaItem).isVideo)
+const autoplay = computed<boolean>((): boolean => (props.item as PreviewMediaItem).autoplay)
+
+const imageEl = ref<UniElement | null>(null)
+const maskEl = ref<UniElement | null>(null)
+
+// 手势状态一律用普通变量：逐帧改的东西进了响应式只会白白触发 diff
+/** 手势层尺寸 */
+let viewW: number = 0
+let viewH: number = 0
+/** 静止态（scale=1）下图片画出来的尺寸：宽度恒等于 viewW，高度按原图比例，长图会大于 viewH */
+let contentW: number = 0
+let contentH: number = 0
+/** 图片宽高比，0 表示还没加载出来 */
+let aspect: number = 0
+/** 上次按哪个手势层尺寸排的版：尺寸变了（首屏用的是估算值）要重排一次 */
+let layoutW: number = 0
+let layoutH: number = 0
+let scale: number = 1
+let tx: number = 0
+let ty: number = 0
+
+/** 0 空闲，1 单指拖动，2 双指缩放 */
+let touchMode: number = 0
+let startScale: number = 1
+let startDist: number = 0
+/** 双指缩放的焦点，在「内容坐标系」里（相对中心、未缩放） */
+let focusX: number = 0
+let focusY: number = 0
+let lastX: number = 0
+let lastY: number = 0
+let downX: number = 0
+let downY: number = 0
+let moved = false
+let lastTapAt: number = 0
+let singleTapTimer: number = 0
+/** 上一次抛给页面的「要不要接管 swiper」，避免每帧都抛 */
+let swiperTaken = false
+
+const distanceOf = (a: TouchPoint, b: TouchPoint): number => {
+    const dx = a.x - b.x
+    const dy = a.y - b.y
+    return Math.sqrt(dx * dx + dy * dy)
+}
+
+/**
+ * 量手势层的实际尺寸。首屏 mounted 时排版还没跑完（uni-app x 没有「排版完成」回调），
+ * 但手指按下来时一定已经排完了，所以每次 touchstart 都校准一次，量不到就用页面传的估算值。
+ */
+const ensureGeometry = () => {
+    const el = maskEl.value
+    if (el != null && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        viewW = el.offsetWidth
+        viewH = el.offsetHeight
+    } else {
+        viewW = props.viewWidth
+        viewH = props.viewHeight
+    }
+}
+
+const applyTransform = (duration: number) => {
+    const el = imageEl.value
+    if (el == null) {
+        return
+    }
+    // iOS 落 Swift，长的混合类型拼接会把类型检查拖到超时，先各自 toString 再拼
+    const txStr = tx.toString()
+    const tyStr = ty.toString()
+    const scaleStr = scale.toString()
+    const durationStr = duration.toString()
+    el.style.setProperty('transition-duration', durationStr + 'ms')
+    el.style.setProperty('transform', 'translate(' + txStr + 'px, ' + tyStr + 'px) scale(' + scaleStr + ')')
+}
+
+/** 当前缩放下横向还能不能拖：能拖就得把 swiper 的触摸关掉，否则横拖被它抢去翻页 */
+const horizontallyPannable = (): boolean => {
+    return contentW > 0 && contentW * scale > viewW + 1
+}
+
+const syncSwiperTouch = (forceTake: boolean) => {
+    const take = forceTake || horizontallyPannable()
+    if (take == swiperTaken) {
+        return
+    }
+    swiperTaken = take
+    emit('zoomChange', take)
+}
+
+const clampTranslate = () => {
+    const maxTx = Math.max(0, (contentW * scale - viewW) / 2)
+    const maxTy = Math.max(0, (contentH * scale - viewH) / 2)
+    if (tx > maxTx) {
+        tx = maxTx
+    }
+    if (tx < -maxTx) {
+        tx = -maxTx
+    }
+    if (ty > maxTy) {
+        ty = maxTy
+    }
+    if (ty < -maxTy) {
+        ty = -maxTy
+    }
+}
+
+/**
+ * 图片加载出来后按原图比例重排：宽度铺满、高度按比例、垂直居中放置。
+ * 长图（高过屏幕的）静止态就是「宽度铺满、顶边对齐」，和微信一致，超出的部分靠拖动看。
+ *
+ * 这里改的是节点的 width/height/top（布局），不是 transform —— 靠 transform 把
+ * aspectFit 之后的小图拉到铺满宽度，位图是按小尺寸栅格化的，放大后会糊。
+ */
+const layoutContent = () => {
+    if (viewW <= 0 || viewH <= 0 || aspect <= 0) {
+        return
+    }
+    contentW = viewW
+    contentH = viewW / aspect
+    layoutW = viewW
+    layoutH = viewH
+    const el = imageEl.value
+    if (el != null) {
+        const heightStr = contentH.toString()
+        const topStr = ((viewH - contentH) / 2).toString()
+        el.style.setProperty('height', heightStr + 'px')
+        el.style.setProperty('top', topStr + 'px')
+    }
+    scale = 1
+    tx = 0
+    // 长图顶边对齐：正的 ty 是把内容往下挪，正好把顶边露出来
+    ty = Math.max(0, (contentH - viewH) / 2)
+    applyTransform(0)
+    syncSwiperTouch(false)
+}
+
+const resetTransform = () => {
+    if (singleTapTimer != 0) {
+        clearTimeout(singleTapTimer)
+        singleTapTimer = 0
+    }
+    touchMode = 0
+    moved = false
+    layoutContent()
+}
+
+const onImageLoad = (e: UniImageLoadEvent) => {
+    const detail = e.detail
+    if (detail.width <= 0 || detail.height <= 0) {
+        return
+    }
+    // detail 是物理像素，这里只要宽高比，不用折算
+    aspect = detail.width / detail.height
+    ensureGeometry()
+    layoutContent()
+}
+
+const beginPinch = (points: TouchPoint[]) => {
+    touchMode = 2
+    moved = true
+    startScale = scale
+    startDist = distanceOf(points[0], points[1])
+    const mx = (points[0].x + points[1].x) / 2
+    const my = (points[0].y + points[1].y) / 2
+    focusX = scale != 0 ? (mx - viewW / 2 - tx) / scale : 0
+    focusY = scale != 0 ? (my - viewH / 2 - ty) / scale : 0
+    // 双指期间一律自己接管，中途松成单指再按实际缩放判定
+    syncSwiperTouch(true)
+}
+
+const onTouchStart = (e: UniTouchEvent) => {
+    ensureGeometry()
+    // 图片先于排版加载完时，上面那次排版用的是页面给的估算尺寸，这会儿量到真值就补排一次
+    if (aspect > 0 && (viewW != layoutW || viewH != layoutH)) {
+        layoutContent()
+    }
+    // 上一次点击还在等双击窗口：这次按下要么是双击的第二下、要么是新手势，
+    // 两种情况都不该再触发「单击关闭」，先把定时器撤掉
+    if (singleTapTimer != 0) {
+        clearTimeout(singleTapTimer)
+        singleTapTimer = 0
+    }
+    const points = getTouchPoints(e)
+    if (points.length >= 2) {
+        beginPinch(points)
+        return
+    }
+    if (points.length == 1) {
+        touchMode = 1
+        lastX = points[0].x
+        lastY = points[0].y
+        downX = lastX
+        downY = lastY
+        moved = false
+        syncSwiperTouch(false)
+    }
+}
+
+const onTouchMove = (e: UniTouchEvent) => {
+    const points = getTouchPoints(e)
+    if (points.length >= 2) {
+        if (touchMode != 2 || startDist <= 0) {
+            beginPinch(points)
+            return
+        }
+        const dist = distanceOf(points[0], points[1])
+        let s: number = startScale * dist / startDist
+        if (s < 1) {
+            s = 1
+        }
+        if (s > MAX_SCALE) {
+            s = MAX_SCALE
+        }
+        const mx = (points[0].x + points[1].x) / 2
+        const my = (points[0].y + points[1].y) / 2
+        scale = s
+        tx = mx - viewW / 2 - focusX * scale
+        ty = my - viewH / 2 - focusY * scale
+        clampTranslate()
+        applyTransform(0)
+        // 双指这一段是我们自己的手势，别让父级 swiper 顺手翻页
+        e.stopPropagation()
+        e.preventDefault()
+        return
+    }
+    if (points.length == 1 && touchMode == 1) {
+        const p = points[0]
+        const dx = p.x - lastX
+        const dy = p.y - lastY
+        lastX = p.x
+        lastY = p.y
+        if (Math.abs(p.x - downX) > TAP_SLOP || Math.abs(p.y - downY) > TAP_SLOP) {
+            moved = true
+        }
+        tx += dx
+        ty += dy
+        clampTranslate()
+        applyTransform(0)
+        if (horizontallyPannable()) {
+            // 放大后横向还有得拖，这一段横滑归自己，不能漏给 swiper
+            e.stopPropagation()
+            e.preventDefault()
+        }
+    }
+}
+
+const onDoubleTap = (px: number, py: number) => {
+    const target: number = scale > 1.05 ? 1 : DOUBLE_TAP_SCALE
+    const fx = scale != 0 ? (px - viewW / 2 - tx) / scale : 0
+    const fy = scale != 0 ? (py - viewH / 2 - ty) / scale : 0
+    scale = target
+    tx = px - viewW / 2 - fx * scale
+    ty = py - viewH / 2 - fy * scale
+    clampTranslate()
+    applyTransform(ANIMATION_DURATION)
+    syncSwiperTouch(false)
+}
+
+const onTouchEnd = (e: UniTouchEvent) => {
+    // touches 里是**还按着**的手指：双指松掉一根时要接着按剩下那根继续拖
+    const remaining = getTouchPoints(e)
+    if (remaining.length >= 1) {
+        touchMode = 1
+        lastX = remaining[0].x
+        lastY = remaining[0].y
+        downX = lastX
+        downY = lastY
+        return
+    }
+    const wasMoved = moved
+    touchMode = 0
+    moved = false
+    syncSwiperTouch(false)
+    if (wasMoved) {
+        return
+    }
+    const now = Date.now()
+    if (now - lastTapAt < DOUBLE_TAP_INTERVAL) {
+        lastTapAt = 0
+        onDoubleTap(downX, downY)
+        return
+    }
+    lastTapAt = now
+    // 单击要等过了双击窗口才能确定，否则双击的第一下就把页面关了
+    singleTapTimer = setTimeout((): void => {
+        singleTapTimer = 0
+        emit('close')
+    }, DOUBLE_TAP_INTERVAL)
+}
+
+const onTouchCancel = (_e: UniTouchEvent) => {
+    touchMode = 0
+    moved = false
+    syncSwiperTouch(false)
+}
+
+// 翻走的那页复位：再翻回来时应该是静止态，而不是上次捏到一半的样子
+watch((): boolean => props.active, (newValue: boolean, _oldValue: boolean) => {
+    if (!newValue) {
+        resetTransform()
+    }
+})
+
+onBeforeUnmount(() => {
+    if (singleTapTimer != 0) {
+        clearTimeout(singleTapTimer)
+        singleTapTimer = 0
+    }
+})
+</script>
+
+<style scoped>
+.item-root {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    /* 长图的节点会高过整页，超出的部分必须裁掉，否则会画到上下两条栏上 */
+    overflow: hidden;
+    background-color: #000000;
+}
+
+.media-fill {
+    width: 100%;
+    height: 100%;
+}
+
+/* 图片的 height/top 在加载出来后按原图比例改写（见 layoutContent），这里只是加载前的初值 */
+.media-image {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.gesture-mask {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+</style>

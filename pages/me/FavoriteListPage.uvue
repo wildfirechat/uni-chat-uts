@@ -55,6 +55,7 @@
  * 本页在 list-view 里，走鸿蒙 vapor 的复用渲染路径：尺寸和字号留在 class 里，只有颜色走 :style。
  */
 import appServerApi from "@/api/appServerApi.uts";
+import store from "@/store.uts";
 import FavoriteItem from "@/wfc/model/favoriteItem.uts";
 import MessageContentType from "@/wfc/messages/messageContentType.uts";
 import UnknownMessageContent from "@/wfc/messages/unknownMessageContent.uts";
@@ -256,26 +257,10 @@ const showActions = (item: FavoriteItem) => {
 const openItem = (item: FavoriteItem) => {
     const message = item.toMessage()
     const content = message.messageContent
-    if (content instanceof ImageMessageContent) {
-        const url = (content as ImageMessageContent).remotePath
-        if (url != '') {
-            uni.previewImage({
-                urls: [url],
-                current: 0
-            } as PreviewImageOptions)
-            return
-        }
-    } else if (content instanceof VideoMessageContent) {
-        const url = (content as VideoMessageContent).remotePath
-        if (url != '') {
-            uni.navigateTo({
-                url: '/pages/misc/PreviewVideoPage?url=' + encodeURIComponent(url),
-                fail: (err) => {
-                    console.log('nav to PreviewVideoPage err', err)
-                }
-            } as NavigateToOptions)
-            return
-        }
+    if (content instanceof ImageMessageContent || content instanceof VideoMessageContent) {
+        // 图片和视频共用一个预览页（PreviewMediaPage）；收藏是单条打开，序列里就它一个
+        store.previewMessage(message, false)
+        return
     } else if (content instanceof FileMessageContent) {
         saveMessageFile(message)
         return

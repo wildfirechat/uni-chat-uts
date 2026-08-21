@@ -502,6 +502,7 @@ export default {
         "open_dir": "Open Directory",
         "draft": "Draft",
         "save": "Save",
+        "save_to_album": "Save to Album",
         "year_month": "{1} {0}",
         "week_1": "Mon",
         "week_2": "Tue",

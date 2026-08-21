@@ -72,6 +72,7 @@
  */
 import NavBar from '@/pages/common/NavBar.uvue'
 import wfc from '@/wfc/client/wfc.uts'
+import store, { PreviewMediaItem } from '@/store.uts'
 import momentClient from '@/wfc/moment/momentClient.uts'
 import { Comment, Feed, FeedEntry, WFMCommentType, WFMUpdateUserProfileType } from '@/wfc/moment/momentModel.uts'
 import { colors, AppColors } from '@/common/theme.uts'
@@ -379,25 +380,14 @@ const previewMedias = (medias: FeedEntry[], index: number) => {
     if (medias.length == 0) {
         return
     }
-    const entry = medias[index]
-    // 视频走视频预览页，图片走系统预览（与会话页的媒体预览一致，见 §M3「与 flutter 的刻意差异」）
-    if (entry.mediaUrl.length > 0 && isVideoEntry(entry)) {
-        uni.navigateTo({
-            url: '/pages/misc/PreviewVideoPage?url=' + encodeURIComponent(entry.mediaUrl),
-            fail: (err) => {
-                console.log('nav to video preview fail', err)
-            }
-        } as NavigateToOptions)
-        return
-    }
-    const urls: string[] = []
+    // 图片和视频在同一个序列里滑动，和会话里的媒体预览走同一个页面（PreviewMediaPage）
+    const items: PreviewMediaItem[] = []
     for (let i = 0; i < medias.length; i++) {
-        urls.push(medias[i].mediaUrl != '' ? medias[i].mediaUrl : entryDisplayUrl(medias[i]))
+        const entry = medias[i]
+        const url = entry.mediaUrl != '' ? entry.mediaUrl : entryDisplayUrl(entry)
+        items.push(new PreviewMediaItem(url, entryDisplayUrl(entry), true, isVideoEntry(entry), null))
     }
-    uni.previewImage({
-        urls: urls,
-        current: index
-    } as PreviewImageOptions)
+    store.previewMedias(items, index)
 }
 
 function isVideoEntry(entry: FeedEntry): boolean {

@@ -63,7 +63,7 @@
 
 - **主题层**：[common/theme.uts](common/theme.uts) 40 个语义色令牌、light/dark 两套、跟随系统/浅色/深色三档存本地；[theme.json](theme.json) + [pages.json](pages.json) 让原生外壳（导航栏、tabBar、页面底色）一起跟随
   - **关键约束**：App 平台**不解析自定义 CSS 变量**，`var(--x)` 写了不报错、运行时静默失效，所以主题只能走 JS 响应式；`reactive(new SomeClass())` 在 Android 端无效，store 用 `ref` 支撑
-  - **刻意保留硬编码色值的三类**：常暗界面（[voip/Single](pages/voip/Single.uvue)、[voip/Multi](pages/voip/Multi.uvue)、[PreviewVideoPage](pages/misc/PreviewVideoPage.uvue)）、常暗浮层（[chunLei-popups](components/chunLei-popups/chunLei-popups.uvue)、[main-action-menu](components/main-action-menu/main-action-menu.uvue)）、`hover-class` 的按下态（只认静态类名，拿不到 `:style`）
+  - **刻意保留硬编码色值的三类**：常暗界面（[voip/Single](pages/voip/Single.uvue)、[voip/Multi](pages/voip/Multi.uvue)、[PreviewMediaPage](pages/misc/PreviewMediaPage.uvue)）、常暗浮层（[chunLei-popups](components/chunLei-popups/chunLei-popups.uvue)、[main-action-menu](components/main-action-menu/main-action-menu.uvue)）、`hover-class` 的按下态（只认静态类名，拿不到 `:style`）
 - **字号缩放层**：[common/layoutScale.uts](common/layoutScale.uts) 8 档字号令牌 + 5 档缩放 + 三类上限（`iconPx` / `rowPx` / `fontPx`）。正文走 `fontPx` 完整跟随，角标与图标不跟随
 - **通用组件**：[option-item](components/option-item/option-item.uvue)、[option-switch-item](components/option-switch-item/option-switch-item.uvue)、[option-button-item](components/option-button-item/option-button-item.uvue)、[form-card](components/form-card/form-card.uvue)、[form-text-row](components/form-text-row/form-text-row.uvue)、[section-divider](components/section-divider/section-divider.uvue)、[bottom-action-sheet](components/bottom-action-sheet/bottom-action-sheet.uvue)、[popup-menu](components/popup-menu/popup-menu.uvue)、[member-grid](components/member-grid/member-grid.uvue)、[member-row](components/member-row/member-row.uvue)、[qr-code](components/qr-code/qr-code.uvue)、[slide-verify-dialog](components/slide-verify-dialog/slide-verify-dialog.uvue)、[quick-index-bar](components/quick-index-bar/quick-index-bar.uvue)
 - **双网媒体 URL 重定向**：[common/mediaUrlRedirector.uts](common/mediaUrlRedirector.uts) + [Config.MAIN_MEDIA_URL_PREFIX / BACKUP_MEDIA_URL_PREFIX](config.uts)。两个前缀都配上才生效（默认空 = 单网，等于没启用），按当前连的是主网还是备网互换 URL 前缀
@@ -189,7 +189,7 @@
 | 转发 | 建群选人跳 [PickUserPage](pages/pick/PickUserPage.uvue) 而不是原地换界面；预览文字限高裁切不用 3 行省略号 | `lines` 在鸿蒙 vapor 无效 |
 | 转发 | 搜索只搜好友和群 | 对齐 flutter 的 searchTypes，不搜全网用户，否则陌生人会混进转发目标 |
 | 会话检索 | 日期标签点某天直接跳回会话页定位；搜索结果点消息直接定位 | 与 flutter 独立日历页行为一致；flutter 那个「只有一项的菜单」是 PC 版式 |
-| 媒体预览 | 图片走 `uni.previewImage`、视频走 [PreviewVideoPage](pages/misc/PreviewVideoPage.uvue)，两者不在同一滑动序列 | flutter 用自绘 `MMPreviewView`，属 §一「接受不同」 |
+| 媒体预览 | 图片和视频合并到 [PreviewMediaPage](pages/misc/PreviewMediaPage.uvue)，同一滑动序列；图片支持双指缩放/双击放大/单击关闭 | 仍缺下拉关闭、翻到两端继续翻页，属 §一「接受不同」 |
 | 收藏 | 「打开」对文件走下载、链接走 WebViewPage | flutter 只 toast 一行字。合并转发的收藏两边都打不开（`FavoriteItem.buildContent` 没还原 Composite payload） |
 | PC 设备页 | 顶部用设备数字，不是电脑图标 | icomoon 子集里没有电脑字形 |
 | 链接列表 | 无缩略图时用域名首字母占位 | 同上，没有链接字形 |

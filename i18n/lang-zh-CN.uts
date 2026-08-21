@@ -502,6 +502,7 @@ export default {
         "open_dir": "打开目录",
         "draft": "草稿",
         "save": "存储",
+        "save_to_album": "保存到相册",
         "year_month": "{0}年{1}",
         "week_1": "一",
         "week_2": "二",

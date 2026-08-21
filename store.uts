@@ -71,17 +71,27 @@ import ForwardType from "./pages/conversation/message/forward/ForwardType.uts";
 const MESSAGE_LOAD_AROUND_COUNT = 10
 
 /**
- * 媒体预览项
+ * 媒体预览项。图片和视频共用一套预览（[PreviewMediaPage](./pages/misc/PreviewMediaPage.uvue)），
+ * 所以同一个列表里两种都有，靠 [isVideo] 区分。
  */
 export class PreviewMediaItem {
     src = '';
     thumb = '';
     autoplay = true;
+    /** true 是视频，预览页挂 video 元素；false 是图片，预览页走缩放手势 */
+    isVideo = false;
+    /**
+     * 关联的消息，预览页的「保存/转发」要用。
+     * 朋友圈这类不是消息来源的预览为 null，此时预览页只能按 url 保存、不能转发。
+     */
+    message: Message | null = null;
 
-    constructor(src: string, thumb: string, autoplay: boolean = true) {
+    constructor(src: string, thumb: string, autoplay: boolean = true, isVideo: boolean = false, message: Message | null = null) {
         this.src = src;
         this.thumb = thumb;
         this.autoplay = autoplay;
+        this.isVideo = isVideo;
+        this.message = message;
     }
 }
 
@@ -1381,14 +1391,46 @@ class Store {
      * @param thumbUrl 缩略图url
      * @param thumb base64格式的缩略图，但不包含'data:image/png;base64,'
      */
-    previewMedia(src: string, thumbUrl: string, thumb: string, autoplay: boolean = true): void {
-        conversationState.previewMediaItems = [new PreviewMediaItem(src, thumbUrl != '' ? thumbUrl : 'data:image/png;base64,' + thumb, autoplay)];
-        conversationState.previewMediaIndex = 0;
+    previewMedia(src: string, thumbUrl: string, thumb: string, autoplay: boolean = true, isVideo: boolean = false): void {
+        const thumbSrc = thumbUrl != '' ? thumbUrl : (thumb != '' ? 'data:image/png;base64,' + thumb : '');
+        this._openMediaPreview([new PreviewMediaItem(src, thumbSrc, autoplay, isVideo, null)], 0);
     }
 
     previewMedias(mediaItems: PreviewMediaItem[], index: number): void {
-        conversationState.previewMediaItems = mediaItems.slice(0);
-        conversationState.previewMediaIndex = index;
+        this._openMediaPreview(mediaItems.slice(0), index);
+    }
+
+    /**
+     * 打开媒体预览页。图片和视频在同一个左右滑动的序列里，见
+     * [PreviewMediaPage](./pages/misc/PreviewMediaPage.uvue)。
+     *
+     * 列表走全局状态而不是页面参数：url 带不了几十条媒体，也带不了消息对象。
+     */
+    private _openMediaPreview(items: PreviewMediaItem[], index: number): void {
+        // 地址为空的（下载失败、还没上传完）直接剔掉，否则预览页会停在一张打不开的空白图上
+        const valid: PreviewMediaItem[] = [];
+        let current: number = 0;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].src == '') {
+                continue;
+            }
+            if (i <= index) {
+                current = valid.length;
+            }
+            valid.push(items[i]);
+        }
+        if (valid.length == 0) {
+            return;
+        }
+        conversationState.previewMediaItems = valid;
+        conversationState.previewMediaIndex = current;
+        uni.navigateTo({
+            url: '/pages/misc/PreviewMediaPage',
+            animationType: 'fade-in',
+            fail: (err) => {
+                console.log('nav to PreviewMediaPage error', err);
+            }
+        } as NavigateToOptions);
     }
 
     playVoice(message: Message | null): void {
@@ -1420,28 +1462,35 @@ class Store {
         } else {
             items.push(this._mediaItemOfMessage(message));
         }
-        conversationState.previewMediaItems = items;
-        conversationState.previewMediaIndex = index;
+        this._openMediaPreview(items, index);
     }
 
     private _mediaItemOfMessage(msg: Message): PreviewMediaItem {
         let remotePath = ''
+        let localPath = ''
         let thumbnail = ''
+        let isVideo = false
         const content = msg.messageContent
         if (content instanceof ImageMessageContent) {
-            remotePath = (content as ImageMessageContent).remotePath
-            thumbnail = (content as ImageMessageContent).thumbnail
+            const c = content as ImageMessageContent
+            remotePath = c.remotePath
+            localPath = c.localPath
+            thumbnail = c.thumbnail
         } else if (content instanceof VideoMessageContent) {
-            remotePath = (content as VideoMessageContent).remotePath
-            thumbnail = (content as VideoMessageContent).thumbnail
+            const c = content as VideoMessageContent
+            remotePath = c.remotePath
+            localPath = c.localPath
+            thumbnail = c.thumbnail
+            isVideo = true
         }
-        return new PreviewMediaItem(remotePath, 'data:image/png;base64,' + thumbnail, true)
+        // 还在发送中的消息没有 remotePath，用本地文件预览
+        const src = remotePath != '' ? remotePath : localPath
+        // 没有缩略图时 thumb 留空，别拼出一个 'data:image/jpeg;base64,' 的空图去加载
+        const thumb = thumbnail != '' ? 'data:image/jpeg;base64,' + thumbnail : ''
+        return new PreviewMediaItem(src, thumb, true, isVideo, msg)
     }
 
     previewCompositeMessage(compositeMessage: Message, focusMessageUid: string): void {
-        conversationState.previewMediaItems = [];
-        conversationState.previewMediaIndex = 0;
-
         const content = compositeMessage.messageContent
         if (!(content instanceof CompositeMessageContent)) {
             return
@@ -1457,8 +1506,7 @@ class Store {
             }
             items.push(this._mediaItemOfMessage(msg));
         }
-        conversationState.previewMediaItems = items;
-        conversationState.previewMediaIndex = index;
+        this._openMediaPreview(items, index);
     }
 
     /**

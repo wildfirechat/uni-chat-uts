@@ -134,7 +134,7 @@
 - [x] pick/PickUserPage、PickSingleUserPage（经 common/picker.uts currentXxxOptions/notifyPickedXxx）
 - [x] discovery/DiscoveryPage（去会议入口）、ChatroomListPage
 - [x] me/MePage（头像上传 uploadMediaFile+modifyMyInfo）
-- [x] misc/WebViewPage、PreviewVideoPage
+- [x] misc/WebViewPage、PreviewMediaPage（原 PreviewVideoPage，已与图片预览合并）
 - [x] search/SearchPortalPage（options 拆成4个 boolean props）、SearchResultView、SearchConversationMessagePage（SearchState 增加 conversation 字段）
 - [x] voip/Single.uvue、voip/Multi.uvue、voip/conference/*（Portal/Create/Order/Join/Info/Conference/Manage；会议入口按 avEngineKit.isSupportConference() 显隐）
 - [ ] workspace/WorkspacePage、WorkspaceWebViewPage（nvue+JS bridge，待做，可先简化为 web-view+authCode）

@@ -25,6 +25,7 @@
  */
 import NavBar from '@/pages/common/NavBar.uvue'
 import wfc from '@/wfc/client/wfc.uts'
+import store, { PreviewMediaItem } from '@/store.uts'
 import momentClient from '@/wfc/moment/momentClient.uts'
 import { Comment, Feed, FeedEntry, WFMCommentType } from '@/wfc/moment/momentModel.uts'
 import { colors, AppColors } from '@/common/theme.uts'
@@ -86,14 +87,20 @@ const onTapMedia = (index: number) => {
     if (medias.length == 0) {
         return
     }
-    const urls: string[] = []
+    // 图片和视频在同一个序列里滑动（PreviewMediaPage），与朋友圈列表页一致
+    const items: PreviewMediaItem[] = []
     for (let i = 0; i < medias.length; i++) {
-        urls.push(medias[i].mediaUrl != '' ? medias[i].mediaUrl : entryDisplayUrl(medias[i]))
+        const entry = medias[i]
+        const url = entry.mediaUrl != '' ? entry.mediaUrl : entryDisplayUrl(entry)
+        items.push(new PreviewMediaItem(url, entryDisplayUrl(entry), true, isVideoEntry(entry), null))
     }
-    uni.previewImage({
-        urls: urls,
-        current: index
-    } as PreviewImageOptions)
+    store.previewMedias(items, index)
+}
+
+/** 朋友圈的媒体没有类型字段，只能按扩展名认（和 MomentFeedListPage 一样） */
+function isVideoEntry(entry: FeedEntry): boolean {
+    const url = entry.mediaUrl.toLowerCase()
+    return url.endsWith('.mp4') || url.endsWith('.mov') || url.endsWith('.m4v') || url.endsWith('.3gp') || url.endsWith('.webm')
 }
 
 const onToggleLike = (liked: boolean) => {

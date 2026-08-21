@@ -459,9 +459,12 @@
             }
         },
         {
-            "path": "pages/misc/PreviewVideoPage",
+            // 图片/视频合一的媒体预览，全屏黑底 + 自绘顶栏，所以自定义导航栏并禁掉页面滚动
+            "path": "pages/misc/PreviewMediaPage",
             "style": {
-                "navigationBarTitleText": "视频预览"
+                "navigationBarTitleText": "媒体预览",
+                "navigationStyle": "custom",
+                "disableScroll": true
             }
         },
         {

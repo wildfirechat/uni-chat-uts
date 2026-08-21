@@ -155,3 +155,20 @@ export function getElementScreenRect(el: UniElement, probe: TouchPoint): ScreenR
         return null
     }
 }
+
+/**
+ * touch 事件里**全部**触点，单位统一成逻辑像素。
+ *
+ * [getTouchPoint] 只给一个点，双指缩放要同时拿到两根手指才能算距离和中点，所以单开一个。
+ * 取的是 `touches`（当前仍按在屏上的触点）：touchend 时它已经不含抬起的那根手指，
+ * 正好用来判断「双指变单指」。
+ */
+export function getTouchPoints(e: UniTouchEvent): TouchPoint[] {
+    const ratio = pixelRatio()
+    const points: TouchPoint[] = []
+    for (let i = 0; i < e.touches.length; i++) {
+        const t = e.touches[i]
+        points.push(new TouchPoint(toLogical(t.clientX, ratio), toLogical(t.clientY, ratio)))
+    }
+    return points
+}

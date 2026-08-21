@@ -1,0 +1,218 @@
+<template>
+    <view class="root">
+        <view class="top-bar" :style="{ paddingTop: statusBarHeight + 'px' }">
+            <view class="bar-side" @tap="close">
+                <text class="back-icon">‹</text>
+            </view>
+            <text class="indicator" :style="{ fontSize: fontPx(15) }">{{ indicator }}</text>
+            <view class="bar-side"></view>
+        </view>
+        <swiper class="swiper" :current="current" :disable-touch="swiperTouchDisabled" @change="onSwiperChange">
+            <swiper-item v-for="(item, index) in items" :key="index">
+                <!-- 只渲染当前页和左右各一页：swiper 会把所有 swiper-item 都建出来，
+                     几百条媒体全解码一遍会直接把内存打爆 -->
+                <preview-media-item v-if="shouldRender(index)" :item="item" :active="index == current && pageVisible"
+                    :view-width="mediaWidth" :view-height="mediaHeight" @close="close" @zoomChange="onZoomChange" />
+            </swiper-item>
+        </swiper>
+        <view class="action-bar" :style="{ paddingBottom: safeAreaBottom + 'px' }">
+            <view class="action" @tap="save">
+                <text class="action-text" :style="{ fontSize: fontPx(14) }">{{ t('common.save_to_album') }}</text>
+            </view>
+            <view v-if="canForward" class="action" @tap="forwardCurrent">
+                <text class="action-text" :style="{ fontSize: fontPx(14) }">{{ t('common.forward') }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 图片 / 视频合一的媒体预览页，取代原来「图片走 uni.previewImage、视频走 PreviewVideoPage」
+ * 的两条路：同一个会话里的图片和视频现在在一个左右滑动的序列里，对齐 flutter 的 MMPreviewView。
+ *
+ * 入口都在 store 里（[store.previewMessage] / [store.previewMedias] / [store.previewCompositeMessage]），
+ * 列表和下标走 `conversationState.previewMediaItems`，本页 onLoad 时取一份快照 ——
+ * url 传不了几十条媒体，更传不了消息对象（保存/转发要用）。
+ *
+ * ## 布局为什么不做成沉浸式
+ *
+ * 顶栏/底栏用的是正常文档流，不是 `position: absolute` 盖在内容上。Android(vapor) 上
+ * 「内容区 flex:1 铺满 + 操作栏绝对定位」会出两种故障：内容区里有原生 View（video 就是）时按钮
+ * 直接看不见；没有原生 View 时点击被铺满的内容容器吞掉。见 FLUTTER_ALIGNMENT_TODO 里的记录。
+ */
+import { conversationState, PreviewMediaItem } from "@/store.uts";
+import { forward } from "@/common/forward.uts";
+import ForwardType from "@/pages/conversation/message/forward/ForwardType.uts";
+import { saveMessageMediaToAlbum, saveMediaUrlToAlbum } from "@/common/mediaSaver.uts";
+import { fontPx } from "@/common/layoutScale.uts";
+import { t } from "@/i18n/i18n.uts";
+
+/** 顶栏正文高度，和 pages/common/NavBar.uvue 的 .nav-bar 对齐 */
+const TOP_BAR_HEIGHT: number = 44
+/** 底部操作栏高度，和下面 .action-bar 的固定高度对齐 */
+const ACTION_BAR_HEIGHT: number = 52
+
+const items = ref<PreviewMediaItem[]>([] as PreviewMediaItem[])
+const current = ref<number>(0)
+const swiperTouchDisabled = ref<boolean>(false)
+/** 页面被盖住（去转发页、切后台）时把 video 卸掉，否则声音会一直在后面响 */
+const pageVisible = ref<boolean>(true)
+const statusBarHeight = ref<number>(0)
+const safeAreaBottom = ref<number>(0)
+/** 传给每一页的手势层尺寸估算值，页面自己的排版尺寸算得出来 */
+const mediaWidth = ref<number>(0)
+const mediaHeight = ref<number>(0)
+
+const indicator = computed<string>((): string => {
+    const total = items.value.length
+    if (total <= 1) {
+        return ''
+    }
+    const at = (current.value + 1).toString()
+    return at + ' / ' + total.toString()
+})
+
+const currentItem = computed<PreviewMediaItem | null>((): PreviewMediaItem | null => {
+    const list = items.value
+    const index = current.value
+    if (index < 0 || index >= list.length) {
+        return null
+    }
+    return list[index]
+})
+
+const canForward = computed<boolean>((): boolean => {
+    const item = currentItem.value
+    return item != null && item.message != null
+})
+
+const shouldRender = (index: number): boolean => {
+    return Math.abs(index - current.value) <= 1
+}
+
+const close = () => {
+    uni.navigateBack({
+        fail: (err) => {
+            console.log('preview media navigate back fail', err)
+        }
+    } as NavigateBackOptions)
+}
+
+const onSwiperChange = (e: UniSwiperChangeEvent) => {
+    current.value = e.detail.current
+    // 换页了就不该再拦着 swiper，新的一页是静止态
+    swiperTouchDisabled.value = false
+}
+
+const onZoomChange = (taken: boolean) => {
+    swiperTouchDisabled.value = taken
+}
+
+const save = () => {
+    const item = currentItem.value
+    if (item == null) {
+        return
+    }
+    const message = item.message
+    if (message != null) {
+        saveMessageMediaToAlbum(message)
+        return
+    }
+    saveMediaUrlToAlbum(item.src, item.isVideo)
+}
+
+const forwardCurrent = () => {
+    const item = currentItem.value
+    if (item == null) {
+        return
+    }
+    const message = item.message
+    if (message == null) {
+        return
+    }
+    forward(ForwardType.NORMAL, [message])
+}
+
+onShow(() => {
+    pageVisible.value = true
+})
+
+onHide(() => {
+    pageVisible.value = false
+})
+
+onLoad((_options: OnLoadOptions) => {
+    items.value = conversationState.previewMediaItems.slice(0)
+    current.value = conversationState.previewMediaIndex
+
+    const win = uni.getWindowInfo()
+    statusBarHeight.value = win.statusBarHeight
+    safeAreaBottom.value = win.safeAreaInsets.bottom
+    mediaWidth.value = win.windowWidth
+    // windowHeight 不含状态栏，页面高 = statusBarHeight + windowHeight，
+    // 顶栏占掉 statusBarHeight + TOP_BAR_HEIGHT，所以媒体区高度里状态栏正好抵消
+    mediaHeight.value = win.windowHeight - TOP_BAR_HEIGHT - ACTION_BAR_HEIGHT - win.safeAreaInsets.bottom
+})
+</script>
+
+<style scoped>
+.root {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #000000;
+}
+
+.top-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #000000;
+}
+
+.bar-side {
+    width: 70px;
+    height: 44px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 12px;
+}
+
+.back-icon {
+    font-size: 32px;
+    color: #ffffff;
+}
+
+.indicator {
+    color: #ffffff;
+}
+
+.swiper {
+    flex: 1;
+    background-color: #000000;
+}
+
+.action-bar {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    background-color: #000000;
+}
+
+.action {
+    height: 52px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 20px;
+    margin: 0 10px;
+}
+
+.action-text {
+    color: #ffffff;
+}
+</style>
