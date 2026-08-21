@@ -250,7 +250,7 @@ export function getMessagesV2(conversation: string, fromIndex: number, before: b
 // 按会话类型 + line + 消息状态跨会话取消息。朋友圈的评论/提醒消息都落在 line=1 的单聊会话里，
 // 取它们只能走这个接口（messageStatuses 传空数组 = 不限状态）。
 export function getMessagesEx2V2(conversationTypes: number[], lines: number[], messageStatuses: number[], fromIndex: number, before: boolean, count: number, withUser: string,  @escaping successCB: StringCallback,  @escaping failCB: FailCallback): void {
-    clientModule.getMessagesEx2V2(conversationTypes, lines=lines, messageStatuses=messageStatuses, fromIndex=fromIndex.toInt32(), before=before, count=count.toInt32(), withUser=withUser, success=stringCallback(successCB), error=numberCallback(failCB))
+    clientModule.getMessagesEx2V2(conversationTypes, lines=lines, messageStatuses=messageStatuses, from=fromIndex.toInt32(), before=before, count=count.toInt32(), withUser=withUser, success=stringCallback(successCB), error=numberCallback(failCB))
 }
 
 export function getConversationRead(conversation: string): string {

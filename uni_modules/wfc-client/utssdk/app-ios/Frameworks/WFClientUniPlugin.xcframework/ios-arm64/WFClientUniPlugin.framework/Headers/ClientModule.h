@@ -304,7 +304,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSString *)insertMessage:(NSString *)strConv sender:(NSString *)sender messagePayload:(NSString *)strPayload status:(int)status notify:(BOOL)notify toUsers:(NSArray<NSString *> *)users serverTime:(int64_t)serverTime;
 
-- (long)insertMessageEx:(int64_t)messageUid conversation:(NSString *)strConv sender:(NSString *)sender messagePayload:(NSString *)strPayload status:(int)status toUsers:(NSArray<NSString *> *)users serverTime:(int64_t)serverTime;
+- (long)insertMessageEx:(NSString *)messageUidStr conversation:(NSString *)strConv sender:(NSString *)sender messagePayload:(NSString *)strPayload status:(int)status toUsers:(NSArray<NSString *> *)users serverTime:(int64_t)serverTime;
 
 - (void)updateMessage:(long)messageId messagePayload:(NSString *)strMessagePayload;
 

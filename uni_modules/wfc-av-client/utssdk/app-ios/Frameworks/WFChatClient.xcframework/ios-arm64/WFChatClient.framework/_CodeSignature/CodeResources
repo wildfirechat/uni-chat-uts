@@ -6,7 +6,7 @@
 	<dict>
 		<key>Headers/Common.h</key>
 		<data>
-		wGaJOYIhfa6w4EoMA7ol3ZRZiBg=
+		FiMa78u+9YfixBs464FnPZhMJc0=
 		</data>
 		<key>Headers/WFCCAddGroupeMemberNotificationContent.h</key>
 		<data>
@@ -194,7 +194,7 @@
 		</data>
 		<key>Headers/WFCCIMService.h</key>
 		<data>
-		qXf8uI49b/wJtbSjpd5Vh+F8qEw=
+		4JgHpEqFA5TNTqVZDVGjPwh1Zpk=
 		</data>
 		<key>Headers/WFCCImageMessageContent.h</key>
 		<data>
@@ -270,7 +270,7 @@
 		</data>
 		<key>Headers/WFCCNetworkService.h</key>
 		<data>
-		XhqRN0KppAcYU+xmHYcDKet4wSU=
+		hxDp5hTqt+B4URY5FIRJU6dY1kY=
 		</data>
 		<key>Headers/WFCCNotDeliveredMessageContent.h</key>
 		<data>
@@ -424,9 +424,17 @@
 		<data>
 		iCzHWjmgWv3ow5fypeNNHGT2cGk=
 		</data>
+		<key>Headers/WFChatClient.h</key>
+		<data>
+		iCzHWjmgWv3ow5fypeNNHGT2cGk=
+		</data>
 		<key>Info.plist</key>
 		<data>
-		a/teuOqCJgmnzq5ZyvY7XfyBT4A=
+		rvLa5HBLQsxc/oWrOIq/531wUM0=
+		</data>
+		<key>Modules/module.modulemap</key>
+		<data>
+		78il+mARyylT1he4JY4HIZ0WhF4=
 		</data>
 		<key>en.lproj/wfc_client.strings</key>
 		<dict>
@@ -462,7 +470,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			MKE3JQ7ulMiYbRXCxfXGyqLUcxq8gisUcFt8kTQmotI=
+			B84lj8vet+mhjVM81/B6D/2u6mSKAHWPjD2e+F5a5l8=
 			</data>
 		</dict>
 		<key>Headers/WFCCAddGroupeMemberNotificationContent.h</key>
@@ -791,7 +799,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			mETmUKJcA5pv8w4EbaLYEpjAbE5w7764DiTS3Il8VYk=
+			R96xM1JUcmnc9b72lpMf1CNDBmL/cNZEoy8gJeB1eQY=
 			</data>
 		</dict>
 		<key>Headers/WFCCImageMessageContent.h</key>
@@ -924,7 +932,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			l6SlP3ynPzupPJnuCMk47IoPMpfrI92U/7qjGrYXxOE=
+			N3UgNPUukdZk81Pd2qIoenem2nLfRZrKByoZt9AfQV8=
 			</data>
 		</dict>
 		<key>Headers/WFCCNotDeliveredMessageContent.h</key>
@@ -1191,6 +1199,20 @@
 			<key>hash2</key>
 			<data>
 			GUveTUBuyeXXgkzbAel14UYW86bIxEGFVmWQw8TVTFs=
+			</data>
+		</dict>
+		<key>Headers/WFChatClient.h</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			GUveTUBuyeXXgkzbAel14UYW86bIxEGFVmWQw8TVTFs=
+			</data>
+		</dict>
+		<key>Modules/module.modulemap</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			8y6i3tyZZ0tFLET2B62dFFhuQhe3L8JcTTWpv0ZrhC0=
 			</data>
 		</dict>
 		<key>en.lproj/wfc_client.strings</key>

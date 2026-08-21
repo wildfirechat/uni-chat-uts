@@ -1,0 +1,6 @@
+framework module PttClient {
+  umbrella header "PttClient.h"
+  export *
+
+  module * { export * }
+}
