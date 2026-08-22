@@ -125,6 +125,7 @@ import { getItem, setItem, removeItem } from "@/pages/util/storageHelper.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, rowPx, FONT_XS, FONT_SM, FONT_BASE, FONT_LG } from "@/common/layoutScale.uts";
 import { t } from "@/i18n/i18n.uts";
+import { toastError } from "@/common/prompt.uts";
 import { ActionSheetItem } from "@/components/bottom-action-sheet/actionSheetItem.uts";
 
 defineOptions({
@@ -243,6 +244,14 @@ const loadMoreMessages = () => {
                 browseFromIndex = msgs[msgs.length - 1].messageId
             }
             hasMoreMessages.value = msgs.length > 0
+        }, (err: number) => {
+            if (token != searchToken) {
+                return
+            }
+            loading.value = false
+            // 故意不动 hasMoreMessages：失败不等于「没有更多了」，保持还能再上拉重试。
+            // 以前 store 在失败时回调空数组冒充成功，这里就把 hasMore 置成 false，翻页彻底停住。
+            toastError(err)
         })
         return
     }

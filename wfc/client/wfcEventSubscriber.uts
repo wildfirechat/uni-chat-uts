@@ -1,0 +1,301 @@
+/*
+ * Copyright (c) 2020 WildFireChat. All rights reserved.
+ */
+
+/**
+ * 带类型的事件订阅层。
+ *
+ * 底层 eventEmitter 的监听器签名统一是 `(args: Array<any | null>) => void`，参数按位置打包，
+ * 取参靠 `args[0] as UserInfo[]` 这种强转。问题是：
+ *   1. emit 那边改了参数顺序或类型，编译期一点提示都没有，只在真机跑到那一行才崩/静默错乱；
+ *   2. `args[0]` 在 kotlin 上是**数组越界硬崩**（不是 JS 的 undefined），emit 少传一个参数就闪退；
+ *   3. 同一份强转散在 store/页面/av 引擎里十几处，改一次要全项目 grep。
+ *
+ * 这一层把每个事件包成一个具名函数，强转只发生在本文件里，调用方拿到的是有类型的参数。
+ * 事件的参数形状以 [[wfcEvent.uts]] 里的 `// args: [...]` 注释和 wfc.uts 里的 emit 现场为准，
+ * **改 emit 必须同步改这里**，改完编译期就能把所有调用方的类型错误暴露出来。
+ *
+ * 用法：
+ *   // 常驻订阅（store 这种单例，进程内不取消）
+ *   onUserInfosUpdate((userInfos: UserInfo[]) => { ... })
+ *
+ *   // 页面订阅，卸载时要取消
+ *   const subs: WfcSubscription[] = []
+ *   onMounted(() => { subs.push(onGroupInfosUpdate(handler)) })
+ *   onUnmounted(() => { offAll(subs) })
+ *
+ * 未包装的事件及原因：
+ *   - ConnectToServer：参数形状各端不一致且不保证下发，见 wfc.uts 的 _updateConnectedNetwork 注释；
+ *   - ReceiveMessage(单条)：已废弃，用 ReceiveMessages；
+ *   - MessageReceived、SecretChat* ：项目内没有订阅方（SecretChat* 连 emit 都没有），
+ *     真要用的时候再按下面的样子补，别在这里堆没人用的包装。
+ */
+import wfc from './wfc.uts';
+import EventType from './wfcEvent.uts';
+import { WfcEventListener } from '../util/eventEmitter.uts';
+import { stringValue, numberValue } from '../util/longUtil.uts';
+import Message from '../messages/message.uts';
+import ConversationInfo from '../model/conversationInfo.uts';
+import UserInfo from '../model/userInfo.uts';
+import GroupInfo from '../model/groupInfo.uts';
+import GroupMember from '../model/groupMember.uts';
+import ChannelInfo from '../model/channelInfo.uts';
+import UserOnlineState from '../model/userOnlineState.uts';
+import ReadEntry from '../model/readEntry.uts';
+
+/**
+ * 一次订阅的句柄。页面在 onUnmounted 里调 off()，不然监听器会一直挂在 emitter 上，
+ * 页面销毁后回调还在跑（拿着已销毁页面的 ref），而且反复进出页面会越挂越多。
+ */
+export class WfcSubscription {
+    private event: string;
+    private listener: WfcEventListener;
+
+    constructor(event: string, listener: WfcEventListener) {
+        this.event = event;
+        this.listener = listener;
+    }
+
+    off(): void {
+        wfc.eventEmitter.off(this.event, this.listener);
+    }
+}
+
+/**
+ * 批量取消。页面里通常一次订阅好几个事件，攒进一个数组，卸载时一把取消。
+ */
+export function offAll(subs: WfcSubscription[]): void {
+    for (let i = 0; i < subs.length; i++) {
+        subs[i].off();
+    }
+    subs.splice(0, subs.length);
+}
+
+function _on(event: string, listener: WfcEventListener): WfcSubscription {
+    wfc.eventEmitter.on(event, listener);
+    return new WfcSubscription(event, listener);
+}
+
+/**
+ * 按位置取参数，越界返回 null。
+ * 直接写 args[i] 在 kotlin 上越界是抛异常，这里统一挡掉：参数不齐就当这次事件不合法，丢掉。
+ */
+function _argAt(args: Array<any | null>, index: number): any | null {
+    if (index < 0 || index >= args.length) {
+        return null;
+    }
+    return args[index];
+}
+
+/**
+ * 按位置取字符串参数，取不到给 ''。
+ * 注意不要用 longUtil 的 stringValue 代替：那个是给 64 位整数用的，
+ * 空串和 null 都会被规整成 '0'，用在 groupId / JSON 原文上就是一个假值。
+ */
+function _argString(args: Array<any | null>, index: number): string {
+    const v = _argAt(args, index);
+    if (v == null) {
+        return '';
+    }
+    return '' + v;
+}
+
+// ---------------- 连接 ----------------
+
+/** args: [connectionStatus] */
+export function onConnectionStatusChanged(cb: (status: number) => void): WfcSubscription {
+    return _on(EventType.ConnectionStatusChanged, (args: Array<any | null>): void => {
+        cb(numberValue(_argAt(args, 0)));
+    });
+}
+
+// ---------------- 资料 ----------------
+
+/** args: [UserInfo[]] */
+export function onUserInfosUpdate(cb: (userInfos: UserInfo[]) => void): WfcSubscription {
+    return _on(EventType.UserInfosUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as UserInfo[]);
+    });
+}
+
+/** args: [GroupInfo[]] */
+export function onGroupInfosUpdate(cb: (groupInfos: GroupInfo[]) => void): WfcSubscription {
+    return _on(EventType.GroupInfosUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as GroupInfo[]);
+    });
+}
+
+/** args: [groupId, GroupMember[]] */
+export function onGroupMembersUpdate(cb: (groupId: string, members: GroupMember[]) => void): WfcSubscription {
+    return _on(EventType.GroupMembersUpdate, (args: Array<any | null>): void => {
+        const members = _argAt(args, 1);
+        if (members == null) {
+            return;
+        }
+        cb(_argString(args, 0), members as GroupMember[]);
+    });
+}
+
+/** args: [ChannelInfo[]] */
+export function onChannelInfosUpdate(cb: (channelInfos: ChannelInfo[]) => void): WfcSubscription {
+    return _on(EventType.ChannelInfosUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as ChannelInfo[]);
+    });
+}
+
+/** args: [updatedFriendIds] */
+export function onFriendListUpdate(cb: (updatedFriendIds: string[]) => void): WfcSubscription {
+    return _on(EventType.FriendListUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            cb([] as string[]);
+            return;
+        }
+        cb(v as string[]);
+    });
+}
+
+/** args: [newFriendRequestIds] */
+export function onFriendRequestUpdate(cb: (newRequestIds: string[]) => void): WfcSubscription {
+    return _on(EventType.FriendRequestUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            cb([] as string[]);
+            return;
+        }
+        cb(v as string[]);
+    });
+}
+
+/** args: []（用户设置整体变了，不带具体是哪一项） */
+export function onSettingUpdate(cb: () => void): WfcSubscription {
+    return _on(EventType.SettingUpdate, (args: Array<any | null>): void => {
+        cb();
+    });
+}
+
+/** args: [UserOnlineState[]] */
+export function onUserOnlineEvent(cb: (states: UserOnlineState[]) => void): WfcSubscription {
+    return _on(EventType.UserOnlineEvent, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as UserOnlineState[]);
+    });
+}
+
+// ---------------- 会话 ----------------
+
+/** args: [conversationInfo] */
+export function onConversationInfoUpdate(cb: (conversationInfo: ConversationInfo) => void): WfcSubscription {
+    return _on(EventType.ConversationInfoUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as ConversationInfo);
+    });
+}
+
+// ---------------- 消息 ----------------
+
+/** args: [Message[], hasMore] */
+export function onReceiveMessages(cb: (msgs: Message[], hasMore: boolean) => void): WfcSubscription {
+    return _on(EventType.ReceiveMessages, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as Message[], _argAt(args, 1) == true);
+    });
+}
+
+/**
+ * args: [原始 proto 消息的 JSON 数组字符串, hasMore]
+ * 未解码的原文，只有鸿蒙端的音视频引擎需要（要自己解 voip 信令），业务代码不要用这个。
+ */
+export function onReceiveProtoMessages(cb: (messagesStr: string, hasMore: boolean) => void): WfcSubscription {
+    return _on(EventType.ReceiveProtoMessages, (args: Array<any | null>): void => {
+        cb(_argString(args, 0), _argAt(args, 1) == true);
+    });
+}
+
+/** args: [message]，消息刚进入发送流程（还没发出去）时触发 */
+export function onSendMessage(cb: (message: Message) => void): WfcSubscription {
+    return _on(EventType.SendMessage, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as Message);
+    });
+}
+
+/** args: [message]，发送成功/失败/媒体上传进度都走这个 */
+export function onMessageStatusUpdate(cb: (message: Message) => void): WfcSubscription {
+    return _on(EventType.MessageStatusUpdate, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            return;
+        }
+        cb(v as Message);
+    });
+}
+
+/** args: [ReadEntry[]] */
+export function onMessageRead(cb: (readEntries: ReadEntry[]) => void): WfcSubscription {
+    return _on(EventType.MessageRead, (args: Array<any | null>): void => {
+        const v = _argAt(args, 0);
+        if (v == null) {
+            cb([] as ReadEntry[]);
+            return;
+        }
+        cb(v as ReadEntry[]);
+    });
+}
+
+/** args: [operatorUid, messageUid]，自己调 recallMessage 也会触发 */
+export function onRecallMessage(cb: (operatorUid: string, messageUid: string) => void): WfcSubscription {
+    return _on(EventType.RecallMessage, (args: Array<any | null>): void => {
+        cb(_argString(args, 0), stringValue(_argAt(args, 1)));
+    });
+}
+
+/** args: [messageUid]，远程（其他端）删除消息 */
+export function onMessageDeleted(cb: (messageUid: string) => void): WfcSubscription {
+    return _on(EventType.MessageDeleted, (args: Array<any | null>): void => {
+        cb(stringValue(_argAt(args, 0)));
+    });
+}
+
+/** args: [messageId]，本端主动删除消息 */
+export function onDeleteMessage(cb: (messageId: number) => void): WfcSubscription {
+    return _on(EventType.DeleteMessage, (args: Array<any | null>): void => {
+        cb(numberValue(_argAt(args, 0)));
+    });
+}
+
+// ---------------- 音视频 ----------------
+
+/**
+ * args: [event]，janus videoroom 的会议事件（JSON 字符串）。
+ * 只有鸿蒙端的音视频引擎用，见 wfc/av/engine/avEngineKit.uts。
+ */
+export function onConferenceEvent(cb: (event: string) => void): WfcSubscription {
+    return _on(EventType.ConferenceEvent, (args: Array<any | null>): void => {
+        cb(_argString(args, 0));
+    });
+}

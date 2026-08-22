@@ -26,8 +26,8 @@
 import store from "@/store.uts";
 import UserListView from "@/pages/user/UserListView.uvue";
 import UserInfo from "@/wfc/model/userInfo.uts";
-import EventType from "@/wfc/client/wfcEvent.uts";
-import wfc from "@/wfc/client/wfc.uts";
+import GroupMember from "@/wfc/model/groupMember.uts";
+import { WfcSubscription, onGroupMembersUpdate, onUserInfosUpdate, offAll } from "@/wfc/client/wfcEventSubscriber.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx, FONT_BASE } from "@/common/layoutScale.uts";
 import { t } from "@/i18n/i18n.uts";
@@ -56,7 +56,13 @@ const reload = () => {
     }
 }
 
-const onMembersUpdate = (_args: Array<any | null>) => {
+const subs: WfcSubscription[] = []
+
+const handleUserInfosUpdate = (_userInfos: UserInfo[]) => {
+    reload()
+}
+
+const handleGroupMembersUpdate = (_groupId: string, _members: GroupMember[]) => {
     reload()
 }
 
@@ -66,13 +72,12 @@ onLoad((options: OnLoadOptions) => {
 })
 
 onMounted(() => {
-    wfc.eventEmitter.on(EventType.UserInfosUpdate, onMembersUpdate)
-    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onMembersUpdate)
+    subs.push(onUserInfosUpdate(handleUserInfosUpdate))
+    subs.push(onGroupMembersUpdate(handleGroupMembersUpdate))
 })
 
-onBeforeUnmount(() => {
-    wfc.eventEmitter.off(EventType.UserInfosUpdate, onMembersUpdate)
-    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onMembersUpdate)
+onUnmounted(() => {
+    offAll(subs)
 })
 </script>
 

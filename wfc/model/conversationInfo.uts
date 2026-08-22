@@ -16,10 +16,6 @@ export default class ConversationInfo {
     top = 0;
     isSilent = false;
 
-    // ---- UI 层补丁字段 ----
-    _timeStr = '';
-    _unread = 0;
-
     static protoConversationToConversationInfo(obj: UTSJSONObject | null): ConversationInfo | null {
         if (obj == null) {
             return null;

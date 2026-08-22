@@ -146,7 +146,8 @@ export default {
         "delete_title": "刪除消息",
         "delete_local": "刪除本地消息",
         "delete_remote": "刪除遠程消息",
-        "delete_remote_fail": "刪除遠程消息失敗: {0}"
+        "delete_remote_fail": "刪除遠程消息失敗: {0}",
+        "file_too_big": "文件超過 {0}，無法發送"
     },
     "conversation": {
         "forward_title": "分別發送給",

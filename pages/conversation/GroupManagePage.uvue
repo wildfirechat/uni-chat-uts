@@ -43,7 +43,7 @@ import GroupInfo from "@/wfc/model/groupInfo.uts";
 import GroupType from "@/wfc/model/groupType.uts";
 import GroupMemberType from "@/wfc/model/groupMemberType.uts";
 import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
-import EventType from "@/wfc/client/wfcEvent.uts";
+import { WfcSubscription, onGroupInfosUpdate, offAll } from "@/wfc/client/wfcEventSubscriber.uts";
 import { colors, AppColors } from "@/common/theme.uts";
 import { showSelectDialog, toastError } from "@/common/prompt.uts";
 import { t } from "@/i18n/i18n.uts";
@@ -116,7 +116,9 @@ const reload = () => {
     isOwner.value = wfc.getGroupMember(gid, wfc.getUserId()).type == GroupMemberType.Owner
 }
 
-const onGroupUpdate = (_args: Array<any | null>) => {
+const subs: WfcSubscription[] = []
+
+const handleGroupInfosUpdate = (_groupInfos: GroupInfo[]) => {
     reload()
 }
 
@@ -127,11 +129,11 @@ onLoad((options: OnLoadOptions) => {
 })
 
 onMounted(() => {
-    wfc.eventEmitter.on(EventType.GroupInfosUpdate, onGroupUpdate)
+    subs.push(onGroupInfosUpdate(handleGroupInfosUpdate))
 })
 
-onBeforeUnmount(() => {
-    wfc.eventEmitter.off(EventType.GroupInfosUpdate, onGroupUpdate)
+onUnmounted(() => {
+    offAll(subs)
 })
 
 const openManagerSetting = () => {

@@ -29,7 +29,6 @@ export default class Conversation {
 
     // ---- UI 层补丁字段 ----
     _target: ConversationTarget | null = null;
-    _targetOnlineStateDesc = '';
 
     constructor(type: number, target: string, line: number = 0) {
         this.type = type;

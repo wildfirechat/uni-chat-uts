@@ -33,7 +33,7 @@ import wfc from "@/wfc/client/wfc.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
 import GroupMember from "@/wfc/model/groupMember.uts";
 import GroupMemberType from "@/wfc/model/groupMemberType.uts";
-import EventType from "@/wfc/client/wfcEvent.uts";
+import { WfcSubscription, onGroupMembersUpdate, onUserInfosUpdate, offAll } from "@/wfc/client/wfcEventSubscriber.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import { showConfirmDialog, toast, toastError } from "@/common/prompt.uts";
 import { colors, AppColors } from "@/common/theme.uts";
@@ -80,7 +80,13 @@ const reload = () => {
     managers.value = managerUsers
 }
 
-const onMembersUpdate = (_args: Array<any | null>) => {
+const subs: WfcSubscription[] = []
+
+const handleGroupMembersUpdate = (_groupId: string, _members: GroupMember[]) => {
+    reload()
+}
+
+const handleUserInfosUpdate = (_userInfos: UserInfo[]) => {
     reload()
 }
 
@@ -90,13 +96,12 @@ onLoad((options: OnLoadOptions) => {
 })
 
 onMounted(() => {
-    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onMembersUpdate)
-    wfc.eventEmitter.on(EventType.UserInfosUpdate, onMembersUpdate)
+    subs.push(onGroupMembersUpdate(handleGroupMembersUpdate))
+    subs.push(onUserInfosUpdate(handleUserInfosUpdate))
 })
 
-onBeforeUnmount(() => {
-    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onMembersUpdate)
-    wfc.eventEmitter.off(EventType.UserInfosUpdate, onMembersUpdate)
+onUnmounted(() => {
+    offAll(subs)
 })
 
 const addManager = () => {

@@ -23,6 +23,7 @@ import { getItem, setItem } from '@/pages/util/storageHelper.uts';
 import { Comment, Feed, FeedEntry, MomentProfiles } from './momentModel.uts';
 import MomentCommentMessageContent from './momentCommentMessageContent.uts';
 import MomentFeedMessageContent from './momentFeedMessageContent.uts';
+import { onReceiveMessages } from "../client/wfcEventSubscriber.uts";
 
 export type OnReceiveNewCommentCallback = (comment: MomentCommentMessageContent) => void
 export type OnReceiveMentionedFeedCallback = (feed: MomentFeedMessageContent) => void
@@ -54,11 +55,7 @@ class MomentClient {
         }
         this.inited = true;
 
-        wfc.eventEmitter.on(EventType.ReceiveMessages, (args: Array<any | null>) => {
-            if (args.length == 0) {
-                return;
-            }
-            const msgs = args[0] as Message[];
+        onReceiveMessages((msgs: Message[], hasMore: boolean) => {
             for (let i = 0; i < msgs.length; i++) {
                 const msg = msgs[i];
                 if (msg.conversation.type != ConversationType.Single || msg.conversation.line != MOMENT_LINE) {

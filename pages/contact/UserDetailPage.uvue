@@ -368,14 +368,15 @@ const deleteFriend = () => {
     if (friend == null) {
         return
     }
+    // 走 store.deleteFriend 而不是直接 wfc.deleteFriend：删好友之后那条单聊会话
+    // 也要从会话列表里清掉，这一步只有 store 那个方法做了。直接调 wfc 的话好友删了、
+    // 会话还留在列表里。失败的 toast 也由 store 统一发，这里不要再发一遍。
     showConfirmDialog(t('user.delete_friend'), t('user.delete_friend_confirm'), true, () => {
-        wfc.deleteFriend(friend.uid, () => {
+        store.deleteFriend(friend.uid, () => {
             toast(t('common.operate_success'))
             setTimeout(() => {
                 uni.navigateBack({} as NavigateBackOptions)
             }, 800)
-        }, (err: number) => {
-            toastError(err)
         })
     })
 }

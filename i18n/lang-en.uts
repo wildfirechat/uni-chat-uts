@@ -146,7 +146,8 @@ export default {
         "delete_title": "Delete Message",
         "delete_local": "Delete Local Message",
         "delete_remote": "Delete Remote Message",
-        "delete_remote_fail": "Failed to delete remote message: {0}"
+        "delete_remote_fail": "Failed to delete remote message: {0}",
+        "file_too_big": "File exceeds {0} and cannot be sent"
     },
     "conversation": {
         "forward_title": "Send separately",

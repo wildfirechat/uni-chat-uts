@@ -49,7 +49,7 @@ import GroupInfo from "@/wfc/model/groupInfo.uts";
 import GroupMember from "@/wfc/model/groupMember.uts";
 import GroupMemberType from "@/wfc/model/groupMemberType.uts";
 import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
-import EventType from "@/wfc/client/wfcEvent.uts";
+import { WfcSubscription, onGroupMembersUpdate, onGroupInfosUpdate, onUserInfosUpdate, offAll } from "@/wfc/client/wfcEventSubscriber.uts";
 import { pickUsers, PickUsersOptions } from "@/common/picker.uts";
 import { toast, toastError } from "@/common/prompt.uts";
 import { colors, AppColors } from "@/common/theme.uts";
@@ -96,7 +96,17 @@ const reload = () => {
     allMembers.value = store.getGroupMemberUserInfos(gid, true)
 }
 
-const onUpdate = (_args: Array<any | null>) => {
+const subs: WfcSubscription[] = []
+
+const handleGroupMembersUpdate = (_groupId: string, _members: GroupMember[]) => {
+    reload()
+}
+
+const handleGroupInfosUpdate = (_groupInfos: GroupInfo[]) => {
+    reload()
+}
+
+const handleUserInfosUpdate = (_userInfos: UserInfo[]) => {
     reload()
 }
 
@@ -106,15 +116,13 @@ onLoad((options: OnLoadOptions) => {
 })
 
 onMounted(() => {
-    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onUpdate)
-    wfc.eventEmitter.on(EventType.GroupInfosUpdate, onUpdate)
-    wfc.eventEmitter.on(EventType.UserInfosUpdate, onUpdate)
+    subs.push(onGroupMembersUpdate(handleGroupMembersUpdate))
+    subs.push(onGroupInfosUpdate(handleGroupInfosUpdate))
+    subs.push(onUserInfosUpdate(handleUserInfosUpdate))
 })
 
-onBeforeUnmount(() => {
-    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onUpdate)
-    wfc.eventEmitter.off(EventType.GroupInfosUpdate, onUpdate)
-    wfc.eventEmitter.off(EventType.UserInfosUpdate, onUpdate)
+onUnmounted(() => {
+    offAll(subs)
 })
 
 const onMuteAllChange = (value: boolean) => {

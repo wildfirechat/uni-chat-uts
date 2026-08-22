@@ -20,7 +20,25 @@ import { ref } from 'vue'
 
 import ConnectionStatus from "./wfc/client/connectionStatus.uts";
 import wfc from "./wfc/client/wfc.uts";
-import EventType from "./wfc/client/wfcEvent.uts";
+import {
+    onChannelInfosUpdate,
+    onConnectionStatusChanged,
+    onConversationInfoUpdate,
+    onDeleteMessage,
+    onFriendListUpdate,
+    onFriendRequestUpdate,
+    onGroupInfosUpdate,
+    onGroupMembersUpdate,
+    onMessageDeleted,
+    onMessageRead,
+    onMessageStatusUpdate,
+    onReceiveMessages,
+    onRecallMessage,
+    onSendMessage,
+    onSettingUpdate,
+    onUserInfosUpdate,
+    onUserOnlineEvent
+} from "./wfc/client/wfcEventSubscriber.uts";
 import ConversationType from "./wfc/model/conversationType.uts";
 import Conversation, { ConversationTarget } from "./wfc/model/conversation.uts";
 import ConversationInfo from "./wfc/model/conversationInfo.uts";
@@ -37,6 +55,7 @@ import UnreadCount from "./wfc/model/unreadCount.uts";
 import FriendRequest from "./wfc/model/friendRequest.uts";
 import FileRecord from "./wfc/model/fileRecord.uts";
 import UserOnlineState from "./wfc/model/userOnlineState.uts";
+import ReadEntry from "./wfc/model/readEntry.uts";
 import PCOnlineInfo from "./wfc/model/pcOnlineInfo.uts";
 import SearchType from "./wfc/model/searchType.uts";
 import Message from "./wfc/messages/message.uts";
@@ -60,15 +79,21 @@ import DismissGroupNotification from "./wfc/messages/notification/dismissGroupNo
 import KickoffGroupMemberNotification from "./wfc/messages/notification/kickoffGroupMemberNotification.uts";
 import QuitGroupNotification from "./wfc/messages/notification/quitGroupNotification.uts";
 import CallStartMessageContent from "./wfc/av/messages/callStartMessageContent.uts";
-import { eq, gt, numberValue, stringValue } from "./wfc/util/longUtil.uts";
+import { eq, gt, numberValue } from "./wfc/util/longUtil.uts";
 import { timeFormat, dateFormat, humanSize, getFiletypeIcon, getMediaType } from "./pages/util/helper.uts";
 import { pinyinOf, pinyinEntryOf } from "./common/pinyin.uts";
+import { toast, toastError } from "./common/prompt.uts";
+import { t1 } from "./i18n/i18n.uts";
 import { clear, getItem, setItem } from "./pages/util/storageHelper.uts";
 import Config from "./config.uts";
 import ForwardType from "./pages/conversation/message/forward/ForwardType.uts";
 
 // 消息定位时，目标消息前后各加载的消息条数
 const MESSAGE_LOAD_AROUND_COUNT = 10
+
+// 普通上传通道的单文件上限。超过这个大小要走大文件上传（isSupportBigFilesUpload），
+// 密聊会话不支持大文件上传，只能拒绝。
+const MAX_UPLOAD_FILE_SIZE = 100 * 1024 * 1024
 
 /**
  * 媒体预览项。图片和视频共用一套预览（[PreviewMediaPage](./pages/misc/PreviewMediaPage.uvue)），
@@ -119,8 +144,11 @@ export class ConversationState {
     get conversationInfoList(): ConversationInfo[] { return this._conversationInfoList.value }
     set conversationInfoList(value: ConversationInfo[]) { this._conversationInfoList.value = value }
 
-    // 会话头像/名称（conversation._target）的解析版本号。
-    // 会话行的 target 是渲染时才解析、就地缓存在 conversation._target 上的普通字段，本身不是响应式的。
+    // 会话行上「按需解析、就地缓存在普通 class 字段上」的派生值的版本号。
+    // 覆盖 conversation._target（头像/名称）和 lastMessage._from（"某某: xxx" 前缀）。
+    // 规则：写这些字段的地方一律要调 store._bumpConversationRowVersion()，读的地方一律走
+    // store.ensureXxx()（它会读一次版本号建立依赖）—— 字段本身不是响应式的，只赋值视图不会动。
+    // 在线状态不在此列：它压根不缓存，见 store.ensureTargetOnlineStateDesc。
     // 用户/群资料回来之后要让行重新解析，以前的做法是整表 slice + sort + 重新赋值 conversationInfoList，
     // 而会话列表用的是 list-view 的复用（recycle）渲染：每次整表替换都会把一份完整 keyList 重新推给原生端，
     // 滚动过程中撞上这个重推就会留下「空白、点不动」的行。改成只把版本号 +1：
@@ -186,10 +214,6 @@ export class ConversationState {
     get inputtingTypingType(): number { return this._inputtingTypingType.value }
     set inputtingTypingType(value: number) { this._inputtingTypingType.value = value }
 
-    private _inputClearTimer = ref<number>(0);
-    get inputClearTimer(): number { return this._inputClearTimer.value }
-    set inputClearTimer(value: number) { this._inputClearTimer.value = value }
-
     private _shouldAutoScrollToBottom = ref<boolean>(true);
     get shouldAutoScrollToBottom(): boolean { return this._shouldAutoScrollToBottom.value }
     set shouldAutoScrollToBottom(value: boolean) { this._shouldAutoScrollToBottom.value = value }
@@ -228,10 +252,6 @@ export class ConversationState {
     get sendingMessages(): MediaProgress[] { return this._sendingMessages.value }
     set sendingMessages(value: MediaProgress[]) { this._sendingMessages.value = value }
 
-    private _floatingConversations = ref<Conversation[]>([]);
-    get floatingConversations(): Conversation[] { return this._floatingConversations.value }
-    set floatingConversations(value: Conversation[]) { this._floatingConversations.value = value }
-
     private _currentVoiceMessage = ref<Message | null>(null);
     get currentVoiceMessage(): Message | null { return this._currentVoiceMessage.value }
     set currentVoiceMessage(value: Message | null) { this._currentVoiceMessage.value = value }
@@ -240,6 +260,8 @@ export class ConversationState {
     get contextMenuConversationInfo(): ConversationInfo | null { return this._contextMenuConversationInfo.value }
     set contextMenuConversationInfo(value: ConversationInfo | null) { this._contextMenuConversationInfo.value = value }
 
+    // 注意：conversationTargetVersion 故意不重置 —— 它只负责「变了」这个信号，
+    // 归零反而可能让还没重算的 computed 读到和上次相同的值。
     _reset(): void {
         this.currentConversationInfo = null;
         this.conversationInfoList = [];
@@ -256,7 +278,6 @@ export class ConversationState {
         this.isMessageReceiptEnable = false;
         this.inputtingUser = null;
         this.inputtingTypingType = 0;
-        this.inputClearTimer = 0;
         this.shouldAutoScrollToBottom = true;
         this.previewMediaItems = [];
         this.previewMediaIndex = 0;
@@ -266,7 +287,6 @@ export class ConversationState {
         this.quotedMessage = null;
         this.downloadingMessages = [];
         this.sendingMessages = [];
-        this.floatingConversations = [];
         this.currentVoiceMessage = null;
         this.contextMenuConversationInfo = null;
     }
@@ -293,10 +313,6 @@ export class ContactState {
     get currentOrganization(): UTSJSONObject | null { return this._currentOrganization.value }
     set currentOrganization(value: UTSJSONObject | null) { this._currentOrganization.value = value }
 
-    private _currentChatroom = ref<UTSJSONObject | null>(null);
-    get currentChatroom(): UTSJSONObject | null { return this._currentChatroom.value }
-    set currentChatroom(value: UTSJSONObject | null) { this._currentChatroom.value = value }
-
     private _currentUser = ref<UserInfo | null>(null);
     get currentUser(): UserInfo | null { return this._currentUser.value }
     set currentUser(value: UserInfo | null) { this._currentUser.value = value }
@@ -316,14 +332,6 @@ export class ContactState {
     private _expandChanel = ref<boolean>(false);
     get expandChanel(): boolean { return this._expandChanel.value }
     set expandChanel(value: boolean) { this._expandChanel.value = value }
-
-    private _expandOrganization = ref<boolean>(false);
-    get expandOrganization(): boolean { return this._expandOrganization.value }
-    set expandOrganization(value: boolean) { this._expandOrganization.value = value }
-
-    private _expandChatroom = ref<boolean>(false);
-    get expandChatroom(): boolean { return this._expandChatroom.value }
-    set expandChatroom(value: boolean) { this._expandChatroom.value = value }
 
     private _unreadFriendRequestCount = ref<number>(0);
     get unreadFriendRequestCount(): number { return this._unreadFriendRequestCount.value }
@@ -353,17 +361,12 @@ export class ContactState {
     get selfUserInfo(): UserInfo | null { return this._selfUserInfo.value }
     set selfUserInfo(value: UserInfo | null) { this._selfUserInfo.value = value }
 
-    private _contextMenuUserInfo = ref<UserInfo | null>(null);
-    get contextMenuUserInfo(): UserInfo | null { return this._contextMenuUserInfo.value }
-    set contextMenuUserInfo(value: UserInfo | null) { this._contextMenuUserInfo.value = value }
-
     _reset(): void {
         this.currentFriendRequest = null;
         this.currentGroup = null;
         this.currentChannel = null;
         this.currentFriend = null;
         this.currentOrganization = null;
-        this.currentChatroom = null;
         this.currentUser = null;
 
         this.expandFriendRequestList = false;
@@ -379,7 +382,6 @@ export class ContactState {
         this.favContactList = [];
 
         this.selfUserInfo = null;
-        this.contextMenuUserInfo = null;
     }
 }
 
@@ -471,43 +473,38 @@ export class MiscState {
     get enableAutoLogin(): boolean { return this._enableAutoLogin.value }
     set enableAutoLogin(value: boolean) { this._enableAutoLogin.value = value }
 
-    private _isMainWindow = ref<boolean>(false);
-    get isMainWindow(): boolean { return this._isMainWindow.value }
-    set isMainWindow(value: boolean) { this._isMainWindow.value = value }
-
     private _isCommercialServer = ref<boolean>(false);
     get isCommercialServer(): boolean { return this._isCommercialServer.value }
     set isCommercialServer(value: boolean) { this._isCommercialServer.value = value }
-
-    private _isDisableSyncDraft = ref<boolean>(false);
-    get isDisableSyncDraft(): boolean { return this._isDisableSyncDraft.value }
-    set isDisableSyncDraft(value: boolean) { this._isDisableSyncDraft.value = value }
-
-    private _isVoipOngoing = ref<boolean>(false);
-    get isVoipOngoing(): boolean { return this._isVoipOngoing.value }
-    set isVoipOngoing(value: boolean) { this._isVoipOngoing.value = value }
 
     private _isAppHidden = ref<boolean>(false);
     get isAppHidden(): boolean { return this._isAppHidden.value }
     set isAppHidden(value: boolean) { this._isAppHidden.value = value }
 
-    private _userOnlineStateMap = ref<Map<string, UserOnlineState>>(new Map<string, UserOnlineState>());
-    get userOnlineStateMap(): Map<string, UserOnlineState> { return this._userOnlineStateMap.value }
-    set userOnlineStateMap(value: Map<string, UserOnlineState>) { this._userOnlineStateMap.value = value }
+    /**
+     * 在线状态版本号。在线状态本身存在 store 的普通 Map 里（不是响应式的），
+     * 这个计数器只负责「变了」这个信号：读在线状态的 computed 先读它一次建立依赖。
+     * 不缓存派生出来的描述文案 —— 缓存在 Conversation 上会被 _reloadConversation
+     * 换新对象时抹掉（每来一条消息就抹一次）。
+     */
+    private _onlineStateVersion = ref<number>(0);
+    get onlineStateVersion(): number { return this._onlineStateVersion.value }
+    set onlineStateVersion(value: number) { this._onlineStateVersion.value = value }
 
     /** PC/Web/小程序/Pad 在线信息，驱动会话列表顶部的「PC 已登录」横幅。 */
     private _pcOnlineInfos = ref<PCOnlineInfo[]>([] as PCOnlineInfo[]);
     get pcOnlineInfos(): PCOnlineInfo[] { return this._pcOnlineInfos.value }
     set pcOnlineInfos(value: PCOnlineInfo[]) { this._pcOnlineInfos.value = value }
 
+    // 注意：isAppHidden 故意不重置 —— 它是 App 前后台的真实状态，跟登录的是谁无关。
+    // onlineStateVersion 也故意不重置，理由同 conversationTargetVersion。
+    // 其余字段新增时记得在这里补一行，漏了就是「上一个账号的设置漏给下一个账号」。
     _reset(): void {
         this.connectionStatus = ConnectionStatus.ConnectionStatusUnconnected;
         this.enableNotification = true;
+        this.enableNotificationMessageDetail = true;
         this.enableAutoLogin = false;
         this.isCommercialServer = false;
-        this.isDisableSyncDraft = false;
-        this.isVoipOngoing = false;
-        this.userOnlineStateMap = new Map<string, UserOnlineState>();
         this.pcOnlineInfos = [] as PCOnlineInfo[];
     }
 }
@@ -518,14 +515,6 @@ export const searchState = new SearchState()
 export const pickState = new PickState()
 export const miscState = new MiscState()
 
-export class StoreState {
-    conversation: ConversationState = conversationState
-    contact: ContactState = contactState
-    search: SearchState = searchState
-    pick: PickState = pickState
-    misc: MiscState = miscState
-}
-
 class DeferredReloadEntry {
     timer: number = 0;
     // 本轮去抖开始的时间戳，0 表示当前没有待执行的重载
@@ -533,17 +522,34 @@ class DeferredReloadEntry {
 }
 
 class Store {
-    debug = true;
-    state: StoreState = new StoreState();
     private _reloadTimers: Map<string, DeferredReloadEntry> = new Map<string, DeferredReloadEntry>();
     private _pendingGroupMemberUpdateGroupIds: Set<string> = new Set<string>();
+    // 在线状态的原始数据。只被 store 自己读（getUserOnlineState），所以是普通缓存、
+    // 不是响应式状态 —— 免得 .set() 就地改一个「响应式」Map 造成误解。
+    // 它变了之后靠 miscState.onlineStateVersion 通知视图，写入统一走 _updateUserOnlineStates。
+    private _userOnlineStateMap: Map<string, UserOnlineState> = new Map<string, UserOnlineState>();
+    // 「对方正在输入」的清除定时器句柄。定时器 id 不该放进响应式状态（没人渲染它，
+    // 每次赋值还白白触发一轮依赖通知）。
+    private _inputClearTimer: number = 0;
+
+    /**
+     * 用户主动点出来的操作失败了，必须给反馈。
+     * 以前这里清一色 `console.log('xxx error', err)`：用户点了退群/置顶，界面一动不动，
+     * 只会反复点，也说不清到底成没成功。日志保留（排查要用），toast 是给用户看的。
+     *
+     * 只用于「用户刚点了一下」的动作。后台自己发起的（拉资料、watch 在线状态、
+     * 搜索的每次按键）不要走这里 —— 那种 toast 是骚扰。
+     */
+    private _reportActionError(action: string, errorCode: number): void {
+        console.log(action + ' error', errorCode);
+        toastError(errorCode);
+    }
 
     init(): void {
         console.log('init store')
         this._cancelDeferredReloads();
 
-        wfc.eventEmitter.on(EventType.ConnectionStatusChanged, (args: Array<any | null>) => {
-            const status = numberValue(args[0]);
+        onConnectionStatusChanged((status: number) => {
             miscState.connectionStatus = status;
             console.log('connection status changed', status);
             if (status == ConnectionStatus.ConnectionStatusConnected) {
@@ -559,13 +565,17 @@ class Store {
                 if (status == ConnectionStatus.ConnectionStatusKickedOff) {
                     wfc.disconnect();
                 }
-                this._cancelDeferredReloads();
-                _reset();
+                this._resetRuntimeState();
+                _resetAllState();
+                // 跳转留在这里做：清状态是状态层的事，去哪个页面是连接状态这个决策点的事。
+                // _resetAllState() 里不要再塞导航，否则任何想复用「清状态」的地方都会被迫跳页。
+                uni.reLaunch({
+                    url: '/pages/login/LoginPage'
+                } as ReLaunchOptions);
             }
         });
 
-        wfc.eventEmitter.on(EventType.UserInfosUpdate, (args: Array<any | null>) => {
-            const userInfos = args[0] as UserInfo[];
+        onUserInfosUpdate((userInfos: UserInfo[]) => {
             console.log('store UserInfosUpdate', userInfos.length)
             this._reloadSingleConversationIfExist(userInfos);
 
@@ -585,7 +595,7 @@ class Store {
             }
         });
 
-        wfc.eventEmitter.on(EventType.SettingUpdate, (args: Array<any | null>) => {
+        onSettingUpdate(() => {
             console.log('store SettingUpdate')
             this._deferLoadDefaultConversationList();
             this._deferLoadFavContactList();
@@ -596,11 +606,11 @@ class Store {
             this.refreshPCOnlineInfos();
         });
 
-        wfc.eventEmitter.on(EventType.FriendRequestUpdate, (args: Array<any | null>) => {
+        onFriendRequestUpdate((newRequestIds: string[]) => {
             this._deferLoadFriendRequest();
         });
 
-        wfc.eventEmitter.on(EventType.FriendListUpdate, (args: Array<any | null>) => {
+        onFriendListUpdate((updatedFriendIds: string[]) => {
             this._deferLoadFriendList();
             this._deferLoadFriendRequest();
             this._deferLoadFavContactList();
@@ -608,15 +618,13 @@ class Store {
             this._deferPatchCurrentConversationMessages();
         });
 
-        wfc.eventEmitter.on(EventType.GroupInfosUpdate, (args: Array<any | null>) => {
-            const groupInfos = args[0] as GroupInfo[];
+        onGroupInfosUpdate((groupInfos: GroupInfo[]) => {
             console.log('store GroupInfosUpdate', groupInfos.length)
             this._reloadGroupConversationIfExist(groupInfos);
             this._deferLoadFavGroupList();
         });
 
-        wfc.eventEmitter.on(EventType.GroupMembersUpdate, (args: Array<any | null>) => {
-            const groupId = '' + args[0];
+        onGroupMembersUpdate((groupId: string, members: GroupMember[]) => {
             // 首次同步时每个群都会回调一次群成员更新，逐个重载会话会反复整表排序。
             // 这里把 groupId 攒起来，去抖后一次性处理
             this._pendingGroupMemberUpdateGroupIds.add(groupId);
@@ -630,11 +638,10 @@ class Store {
             });
         });
 
-        wfc.eventEmitter.on(EventType.ChannelInfosUpdate, (args: Array<any | null>) => {
+        onChannelInfosUpdate((channelInfos: ChannelInfo[]) => {
             this._deferLoadDefaultConversationList();
             this._deferLoadChannelList();
             // 频道菜单是随 channelInfo 一起下发的，正停在这个频道的会话页时要把输入栏的菜单换掉
-            const channelInfos = args[0] as ChannelInfo[];
             const currentConversationInfo = conversationState.currentConversationInfo;
             if (currentConversationInfo == null || currentConversationInfo.conversation.type != ConversationType.Channel) {
                 return;
@@ -651,8 +658,7 @@ class Store {
             }
         });
 
-        wfc.eventEmitter.on(EventType.ConversationInfoUpdate, (args: Array<any | null>) => {
-            const conversationInfo = args[0] as ConversationInfo;
+        onConversationInfoUpdate((conversationInfo: ConversationInfo) => {
             this._reloadConversation(conversationInfo.conversation, true)
             const currentConversationInfo = conversationState.currentConversationInfo
             if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversationInfo.conversation)) {
@@ -660,9 +666,7 @@ class Store {
             }
         });
 
-        wfc.eventEmitter.on(EventType.ReceiveMessages, (args: Array<any | null>) => {
-            const msgs = args[0] as Message[];
-            const hasMore = args[1] == true;
+        onReceiveMessages((msgs: Message[], hasMore: boolean) => {
             if (miscState.connectionStatus == ConnectionStatus.ConnectionStatusReceiveing) {
                 return;
             }
@@ -675,7 +679,9 @@ class Store {
                     || (content instanceof QuitGroupNotification && (content as QuitGroupNotification).operator == wfc.getUserId())
                 ) {
                     this.setCurrentConversationInfo(null);
-                    return;
+                    // 注意是 continue 不是 return：一批消息可能横跨多个会话，
+                    // 这里 return 会把同批次后面的消息全部丢掉（不入库列表、不刷会话行、不通知）
+                    continue;
                 }
 
                 if (!hasMore) {
@@ -691,28 +697,25 @@ class Store {
                         conversationState.inputtingUser = userInfo;
                         conversationState.inputtingTypingType = (msg.messageContent as TypingMessageContent).typingType;
 
-                        if (conversationState.inputClearTimer != 0) {
-                            clearTimeout(conversationState.inputClearTimer);
+                        if (this._inputClearTimer != 0) {
+                            clearTimeout(this._inputClearTimer);
                         }
-                        conversationState.inputClearTimer = setTimeout(() => {
+                        this._inputClearTimer = setTimeout(() => {
+                            this._inputClearTimer = 0;
                             conversationState.inputtingUser = null;
                         }, 5000)
                     } else {
-                        if (conversationState.inputClearTimer != 0) {
-                            clearTimeout(conversationState.inputClearTimer);
-                            conversationState.inputClearTimer = 0;
-                        }
-                        conversationState.inputtingUser = null;
+                        this._clearInputtingStatus();
                     }
 
                     if (!this._isDisplayMessage(msg) || msg.messageContent.type == MessageContentType.RecallMessage_Notification) {
-                        return;
+                        continue;
                     }
 
                     // 消息定位模式下，列表底部不是最新消息，直接追加会造成消息断层，
                     // 交给向下翻页（loadConversationNewMessages）加载
                     if (conversationState.hasMoreNewMessages) {
-                        return;
+                        continue;
                     }
 
                     let lastTimestamp = 0;
@@ -744,7 +747,7 @@ class Store {
                         newMsgList.splice(msgIndex, 1, msg);
                         conversationState.currentConversationMessageList = newMsgList;
                         console.log('msg duplicate', msg.messageId, msg.messageUid)
-                        return;
+                        continue;
                     }
                     newMsgList.push(msg);
                     conversationState.currentConversationMessageList = newMsgList;
@@ -758,8 +761,7 @@ class Store {
             }
         });
 
-        wfc.eventEmitter.on(EventType.RecallMessage, (args: Array<any | null>) => {
-            const messageUid = stringValue(args[1]);
+        onRecallMessage((operatorUid: string, messageUid: string) => {
             this._reloadConversationByMessageUidIfExist(messageUid);
             const currentConversationInfo = conversationState.currentConversationInfo
             if (currentConversationInfo != null) {
@@ -786,11 +788,8 @@ class Store {
             }
         });
 
-        wfc.eventEmitter.on(EventType.UserOnlineEvent, (args: Array<any | null>) => {
-            const userOnlineStatus = args[0] as UserOnlineState[];
-            for (let i = 0; i < userOnlineStatus.length; i++) {
-                miscState.userOnlineStateMap.set(userOnlineStatus[i].userId, userOnlineStatus[i]);
-            }
+        onUserOnlineEvent((userOnlineStatus: UserOnlineState[]) => {
+            this._updateUserOnlineStates(userOnlineStatus);
             // 更新在线状态。在线状态不影响显示名、拼音和排序，只需刷新在线状态描述，
             // 不必全量重新 patch（重算拼音）+ 排序。整体赋值新数组触发刷新
             const newFriendList = contactState.friendList.slice(0);
@@ -801,8 +800,7 @@ class Store {
         })
 
         // 服务端删除
-        wfc.eventEmitter.on(EventType.MessageDeleted, (args: Array<any | null>) => {
-            const messageUid = stringValue(args[0]);
+        onMessageDeleted((messageUid: string) => {
             this._reloadConversationByMessageUidIfExist(messageUid);
             if (conversationState.currentConversationInfo != null) {
                 conversationState.currentConversationMessageList = conversationState.currentConversationMessageList.filter((msg: Message): boolean => !eq(msg.messageUid, messageUid))
@@ -810,16 +808,14 @@ class Store {
         });
 
         // 本地删除
-        wfc.eventEmitter.on(EventType.DeleteMessage, (args: Array<any | null>) => {
-            const messageId = numberValue(args[0]);
+        onDeleteMessage((messageId: number) => {
             this._reloadConversationByMessageIdIfExist(messageId);
             if (conversationState.currentConversationInfo != null) {
                 conversationState.currentConversationMessageList = conversationState.currentConversationMessageList.filter((msg: Message): boolean => msg.messageId != messageId)
             }
         });
 
-        wfc.eventEmitter.on(EventType.SendMessage, (args: Array<any | null>) => {
-            const message = args[0] as Message;
+        onSendMessage((message: Message) => {
             // 删除频道，或者从频道会话切到其他会话时，会发送一条离开频道的消息
             if (message.messageContent instanceof LeaveChannelChatMessageContent) {
                 return;
@@ -855,8 +851,7 @@ class Store {
             conversationState.currentConversationMessageList = newMsgList;
         });
 
-        wfc.eventEmitter.on(EventType.MessageStatusUpdate, (args: Array<any | null>) => {
-            const message = args[0] as Message;
+        onMessageStatusUpdate((message: Message) => {
             if (!this._isDisplayMessage(message)) {
                 return;
             }
@@ -881,7 +876,7 @@ class Store {
             }
         });
 
-        wfc.eventEmitter.on(EventType.MessageRead, (args: Array<any | null>) => {
+        onMessageRead((readEntries: ReadEntry[]) => {
             const currentConversationInfo = conversationState.currentConversationInfo
             if (currentConversationInfo != null) {
                 conversationState.currentConversationRead = wfc.getConversationRead(currentConversationInfo.conversation);
@@ -931,6 +926,22 @@ class Store {
             e.firstDeferTime = 0;
             reloadFn();
         }, wait);
+    }
+
+    /** 清掉「对方正在输入」的状态和它的定时器 */
+    _clearInputtingStatus(): void {
+        if (this._inputClearTimer != 0) {
+            clearTimeout(this._inputClearTimer);
+            this._inputClearTimer = 0;
+        }
+        conversationState.inputtingUser = null;
+    }
+
+    /** 登出/被踢时，把所有不在响应式状态里的运行时缓存和定时器一并清掉 */
+    _resetRuntimeState(): void {
+        this._cancelDeferredReloads();
+        this._clearInputtingStatus();
+        this._userOnlineStateMap.clear();
     }
 
     _cancelDeferredReloads(): void {
@@ -1031,36 +1042,34 @@ class Store {
     _loadConversationList(conversationTypes: number[] = [0, 1, 3], lines: number[] = [0]): void {
         const  conversationList = wfc.getConversationList(conversationTypes, lines);
         console.log('_loadConversationList size', conversationList.length);
-        const currentConversationInfo = conversationState.currentConversationInfo
-        // for (let i = 0; i < conversationList.length; i++) {
-        //     const info = conversationList[i]
-        //     // 只做纯本地计算；target（头像/名称）解析很昂贵（可能触发用户/群远程拉取），
-        //     // 会话很多时（2000+ 群）不能在这里批量做，交给会话列表条目渲染时按需 ensureConversationTarget。
-        //     this._patchConversationInfoLight(info);
-        //     if (currentConversationInfo != null && currentConversationInfo.conversation.equal(info.conversation)) {
-        //         // 当前正在聊天的会话本来就要展示，直接解析
-        //         this._resolveConversationTarget(info.conversation);
-        //         conversationState.currentConversationInfo = info;
-        //         this._patchCurrentConversationOnlineStatus();
-        //     }
-        // }
+        // 这里不做任何「派生字段 patch」：时间、未读数都由会话行自己从 timestamp/unreadCount 现算
+        // （见 ConversationItemView）。以前 patch 出来的 _timeStr/_unread 只有一个写入点，
+        // 这条加载路径没调到就整列时间为空、菜单未读数恒为 0。
+        // 昂贵的 target（头像/名称）解析同样不在这里做 —— 可能触发用户/群远程拉取，
+        // 2000+ 群的账号一次性全解析会卡死主线程，交给会话行按需 ensureConversationTarget。
+        // 排一次，确立「conversationInfoList 始终按 _compareConversationInfo 有序」这个不变量。
+        // 有了它，后面每条消息进来就只需要按序插回一条（_insertConversationInfoSorted），
+        // 不用整表重排。全量加载很少发生，这一次 O(n log n) 是划算的。
+        // 比较器相等时返回 0 + sort 稳定，所以原本就有序的列表不会被打乱，
+        // list-view 复用渲染的 keyList 也不会凭空变化。
+        this._sortConversationInfoList(conversationList);
         conversationState.conversationInfoList = conversationList;
     }
 
     _reloadConversation(conversation: Conversation, insertIfNoExist: boolean = true): ConversationInfo {
+        // 注意这里刻意不解析头像/名称：交给会话行渲染时按需解析（ensureConversationTarget）。
+        // 在这里急切解析的话，每来一条消息都要查一次用户/群信息，本地没有还会触发远程拉取。
         const conversationInfo = wfc.getConversationInfo(conversation);
-        this._patchConversationInfo(conversationInfo, true, null, null);
 
         // 先在副本上改，最后整体赋值一次，靠 setter 触发重渲染。
         // 不要原地 splice/push/sort：实测原地修改不会刷新会话列表(lastMessage 不更新)。
         const newList = conversationState.conversationInfoList.slice(0);
         const index = newList.findIndex((info: ConversationInfo): boolean => info.conversation.equal(conversation));
         if (index >= 0) {
-            newList.splice(index, 1, conversationInfo);
+            newList.splice(index, 1);
         } else {
-            if (insertIfNoExist && gt(conversationInfo.timestamp, 0) && conversation.type != ConversationType.ChatRoom) {
-                newList.push(conversationInfo);
-            } else {
+            const canInsert = insertIfNoExist && gt(conversationInfo.timestamp, 0) && conversation.type != ConversationType.ChatRoom;
+            if (!canInsert) {
                 return conversationInfo;
             }
         }
@@ -1070,7 +1079,8 @@ class Store {
             conversationState.currentConversationInfo = conversationInfo;
         }
 
-        this._sortConversationInfoList(newList);
+        // 摘掉旧的那条之后剩下的部分依然有序，按序插回去即可，不必整表重排。
+        this._insertConversationInfoSorted(newList, conversationInfo);
         conversationState.conversationInfoList = newList;
         return conversationInfo;
     }
@@ -1082,17 +1092,36 @@ class Store {
      * timestamp/top 都是普通 number，直接比较即可，不要用 longUtil 的 gt()（它按十进制字符串逐位比，只该用于 64 位 id）。
      */
     _sortConversationInfoList(list: ConversationInfo[]): void {
-        list.sort((a: ConversationInfo, b: ConversationInfo): number => {
-            const aTop = a.top > 0;
-            const bTop = b.top > 0;
-            if (aTop != bTop) {
-                return aTop ? -1 : 1;
+        list.sort((a: ConversationInfo, b: ConversationInfo): number => this._compareConversationInfo(a, b))
+    }
+
+    /** 会话列表的唯一排序依据。全量排序和按序插入必须共用它，否则两条路径会排出不同的顺序。 */
+    private _compareConversationInfo(a: ConversationInfo, b: ConversationInfo): number {
+        const aTop = a.top > 0;
+        const bTop = b.top > 0;
+        if (aTop != bTop) {
+            return aTop ? -1 : 1;
+        }
+        if (a.timestamp == b.timestamp) {
+            return 0;
+        }
+        return a.timestamp > b.timestamp ? -1 : 1;
+    }
+
+    /**
+     * 往一个已经有序的列表里按序插入一条。
+     * 比每条消息都整表 sort 便宜一个数量级（n 次比较 vs n log n 次），会话动辄 2000+ 条。
+     * 前提是 [list] 本身有序 —— 这个不变量由 _loadConversationList 里的那次排序建立。
+     */
+    private _insertConversationInfoSorted(list: ConversationInfo[], info: ConversationInfo): void {
+        let pos = list.length;
+        for (let i = 0; i < list.length; i++) {
+            if (this._compareConversationInfo(info, list[i]) < 0) {
+                pos = i;
+                break;
             }
-            if (a.timestamp == b.timestamp) {
-                return 0;
-            }
-            return a.timestamp > b.timestamp ? -1 : 1;
-        })
+        }
+        list.splice(pos, 0, info);
     }
 
     _reloadSingleConversationIfExist(userInfos: UserInfo[]): void {
@@ -1173,6 +1202,35 @@ class Store {
         this.setCurrentConversationInfo(info);
     }
 
+    /**
+     * 把「当前会话」相关的状态清一遍。进会话和退出会话共用，只差 [autoScrollToBottom]：
+     * 进会话要贴底显示最新消息，退出时没有列表可贴。
+     * 新增 currentConversationXxx 状态时只改这里，别再往两个分支各抄一遍。
+     */
+    private _resetCurrentConversationState(autoScrollToBottom: boolean): void {
+        conversationState.shouldAutoScrollToBottom = autoScrollToBottom;
+        conversationState.currentConversationMessageList = [];
+        conversationState.currentConversationOldestMessageId = 0;
+        conversationState.currentConversationOldestMessageUid = '0';
+        conversationState.currentConversationNewestMessageId = 0;
+        conversationState.hasMoreNewMessages = false;
+        conversationState.highlightMessageId = 0;
+        conversationState.currentConversationRead = null;
+        conversationState.enableMessageMultiSelection = false;
+        conversationState.showChannelMenu = false;
+        conversationState.channelMenus = [];
+        conversationState.quotedMessage = null;
+        conversationState.currentVoiceMessage = null;
+        this._clearInputtingStatus();
+        pickState.messages = [];
+    }
+
+    /** 从会话列表里移除某个会话。退群/解散/删除会话/删好友都会用到，别再各写一份 filter。 */
+    private _removeConversationFromList(conversation: Conversation): void {
+        conversationState.conversationInfoList = conversationState.conversationInfoList
+            .filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+    }
+
     setCurrentConversationInfo(conversationInfo: ConversationInfo | null): void {
         if (conversationInfo == null) {
             const currentConversationInfo = conversationState.currentConversationInfo
@@ -1188,17 +1246,9 @@ class Store {
                 }
             }
             conversationState.currentConversationInfo = null;
-            conversationState.shouldAutoScrollToBottom = false;
-            conversationState.currentConversationMessageList = [];
-            conversationState.currentConversationOldestMessageId = 0;
-            conversationState.currentConversationOldestMessageUid = '0';
-            conversationState.currentConversationNewestMessageId = 0;
-            conversationState.hasMoreNewMessages = false;
-            conversationState.highlightMessageId = 0;
+            this._resetCurrentConversationState(false);
             conversationState.enterUnreadCount = 0;
             conversationState.enterUnreadMentionCount = 0;
-            conversationState.currentConversationRead = null;
-            conversationState.enableMessageMultiSelection = false;
 
             return;
         }
@@ -1211,10 +1261,7 @@ class Store {
         const conversation = conversationInfo.conversation;
         if (conversation.type == ConversationType.Group || (conversation.type == ConversationType.Single && !wfc.isMyFriend(conversation.target))) {
             wfc.watchOnlineState(conversation.type, [conversation.target], 1000, (states: UserOnlineState[]) => {
-                for (let i = 0; i < states.length; i++) {
-                    miscState.userOnlineStateMap.set(states[i].userId, states[i]);
-                }
-                this._patchCurrentConversationOnlineStatus();
+                this._updateUserOnlineStates(states);
             }, (err: number) => {
                 console.log('watchOnlineState error', err);
             })
@@ -1226,13 +1273,7 @@ class Store {
             wfc.joinChatroom(conversation.target);
         }
         conversationState.currentConversationInfo = conversationInfo;
-        conversationState.shouldAutoScrollToBottom = true;
-        conversationState.currentConversationMessageList = [];
-        conversationState.currentConversationOldestMessageId = 0;
-        conversationState.currentConversationOldestMessageUid = '0';
-        conversationState.currentConversationNewestMessageId = 0;
-        conversationState.hasMoreNewMessages = false;
-        conversationState.highlightMessageId = 0;
+        this._resetCurrentConversationState(true);
         // 未读数会在进入会话后被清掉，这里先记下来，供顶部「N 条未读 / 有人@我」提示条使用
         const unreadCount = conversationInfo.unreadCount;
         conversationState.enterUnreadCount = unreadCount.unread + unreadCount.unreadMention + unreadCount.unreadMentionAll;
@@ -1241,9 +1282,6 @@ class Store {
 
         conversationState.currentConversationRead = wfc.getConversationRead(conversationInfo.conversation);
 
-        conversationState.enableMessageMultiSelection = false;
-        conversationState.showChannelMenu = false;
-        conversationState.channelMenus = [];
         if (conversation.type == ConversationType.Channel) {
             const channelInfo = wfc.getChannelInfo(conversation.target, true);
             // 对齐 flutter `MessageInputBarController`：频道配了菜单就默认先展示菜单栏，
@@ -1257,44 +1295,34 @@ class Store {
         } else if (conversation.type == ConversationType.Single) {
             wfc.getUserInfo(conversation.target, true);
         }
-        conversationState.quotedMessage = null;
-        conversationState.currentVoiceMessage = null;
-
-        if (conversationState.inputClearTimer != 0) {
-            clearTimeout(conversationState.inputClearTimer);
-            conversationState.inputClearTimer = 0;
-        }
-        conversationState.inputtingUser = null;
-
-        pickState.messages = [];
     }
 
-    quitGroup(groupId: string): void {
+    /**
+     * 退群。[successCB] 回来之前不要跳走 —— 失败了还留在群里，页面却已经退到会话列表，
+     * 用户只能靠「群还在」自己猜。
+     */
+    quitGroup(groupId: string, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
         wfc.quitGroup(groupId, [0], null, () => {
             this.setCurrentConversationInfo(null)
-            const conversation = new Conversation(ConversationType.Group, groupId, 0);
-            conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+            this._removeConversationFromList(new Conversation(ConversationType.Group, groupId, 0));
+            successCB?.();
         }, (err: number) => {
-            console.log('quit group error', err)
+            this._reportActionError('quit group', err);
+            failCB?.(err);
         })
     }
 
-    dismissGroup(groupId: string): void {
+    dismissGroup(groupId: string, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
         wfc.dismissGroup(groupId, [0], null, () => {
             this.setCurrentConversationInfo(null)
-            const conversation = new Conversation(ConversationType.Group, groupId, 0);
-            conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+            this._removeConversationFromList(new Conversation(ConversationType.Group, groupId, 0));
+            successCB?.();
         }, (err: number) => {
-            console.log('dismiss group error', err)
+            this._reportActionError('dismiss group', err);
+            failCB?.(err);
         })
     }
 
-    subscribeChannel(channelId: string, subscribe: boolean): void {
-        wfc.listenChannel(channelId, subscribe, () => {
-        }, (err: number) => {
-            console.log('unsubscribe channel error', err)
-        })
-    }
 
     toggleMessageMultiSelection(message: Message | null): void {
         conversationState.enableMessageMultiSelection = !conversationState.enableMessageMultiSelection;
@@ -1405,6 +1433,10 @@ class Store {
      * [PreviewMediaPage](./pages/misc/PreviewMediaPage.uvue)。
      *
      * 列表走全局状态而不是页面参数：url 带不了几十条媒体，也带不了消息对象。
+     *
+     * 这里的 navigateTo 是 store 里唯一有意保留的导航：预览入口已经收敛到 store.previewXxx，
+     * 十来个调用方（消息气泡、合并转发、朋友圈…）只想说「预览这些」，不该各自再抄一遍跳转参数。
+     * 其它地方新增状态时别照抄——状态层默认不负责导航。
      */
     private _openMediaPreview(items: PreviewMediaItem[], index: number): void {
         // 地址为空的（下载失败、还没上传完）直接剔掉，否则预览页会停在一张打不开的空白图上
@@ -1517,9 +1549,12 @@ class Store {
      * @param fileSize 文件大小，可传 0
      */
     sendFile(conversation: Conversation, filePath: string, fileName: string = '', fileSize: number = 0): boolean {
-        if (fileSize > 100 * 1024 * 1024) {
+        if (fileSize > MAX_UPLOAD_FILE_SIZE) {
             if (!wfc.isSupportBigFilesUpload() || conversation.type == ConversationType.SecretChat) {
+                // 以前这里只 log 一行就 return：用户选完大文件点发送，界面毫无反应，
+                // 既没有消息也没有提示，只会一遍遍重选重发。
                 console.log('file too big, and not support upload big file')
+                toast(t1('message.file_too_big', humanSize(MAX_UPLOAD_FILE_SIZE)))
                 return true;
             }
         }
@@ -1557,7 +1592,9 @@ class Store {
                 conversationState.sendingMessages = conversationState.sendingMessages.filter((e: MediaProgress): boolean => e.messageId != msg.messageId);
             },
             (error: number) => {
-                console.log('sf e', error)
+                // 不 toast：失败的消息气泡本身会变成「重发」状态（MessageStatus.SendFailure），
+                // 那个比一闪而过的 toast 更有用。这里只负责把进度条收掉。
+                console.log('sendFile error', error)
                 conversationState.sendingMessages = conversationState.sendingMessages.filter((e: MediaProgress): boolean => e.messageId != msg.messageId);
             }
         );
@@ -1570,14 +1607,14 @@ class Store {
 
     getConversationInfo(conversation: Conversation): ConversationInfo {
         const info = wfc.getConversationInfo(conversation);
-        this._patchConversationInfo(info, false, null, null);
+        this._patchConversationInfo(info, null, null);
         return info;
     }
 
     /**
      * 获取会话消息
      */
-    getMessages(conversation: Conversation, fromIndex: number = 0, before: boolean = true, withUser: string = '', callback: ((msgs: Message[]) => void) | null = null): void {
+    getMessages(conversation: Conversation, fromIndex: number = 0, before: boolean = true, withUser: string = '', callback: ((msgs: Message[]) => void) | null = null, failCB: ((err: number) => void) | null = null): void {
         wfc.getMessagesV2(conversation, fromIndex, before, 20, withUser, (msgs: Message[]) => {
             for (let i = 0; i < msgs.length; i++) {
                 this._patchMessage(msgs[i], 0);
@@ -1585,7 +1622,9 @@ class Store {
             callback?.(msgs);
         }, (err: number) => {
             console.error('getMessageV2 error', err)
-            callback?.([]);
+            // 失败不要回调空数组冒充成功：调用方会把「空」理解成「没有更多了」，
+            // 于是把 hasMore 置 false，翻页从此彻底停住，重进页面才恢复。
+            failCB?.(err);
         });
     }
 
@@ -1624,7 +1663,8 @@ class Store {
                 }
             }
         }, (err: number) => {
-            console.error('_loadCurrentConversationMessages error', err);
+            // 这一步失败的表现是「会话页一条消息都没有」，不提示的话完全无法和「真的没聊过」区分
+            this._reportActionError('_loadCurrentConversationMessages', err);
         });
     }
 
@@ -1879,6 +1919,8 @@ class Store {
                 }
             },
                 (error: number) => {
+                    // 下拉加载远程历史消息失败：用户正等着，静默收掉 loading 会让人以为「到头了」
+                    this._reportActionError('loadRemoteHistoryMessages', error);
                     completeCB();
                 });
         }
@@ -1905,27 +1947,36 @@ class Store {
                 loadRemoteHistoryMessageFunc();
             }
         }, (err: number) => {
+            console.error('loadConversationOldMessages error', err);
             completeCB();
         });
     }
 
-    setConversationTop(conversation: Conversation, top: number): void {
+    /**
+     * 置顶/取消置顶。调用方如果先把开关拨过去了（乐观更新），一定要在 [failCB] 里拨回来，
+     * 否则失败之后开关显示的是一个服务端并不认可的状态，而且刷新之前一直不会自愈。
+     */
+    setConversationTop(conversation: Conversation, top: number, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
         wfc.setConversationTop(conversation, top,
             () => {
                 this._reloadConversation(conversation, true);
+                successCB?.();
             },
             (err: number) => {
-                console.log('setConversationTop error', err)
+                this._reportActionError('setConversationTop', err);
+                failCB?.(err);
             });
     }
 
-    setConversationSilent(conversation: Conversation, silent: boolean): void {
+    setConversationSilent(conversation: Conversation, silent: boolean, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
         wfc.setConversationSlient(conversation, silent,
             () => {
                 this._reloadConversation(conversation, true);
+                successCB?.();
             },
             (err: number) => {
-                console.log('setConversationSilent error', err)
+                this._reportActionError('setConversationSilent', err);
+                failCB?.(err);
             });
     }
 
@@ -1935,7 +1986,7 @@ class Store {
         if (currentConversationInfo != null && currentConversationInfo.conversation.equal(conversation)) {
             this.setCurrentConversationInfo(null);
         }
-        conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conversation));
+        this._removeConversationFromList(conversation);
     }
 
     getMessageById(messageId: number): Message | null {
@@ -2018,6 +2069,8 @@ class Store {
             target._displayName = channelInfo.name;
             conversation._target = target;
         } else if (conversation.type == ConversationType.ChatRoom) {
+            // 聊天室是唯一异步解析的类型：回调到达时没有任何响应式依赖发生变化，
+            // 必须自己 bump 版本号，否则 ensureConversationTarget 的调用方永远停在解析前的空值上。
             wfc.getChatroomInfo(conversation.target, 0, (chatRoomInfo) => {
                 const target = new ConversationTarget();
                 target.target = chatRoomInfo.chatRoomId;
@@ -2025,29 +2078,20 @@ class Store {
                 target.portrait = chatRoomInfo.portrait;
                 target._displayName = chatRoomInfo.title;
                 conversation._target = target;
+                this._bumpConversationRowVersion();
             }, (err: number) => {
                 console.log('get chatRoomInfo error', err);
                 conversation._target = new ConversationTarget();
+                this._bumpConversationRowVersion();
             });
         }
     }
 
-    // 只做纯本地计算，不涉及任何用户/群信息查询，会话列表批量调用是廉价的。
-    _patchConversationInfoLight(info: ConversationInfo): ConversationInfo {
-        if (gt(info.timestamp, 0)) {
-            info._timeStr = dateFormat(info.timestamp);
-        } else {
-            info._timeStr = '';
-        }
-
-        info._unread = info.unreadCount.unread + info.unreadCount.unreadMention + info.unreadCount.unreadMentionAll;
-
-        return info;
-    }
-
-    _patchConversationInfo(info: ConversationInfo, patchLastMessage: boolean = true, userInfoMap: Map<string, UserInfo> | null = null, groupInfoMap: Map<string, GroupInfo> | null = null): ConversationInfo {
+    // 立刻解析会话目标（头像/名称），只给「拿到就要马上显示、且量很小」的调用方用
+    // （单个会话、搜索结果、文件记录）。会话列表不要用，见 _loadConversationList 的注释。
+    _patchConversationInfo(info: ConversationInfo, userInfoMap: Map<string, UserInfo> | null = null, groupInfoMap: Map<string, GroupInfo> | null = null): ConversationInfo {
         this._resolveConversationTarget(info.conversation, userInfoMap, groupInfoMap);
-        return this._patchConversationInfoLight(info);
+        return info;
     }
 
     // 会话目标（头像/名称）解析要在真正展示时才有意义，页面渲染时调用本方法按需解析并缓存到 conversation._target 上，
@@ -2070,6 +2114,32 @@ class Store {
             this._patchMessage(message, 0);
         }
         return message._from;
+    }
+
+    /**
+     * 单聊对方的在线状态描述。**不做缓存**：先读一次 onlineStateVersion 建立响应式依赖，
+     * 再实时查在线状态表。
+     *
+     * 别再改回「算好了存到 conversation._targetOnlineStateDesc 上」那种写法：
+     *   1. 好友单聊不走 watchOnlineState（gate 是 !isMyFriend），进会话时根本没有回调来触发计算，
+     *      而好友的在线状态是登录时就推过来的，之后可能几分钟都不再有 UserOnlineEvent；
+     *   2. 每来一条消息 _reloadConversation 都会用一个全新的 Conversation 对象替换
+     *      currentConversationInfo，缓存在旧对象上的值直接被抹成空。
+     */
+    ensureTargetOnlineStateDesc(conversation: Conversation): string {
+        if (miscState.onlineStateVersion >= 0 && conversation.type == ConversationType.Single) {
+            return this.getUserOnlineState(conversation.target);
+        }
+        return '';
+    }
+
+    /**
+     * 会话行版本号 +1。规则：任何写入「缓存在普通 class 字段上的派生值」
+     * （conversation._target / message._from ...）
+     * 之后都必须调它，否则值对了但视图不动 —— 这些字段本身不是响应式的。
+     */
+    _bumpConversationRowVersion(): void {
+        conversationState.conversationTargetVersion = conversationState.conversationTargetVersion + 1;
     }
 
     /**
@@ -2108,7 +2178,7 @@ class Store {
             }
         }
         if (dirty) {
-            conversationState.conversationTargetVersion = conversationState.conversationTargetVersion + 1;
+            this._bumpConversationRowVersion();
         }
     }
 
@@ -2132,24 +2202,6 @@ class Store {
         return conversationState.sendingMessages.find((e: MediaProgress): boolean => e.messageId == messageId);
     }
 
-    addFloatingConversation(conversation: Conversation): void {
-        conversationState.floatingConversations = conversationState.floatingConversations.concat([conversation]);
-    }
-
-    removeFloatingConversation(conversation: Conversation): void {
-        conversationState.floatingConversations = conversationState.floatingConversations.filter((c: Conversation): boolean => !c.equal(conversation))
-    }
-
-    isConversationInCurrentWindow(conversation: Conversation): boolean {
-        if (miscState.isMainWindow) {
-            const index = conversationState.floatingConversations.findIndex((fc: Conversation): boolean => fc.equal(conversation));
-            return index == -1;
-        } else {
-            const currentConversationInfo = conversationState.currentConversationInfo
-            return currentConversationInfo != null && currentConversationInfo.conversation.equal(conversation);
-        }
-    }
-
     // contact actions
 
     _loadSelfUserInfo(): void {
@@ -2168,19 +2220,23 @@ class Store {
         }
     }
 
+    /** 收到新的在线状态：写进缓存，然后 bump 版本号让读它的 computed 重算。 */
+    private _updateUserOnlineStates(states: UserOnlineState[]): void {
+        if (states.length == 0) {
+            return;
+        }
+        for (let i = 0; i < states.length; i++) {
+            this._userOnlineStateMap.set(states[i].userId, states[i]);
+        }
+        miscState.onlineStateVersion = miscState.onlineStateVersion + 1;
+    }
+
     getUserOnlineState(userId: string): string {
-        const userOnlineState = miscState.userOnlineStateMap.get(userId);
+        const userOnlineState = this._userOnlineStateMap.get(userId);
         if (userOnlineState != null) {
             return userOnlineState.desc();
         }
         return '';
-    }
-
-    _patchCurrentConversationOnlineStatus(): void {
-        const convInfo = conversationState.currentConversationInfo;
-        if (convInfo != null && convInfo.conversation.type == ConversationType.Single) {
-            convInfo.conversation._targetOnlineStateDesc = this.getUserOnlineState(convInfo.conversation.target);
-        }
     }
 
     _loadFriendRequest(): void {
@@ -2527,7 +2583,7 @@ class Store {
         for (let i = 0; i < results.length; i++) {
             const r = results[i]
             const info = wfc.getConversationInfo(r.conversation);
-            this._patchConversationInfo(info, false, null, null);
+            this._patchConversationInfo(info, null, null);
             r._conversationInfo = info;
         }
         return results
@@ -2663,10 +2719,19 @@ class Store {
         if (sortByPinyin) {
             return this._patchAndSortUserInfos(userInfosCloneCopy, groupId, null);
         } else {
+            // 保持群成员的原始顺序。名次先算成 Map，别在比较器里 indexOf ——
+            // 那是 O(n) 一次、O(n²logn) 一趟排序，几千人的大群会把主线程卡死。
+            const memberIndexMap = new Map<string, number>();
+            for (let i = 0; i < memberIds.length; i++) {
+                memberIndexMap.set(memberIds[i], i);
+            }
             const compareFn = (u1: UserInfo, u2: UserInfo): number => {
-                const index1 = memberIds.indexOf(u1.uid)
-                const index2 = memberIds.indexOf(u2.uid)
-                return index1 - index2;
+                const index1 = memberIndexMap.get(u1.uid) ?? Number.MAX_SAFE_INTEGER
+                const index2 = memberIndexMap.get(u2.uid) ?? Number.MAX_SAFE_INTEGER
+                if (index1 == index2) {
+                    return 0;
+                }
+                return index1 > index2 ? 1 : -1;
             }
             return this._patchAndSortUserInfos(userInfosCloneCopy, groupId, compareFn);
         }
@@ -2710,13 +2775,15 @@ class Store {
         }, failCB);
     }
 
-    deleteFriend(target: string): void {
+    deleteFriend(target: string, successCB: (() => void) | null = null, failCB: ((err: number) => void) | null = null): void {
         wfc.deleteFriend(target, () => {
             const conv = new Conversation(ConversationType.Single, target, 0);
             wfc.removeConversation(conv, true);
-            conversationState.conversationInfoList = conversationState.conversationInfoList.filter((info: ConversationInfo): boolean => !info.conversation.equal(conv))
+            this._removeConversationFromList(conv);
+            successCB?.();
         }, (err: number) => {
-            console.log('deleteFriend error', err);
+            this._reportActionError('deleteFriend', err);
+            failCB?.(err);
         });
     }
 
@@ -2734,7 +2801,7 @@ class Store {
                 fileRecord._userDisplayName = wfc.getUserDisplayName(fileRecord.userId);
             }
             const conversationInfo = wfc.getConversationInfo(conversation);
-            this._patchConversationInfo(conversationInfo, false, null, null);
+            this._patchConversationInfo(conversationInfo, null, null);
 
             const target = conversationInfo.conversation._target
             if (conversation.type == ConversationType.Single) {
@@ -2765,7 +2832,6 @@ class Store {
         const newList = conversationState.conversationInfoList.slice(0);
         for (let i = 0; i < newList.length; i++) {
             newList[i].unreadCount = new UnreadCount();
-            newList[i]._unread = 0;
         }
         conversationState.conversationInfoList = newList;
     }
@@ -2810,16 +2876,13 @@ class Store {
     }
 }
 
-function _reset(): void {
+/** 把所有子 state 恢复到未登录时的初值。纯状态操作，不做导航。 */
+function _resetAllState(): void {
     conversationState._reset();
     contactState._reset();
     searchState._reset();
     pickState._reset();
     miscState._reset();
-
-    uni.reLaunch({
-        url: '/pages/login/LoginPage'
-    } as ReLaunchOptions);
 }
 
 const store = new Store()

@@ -44,6 +44,7 @@ import NotificationMessageContent from "../../wfc/messages/notification/notifica
 import Config from "../../config.uts";
 import { colors, AppColors, pressedRowClass } from "../../common/theme.uts";
 import { fontClass } from "../../common/layoutScale.uts";
+import { dateFormat } from "../util/helper.uts";
 
 defineOptions({
     name: "ConversationItemView",
@@ -66,7 +67,10 @@ const props = defineProps<{
 // class 类型的 props 在 android 上编译成 Any，模板里取不到成员，只能在 script 里转好类型再暴露
 const isTop = computed<boolean>((): boolean => (props.conversationInfo as ConversationInfo).top > 0)
 const isSilent = computed<boolean>((): boolean => (props.conversationInfo as ConversationInfo).isSilent)
-const timeStr = computed<string>((): string => (props.conversationInfo as ConversationInfo)._timeStr)
+// 时间由 timestamp 现算，不要再引入「store 事先 patch 好 _timeStr」那种字段：
+// 那种字段只有一个写入点，任何一条没走到 patch 的加载路径都会让整列时间变空（已经出过一次）。
+// dateFormat 是纯本地计算，而且只有可见行会算，比全表 patch 还便宜。
+const timeStr = computed<string>((): string => dateFormat((props.conversationInfo as ConversationInfo).timestamp))
 
 // target（头像/名称）在展示时才按需解析：本地没有还会发远程拉取，
 // 会话很多（2000+ 群）时不能在加载会话列表时批量做，见 store._loadConversationList。

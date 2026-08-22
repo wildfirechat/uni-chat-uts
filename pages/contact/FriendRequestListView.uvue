@@ -22,7 +22,7 @@
 <script setup lang="uts">
 import store, { contactState } from "../../store.uts";
 import wfc from "../../wfc/client/wfc.uts";
-import EventType from "../../wfc/client/wfcEvent.uts";
+import { WfcSubscription, onFriendRequestUpdate, offAll } from "../../wfc/client/wfcEventSubscriber.uts";
 import FriendRequest from "../../wfc/model/friendRequest.uts";
 import Config from "../../config.uts";
 
@@ -82,7 +82,9 @@ const accept = (friendRequest: FriendRequest) => {
     })
 }
 
-const onFriendRequestUpdate = (_args: Array<any | null>) => {
+const subs: WfcSubscription[] = []
+
+const handleFriendRequestUpdate = (_newRequestIds: string[]) => {
     if (isActive.value) {
         wfc.clearUnreadFriendRequestStatus();
     }
@@ -91,12 +93,12 @@ const onFriendRequestUpdate = (_args: Array<any | null>) => {
 onMounted(() => {
     isActive.value = true;
     wfc.clearUnreadFriendRequestStatus();
-    wfc.eventEmitter.on(EventType.FriendRequestUpdate, onFriendRequestUpdate);
+    subs.push(onFriendRequestUpdate(handleFriendRequestUpdate));
 })
 
-onBeforeUnmount(() => {
+onUnmounted(() => {
     isActive.value = false;
-    wfc.eventEmitter.off(EventType.FriendRequestUpdate, onFriendRequestUpdate);
+    offAll(subs);
 })
 </script>
 

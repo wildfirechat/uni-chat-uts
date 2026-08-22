@@ -81,8 +81,9 @@ import UserInfo from "@/wfc/model/userInfo.uts";
 import GroupInfo from "@/wfc/model/groupInfo.uts";
 import GroupType from "@/wfc/model/groupType.uts";
 import GroupMemberType from "@/wfc/model/groupMemberType.uts";
+import GroupMember from "@/wfc/model/groupMember.uts";
 import ModifyGroupInfoType from "@/wfc/model/modifyGroupInfoType.uts";
-import EventType from "@/wfc/client/wfcEvent.uts";
+import { WfcSubscription, onUserInfosUpdate, onGroupMembersUpdate, onGroupInfosUpdate, offAll } from "@/wfc/client/wfcEventSubscriber.uts";
 import { takePageOptions } from "@/common/nav.uts";
 import { pickUsers, PickUsersOptions, pickUser, PickUserOptions } from "@/common/picker.uts";
 import { clearConversationMessages, searchConversationMessages, openConversationFiles, openConversationLinks } from "@/common/conversationActions.uts";
@@ -178,11 +179,18 @@ const reloadMembers = () => {
     }
 }
 
-const onGroupUpdate = (_args: Array<any | null>) => {
+const subs: WfcSubscription[] = []
+
+const handleGroupInfosUpdate = (_groupInfos: GroupInfo[]) => {
     reloadGroup()
 }
 
-const onMembersUpdate = (_args: Array<any | null>) => {
+const handleUserInfosUpdate = (_userInfos: UserInfo[]) => {
+    reloadMembers()
+    reloadGroup()
+}
+
+const handleGroupMembersUpdate = (_groupId: string, _members: GroupMember[]) => {
     reloadMembers()
     reloadGroup()
 }
@@ -221,15 +229,13 @@ onShow(() => {
 })
 
 onMounted(() => {
-    wfc.eventEmitter.on(EventType.UserInfosUpdate, onMembersUpdate)
-    wfc.eventEmitter.on(EventType.GroupMembersUpdate, onMembersUpdate)
-    wfc.eventEmitter.on(EventType.GroupInfosUpdate, onGroupUpdate)
+    subs.push(onUserInfosUpdate(handleUserInfosUpdate))
+    subs.push(onGroupMembersUpdate(handleGroupMembersUpdate))
+    subs.push(onGroupInfosUpdate(handleGroupInfosUpdate))
 })
 
-onBeforeUnmount(() => {
-    wfc.eventEmitter.off(EventType.UserInfosUpdate, onMembersUpdate)
-    wfc.eventEmitter.off(EventType.GroupMembersUpdate, onMembersUpdate)
-    wfc.eventEmitter.off(EventType.GroupInfosUpdate, onGroupUpdate)
+onUnmounted(() => {
+    offAll(subs)
 })
 
 const openUserDetail = (user: UserInfo) => {
@@ -385,8 +391,12 @@ const onSilentChange = (value: boolean) => {
     if (info == null) {
         return
     }
+    // 乐观更新：开关先拨过去，失败再拨回来。错误码由 store 统一 toast。
+    // 不拨回来的话，开关显示的是一个服务端并不认可的状态，而且重进页面前一直不自愈。
     isSilent.value = value
-    store.setConversationSilent(info.conversation, value)
+    store.setConversationSilent(info.conversation, value, null, (err: number) => {
+        isSilent.value = !value
+    })
 }
 
 const onTopChange = (value: boolean) => {
@@ -395,7 +405,9 @@ const onTopChange = (value: boolean) => {
         return
     }
     isTop.value = value
-    store.setConversationTop(info.conversation, value ? 1 : 0)
+    store.setConversationTop(info.conversation, value ? 1 : 0, null, (err: number) => {
+        isTop.value = !value
+    })
 }
 
 const onFavChange = (value: boolean) => {
@@ -458,17 +470,22 @@ const backToConversationList = () => {
     } as SwitchTabOptions)
 }
 
+// 退群/解散都要等服务端确认再跳走。以前是发完请求立刻 backToConversationList()：
+// 失败时人已经回到会话列表，群还在列表里躺着，除了「怎么没退掉」什么提示都没有。
+// 失败的 toast 由 store 统一发。
 const confirmQuitGroup = () => {
     showConfirmDialog(t('conversation.quit_group'), t('group.quit_confirm'), true, () => {
-        store.quitGroup(groupId.value)
-        backToConversationList()
+        store.quitGroup(groupId.value, () => {
+            backToConversationList()
+        })
     })
 }
 
 const confirmDismissGroup = () => {
     showConfirmDialog(t('group.dismiss'), t('group.dismiss_confirm'), true, () => {
-        store.dismissGroup(groupId.value)
-        backToConversationList()
+        store.dismissGroup(groupId.value, () => {
+            backToConversationList()
+        })
     })
 }
 </script>

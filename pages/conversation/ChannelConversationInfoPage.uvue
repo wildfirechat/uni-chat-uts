@@ -118,8 +118,12 @@ const onSilentChange = (value: boolean) => {
     if (info == null) {
         return
     }
+    // 乐观更新：开关先拨过去，失败再拨回来。错误码由 store 统一 toast。
+    // 不拨回来的话，开关显示的是一个服务端并不认可的状态，而且重进页面前一直不自愈。
     isSilent.value = value
-    store.setConversationSilent(info.conversation, value)
+    store.setConversationSilent(info.conversation, value, null, (err: number) => {
+        isSilent.value = !value
+    })
 }
 
 const onTopChange = (value: boolean) => {
@@ -128,7 +132,9 @@ const onTopChange = (value: boolean) => {
         return
     }
     isTop.value = value
-    store.setConversationTop(info.conversation, value ? 1 : 0)
+    store.setConversationTop(info.conversation, value ? 1 : 0, null, (err: number) => {
+        isTop.value = !value
+    })
 }
 
 const clearMessages = () => {

@@ -222,6 +222,13 @@ const removeConversation = (conversationInfo: ConversationInfo) => {
     store.removeConversation(conversationInfo.conversation);
 }
 
+// 未读数现算。别用 ConversationInfo 上 patch 出来的字段：漏 patch 时它恒为 0，
+// 菜单就会一直显示「标记为未读」，点了也永远走标记未读那条分支。
+const conversationUnread = (info: ConversationInfo): number => {
+    const uc = info.unreadCount;
+    return uc.unread + uc.unreadMention + uc.unreadMentionAll;
+}
+
 const showConversationContextMenu = (e: any, conversationInfo: ConversationInfo) => {
     // longpress 事件 touches 可能为空，改用 changedTouches 兜底取触点坐标
     const point = getTouchPoint(e as UniTouchEvent);
@@ -235,7 +242,7 @@ const showConversationContextMenu = (e: any, conversationInfo: ConversationInfo)
     items.push(new PopupMenuItem(conversationInfo.top > 0 ? '取消置顶' : '置顶', 'top'))
     items.push(new PopupMenuItem(conversationInfo.isSilent ? '取消静音' : '静音', 'silent'))
     items.push(new PopupMenuItem('删除会话', 'delete'))
-    items.push(new PopupMenuItem(conversationInfo._unread == 0 ? '标记为未读' : '标记为已读', 'mark'))
+    items.push(new PopupMenuItem(conversationUnread(conversationInfo) == 0 ? '标记为未读' : '标记为已读', 'mark'))
     contextMenuItems.value = items;
     showContextMenu.value = true;
 }
@@ -256,7 +263,7 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
             store.setConversationSilent(conversationInfo.conversation, !conversationInfo.isSilent);
             break;
         case 'mark':
-            if (conversationInfo._unread == 0) {
+            if (conversationUnread(conversationInfo) == 0) {
                 wfc.markConversationAsUnread(conversationInfo.conversation, true);
             } else {
                 wfc.clearConversationUnreadStatus(conversationInfo.conversation);

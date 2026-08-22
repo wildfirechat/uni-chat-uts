@@ -214,7 +214,9 @@ const conversationTitle = computed<string>((): string => {
 
 const targetUserOnlineStateDesc = computed<string>((): string => {
     const info = conversationInfo.value;
-    return info != null ? info.conversation._targetOnlineStateDesc : '';
+    // 必须走 store.ensureTargetOnlineStateDesc：在线状态存在 store 的普通 Map 里，
+    // 只有它才会先读一次 onlineStateVersion 建立响应式依赖。
+    return info != null ? store.ensureTargetOnlineStateDesc(info.conversation) : '';
 })
 
 // 「对方正在输入」，与原生 ConversationFragment#updateTypingStatusTitle 对齐
