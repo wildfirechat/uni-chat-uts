@@ -19,9 +19,11 @@
 
 ---------
 
-# 野火uni-app uts demo
+# 野火uni-app x uts demo
 
 支持 Android、iOS 和 HarmonyOS 端
+
+> 这是适配 uni-app x 的版本，原来的uts 版本，请参考 `uni-app-uts`分支
 
 ## HarmonyOS 特别说明
 
@@ -35,10 +37,9 @@
 
 ## 配置
 
-1. [野火IM uts插件](https://ext.dcloud.net.cn/plugin?id=20059) 已包含在项目，一般不用特殊处理
-2. HBuilderX 原生插件配置，选择云端插件，并选中购买的野火插件
-3. manifest.json 基础配置里面，选择蒸汽模式，非蒸汽模式时，长按菜单有点问题
-4. 如果使用野火官方服务，直接编译运行即可。如果使用自己私有部署IM服务，需要在[config.js](./config.js)配置应用服务地址和IM服务地址。修改如下配置：
+1. 购买[野火IM uts插件](https://ext.dcloud.net.cn/plugin?id=20059) 已包含在项目，一般不用特殊处理
+2. manifest.json 基础配置里面，选择蒸汽模式，非蒸汽模式时，长按菜单有点问题
+3. 如果使用野火官方服务，直接编译运行即可。如果使用自己私有部署IM服务，需要在[config.uts](./config.uts)配置应用服务地址和IM服务地址。修改如下配置：
     ```
     // 下面两个配置都要一起修复，否则登录进去之后，会马上退回登录界面
     //应用服务地址
@@ -50,10 +51,9 @@
 
 ## 运行
 
-1. 运行```npm install```命令
-2. HBuilderX 制作自定义基座，可参考[什么是自定义调试基座及使用说明](https://ask.dcloud.net.cn/article/35115)
-3. HBuilderX，运行基座选择：自定义调试基座
-4. HBuilderX，运行到 Android App 基座、iOS App 基座 或 鸿蒙
+1. HBuilderX 制作自定义基座，可参考[什么是自定义调试基座及使用说明](https://ask.dcloud.net.cn/article/35115)
+2. HBuilderX，运行基座选择：自定义调试基座
+3. HBuilderX，运行到 Android App 基座、iOS App 基座 或 鸿蒙
 
 > 如果没有制作并运行到自定义基座，那么野火原生插件就没有集成进去，将无法使用野火原生插件，界面会显示白屏。所以一定要严格按照上述步骤执行。
 
@@ -68,18 +68,18 @@
 ### 集成到现有项目
 
 1. 下载[野火IM uts插件](https://ext.dcloud.net.cn/plugin?id=20059)，并导入到项目中。
-2. 把野火UniApp平台的demo中的[wfc](https://gitee.com/wfchat/uni-chat-uts/tree/main/wfc)目录和配置文件[config.js](https://gitee.com/wfchat/uni-chat-uts/blob/main/config.js)拷贝到现有工程中。
-3. 配置```config.js```中的IM服务和应用服务地址。
-4. 调用接口类[wfc.js](https://gitee.com/wfchat/uni-chat-uts/blob/main/wfc/client/wfc.js)来使用野火插件。
+2. 把野火UniApp平台的demo中的[wfc](https://gitee.com/wfchat/uni-chat-x/tree/main/wfc)目录和配置文件[config.uts](https://gitee.com/wfchat/uni-chat-x/blob/main/config.uts)拷贝到现有工程中。
+3. 配置```config.uts```中的IM服务和应用服务地址。
+4. 调用接口类[wfc.uts](https://gitee.com/wfchat/uni-chat-x/blob/main/wfc/client/wfc.uts)来使用野火插件。
 
 ## 源码地址
 
 1. Android 和 iOS uts 插件源码在[uni-wfc-client 项目 uts 分支](https://gitee.com/wfchat/uni-wfc-client)
-2. 本 demo 源码在[demo源码工程](https://gitee.com/wfchat/uni-chat-uts)
+2. 本 demo 源码在[demo源码工程](https://gitee.com/wfchat/uni-chat-x)
 
 ## 技术支持
 
-如果遇到问题，可以去[插件源码工程](https://gitee.com/wfchat/uni-wfc-client)或者[demo源码工程](https://gitee.com/wfchat/uni-chat-uts)提issue，也可以去[野火论坛](https://bbs.wildfirechat.cn)发帖子问题，我们会尽快回复。谢谢大家的支持。
+如果遇到问题，可以去[插件源码工程](https://gitee.com/wfchat/uni-wfc-client)或者[demo源码工程](https://gitee.com/wfchat/uni-chat-x)提issue，也可以去[野火论坛](https://bbs.wildfirechat.cn)发帖子问题，我们会尽快回复。谢谢大家的支持。
 
 ## 抓取原生插件的日志
 
@@ -127,11 +127,6 @@
     ```xml
        <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" />
     ```
-
-2. 打包失败：请确认是否执行过```npm install```命令。
-3. iPhone上打开会话页面报错`SyntaxError: Invalid regular expression: invalid group specifier name __ERROR`
-
-   `anchorme`只能使用`2.1.2`版本，不支持`3.x`版本，可参数这个[issue](https://github.com/alexcorvi/anchorme.js/issues/133)
 
 ## 应用截图
 

@@ -74,9 +74,6 @@ cp avenginekit.har-conference avenginekit.har
 `uni_modules/wfc-av-client/utssdk/app-ios/Frameworks/WFAVEngineKit.xcframework`
 整个替换成官方给的高级版 xcframework。
 
-也可以直接下载[【官方】野火实时音视频RTC插件](https://ext.dcloud.net.cn/plugin?id=15619)，
-用里面的 SDK 覆盖对应文件，然后使用本地插件。
-
 ## 会议功能涉及的文件
 
 换成会议版之后会用到下面这些，多人版下它们照常编译，只是入口不出现：
