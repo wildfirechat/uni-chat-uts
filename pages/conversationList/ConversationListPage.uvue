@@ -26,6 +26,7 @@
         <chunLei-popups v-model="showContextMenu" :popData="contextMenuItems" @tapPopup="onContextMenuItemSelect"
             :x="contextMenuX" :y="contextMenuY" direction="column" theme="dark" :triangle="false" :dynamic="true" />
         <main-action-menu ref="mainActionMenu"></main-action-menu>
+        <watermark-overlay />
     </view>
 </template>
 

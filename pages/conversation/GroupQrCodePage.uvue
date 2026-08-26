@@ -11,6 +11,7 @@
             </view>
             <text class="hint" :style="{ fontSize: fontPx(14), color: c.textSecondary }">{{ t('group.scan_to_join') }}</text>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

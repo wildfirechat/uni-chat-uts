@@ -109,6 +109,7 @@
                 </template>
             </template>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

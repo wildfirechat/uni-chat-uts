@@ -35,6 +35,7 @@
                 </view>
             </form-card>
         </view>
+        <watermark-overlay />
     </scroll-view>
 </template>
 

@@ -138,6 +138,16 @@ export default class Config {
     static SEND_LOG_COMMAND = '*#marslog#';
 
     /**
+     * 是否开启全局安全水印（用户ID + 时间，倾斜平铺在页面之上）。
+     * 对齐 flutter `Config.ENABLE_WATER_MARKER`。
+     *
+     * ⚠️ 关掉它只是让 `<watermark-overlay />` 渲染成空，节点还挂在每个页面模板里。
+     * 新增页面要记得跟着挂一个，否则那一页没有水印，见
+     * [components/watermark-overlay/watermark-overlay.uvue](components/watermark-overlay/watermark-overlay.uvue)。
+     */
+    static ENABLE_WATER_MARKER = true;
+
+    /**
      * 允许重新编辑多长时间内的撤回消息，单位是秒
      */
     static RECALL_REEDIT_TIME_LIMIT = 60;

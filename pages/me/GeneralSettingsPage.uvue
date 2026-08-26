@@ -37,6 +37,7 @@
         <bottom-action-sheet v-model="langSheetVisible" :items="langItems" @select="onLangSelect" />
         <bottom-action-sheet v-model="themeSheetVisible" :items="themeItems" @select="onThemeSelect" />
         <bottom-action-sheet v-model="logoutSheetVisible" :items="logoutItems" @select="onLogoutSelect" />
+        <watermark-overlay />
     </scroll-view>
 </template>
 

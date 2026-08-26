@@ -66,6 +66,7 @@
                 <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">结束</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

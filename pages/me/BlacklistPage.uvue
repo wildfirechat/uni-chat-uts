@@ -17,6 +17,7 @@
                 </view>
             </list-item>
         </list-view>
+        <watermark-overlay />
     </view>
 </template>
 

@@ -9,6 +9,7 @@
         <view class="item" :style="{ backgroundColor: c.surface }" :hover-class="pressedClass" hover-stay-time="80" @tap="go2Chatroom(3)">
             <text class="item-text" :style="{ fontSize: fontPx(15), color: c.textPrimary }">野火聊天室2</text>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

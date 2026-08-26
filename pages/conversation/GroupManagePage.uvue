@@ -22,6 +22,7 @@
         </form-card>
 
         <view class="tail"></view>
+        <watermark-overlay />
     </scroll-view>
 </template>
 

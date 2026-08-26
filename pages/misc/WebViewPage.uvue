@@ -1,5 +1,9 @@
 <template>
-    <web-view class="web-view" :src="url"></web-view>
+    <view class="page-root">
+        <web-view class="web-view" :src="url"></web-view>
+        <!-- web-view 自己不能有子节点，水印只好包一层 view 挂在它旁边 -->
+        <watermark-overlay />
+    </view>
 </template>
 
 <script setup lang="uts">
@@ -17,6 +21,12 @@ onLoad((options: OnLoadOptions) => {
 </script>
 
 <style scoped>
+.page-root {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
 .web-view {
     flex: 1;
 }

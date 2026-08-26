@@ -48,6 +48,7 @@
         <!-- 右侧字母索引条。搜索态下分类标签本来就不显示，quickIndexCategories 会返回空数组，索引条一并收起 -->
         <quick-index-bar :categories="quickIndexCategories" :top="listTop" :bottom="16" @select="jumpToCategory"
             @backToTop="scrollToTop" />
+        <watermark-overlay />
     </view>
 </template>
 

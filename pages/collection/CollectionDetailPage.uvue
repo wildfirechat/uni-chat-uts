@@ -47,6 +47,7 @@
 
             <view class="tail"></view>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

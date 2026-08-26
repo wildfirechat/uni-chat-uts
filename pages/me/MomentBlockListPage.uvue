@@ -12,6 +12,7 @@
                 :action-label="t('common.remove')" :show-bottom-divider="index < users.length - 1"
                 @actionTap="removeMember(user)" />
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

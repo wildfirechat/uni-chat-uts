@@ -9,6 +9,7 @@
             <input class="reason-input" type="text" v-model="reason" :placeholder="t('friend_request.input_reason')"
                 :style="{ fontSize: fontPx(16), color: c.textPrimary }" :focus="true" />
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

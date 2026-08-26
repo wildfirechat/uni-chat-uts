@@ -59,6 +59,7 @@
         <quick-index-bar v-if="expandFriendList" :categories="quickIndexCategories" :top="listTop" :bottom="16"
             @select="jumpToCategory" @backToTop="scrollToTop" />
         <main-action-menu ref="mainActionMenu"></main-action-menu>
+        <watermark-overlay />
     </view>
 </template>
 <script setup lang="uts">

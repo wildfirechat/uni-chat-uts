@@ -24,6 +24,7 @@
             <option-item :title="t('discovery.dev_guide')" left-image="/static/image/icon/ic_dev_docs.png"
                 :show-bottom-divider="false" @tap="showDevGuide" />
         </form-card>
+        <watermark-overlay />
     </view>
 </template>
 

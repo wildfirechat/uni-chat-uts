@@ -26,6 +26,7 @@
                 <text class="chat-button-text" :style="{ fontSize: fontPx(15), color: c.onAccent }">发消息</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

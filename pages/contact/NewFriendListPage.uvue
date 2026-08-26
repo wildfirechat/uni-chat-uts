@@ -4,6 +4,7 @@
         <scroll-view class="friend-request-list" direction="vertical">
             <FriendRequestListView />
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 <script setup lang="uts">

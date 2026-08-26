@@ -1,0 +1,209 @@
+<template>
+    <view v-if="enabled" class="wm-root">
+        <view class="wm-canvas" :style="{ width: canvasSize + 'px', height: canvasSize + 'px' }">
+            <text v-for="(row, index) in rows" :key="index" class="wm-row"
+                :style="{ top: row.top + 'px', left: row.left + 'px', color: markColor, fontSize: fontSize + 'px' }">{{ rowText }}</text>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 全局安全水印。对齐 flutter `widget/watermark_overlay.dart`。
+ *
+ * 盖在页面内容之上，平铺「当前用户ID + 时间」，倾斜 15°，不吃触摸事件。
+ * 总开关是 [Config.ENABLE_WATER_MARKER]；没登录（拿不到 userId）时不显示。
+ *
+ * ---- 为什么是「每个页面挂一个」而不是全局一层 ----
+ * flutter 那边水印是套在整个 MaterialApp 外面的一个 Stack，全局只有一份。
+ * uni-app x 没有对应的东西：App.uvue 不渲染 UI，`UniPage.createElement()` 只有鸿蒙
+ * 5.0(4.63+) 支持、android/iOS 都是 `x`，所以没法在运行时往每个页面根节点塞节点。
+ * 结论是老老实实每个页面模板里挂一个 `<watermark-overlay />`（easycom 自动注册，
+ * 不需要 import）。新增页面记得跟着加，否则那一页没有水印。
+ *
+ * ---- 实现要点 ----
+ * - ⚠️ **所有尺寸/文案都在 setup 里同步算完，不放 onMounted**。放 onMounted 里的话
+ *   `v-if` 要等首次渲染之后才翻成 true，整棵水印是「页面排完版之后再插进去的节点」，
+ *   Android 上这种迟到的插入会丢掉 requestLayout、节点停在 0×0（同
+ *   native-view 迟一步 addView 的坑）。表现是**同样的代码有的页面出水印、有的页面不出**。
+ *   这里只读 screenWidth/screenHeight（物理屏幕尺寸，不依赖排版），所以 setup 里读是准的；
+ *   windowWidth/windowHeight 才是要等上屏的，别在这里用。
+ * - 一行一个 `<text>`，而不是一格一个：一屏 10 个出头的文本节点，一格一个要 30~50 个。
+ *   行内靠重复「水印文案 + 若干个全角空格」拉长，全角空格宽度恰好等于字号，
+ *   所以水印之间的横向间距是算得准的。
+ * - 画布做成正方形并居中（flex 居中，超出部分被 .wm-root 的 overflow:hidden 裁掉），
+ *   这样旋转之后四个角也能盖住，横竖屏切换也不用重算。
+ * - `pointer-events: none` 是这个组件能不能用的前提 —— 少了它整屏都点不动了。
+ */
+import Config from '@/config.uts'
+import wfc from '@/wfc/client/wfc.uts'
+import { isDark } from '@/common/theme.uts'
+
+defineOptions({
+    name: 'watermark-overlay'
+})
+
+/** 字号。故意不跟随「字体大小」设置：水印是安全标记，不是内容，密度要稳定。 */
+const FONT_SIZE = 13
+/** 行间距 */
+const ROW_STEP = 118
+/** 两个水印之间垫几个全角空格（U+3000 的宽度正好是一个字号） */
+const GAP_CHARS = 4
+/**
+ * cos15° + sin15°。倾斜角写死在 .wm-canvas 的 transform 里（-15°，和 flutter 一致），
+ * 这个系数用来把正方形画布放大到「旋转后仍能盖住屏幕」的边长。
+ */
+const ROTATE_COS_PLUS_SIN = 1.225
+/** 浅色/深色下的水印透明度。排查「水印到底渲染了没有」时临时调到 0.3 最省事。 */
+const ALPHA_LIGHT = '0.08'
+const ALPHA_DARK = '0.10'
+
+const CJK_CHAR_WIDTH = FONT_SIZE * 1.0
+const ASCII_CHAR_WIDTH = FONT_SIZE * 0.55
+
+/** 时间部分的定宽样板，只用来算横向步长 —— 步长不能每分钟变一次 */
+const STAMP_TEMPLATE = '00-00 00:00'
+
+type WatermarkRow = {
+    top: number
+    left: number
+}
+
+const fontSize = FONT_SIZE
+
+const pad2 = (value: number): string => {
+    return value < 10 ? ('0' + value) : ('' + value)
+}
+
+const nowStamp = (): string => {
+    const now = new Date()
+    return pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes())
+}
+
+/**
+ * 估算文本宽度。CJK 按一个字号算，其余按 0.55 字号算 —— 只用来定横向步长，
+ * 差个几像素对水印没有影响。
+ */
+const estimateWidth = (text: string): number => {
+    let w = 0.0
+    for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i) ?? 0
+        w += code > 0x2e80 ? CJK_CHAR_WIDTH : ASCII_CHAR_WIDTH
+    }
+    return w
+}
+
+const buildRowText = (label: string, count: number): string => {
+    // U+3000 全角空格。用 fromCharCode 而不是把字符直接写进源码，是为了让它在源码里可见
+    const fullWidthSpace = String.fromCharCode(0x3000)
+    let gap = ''
+    for (let i = 0; i < GAP_CHARS; i++) {
+        gap += fullWidthSpace
+    }
+    let text = ''
+    for (let i = 0; i < count; i++) {
+        text += label + gap
+    }
+    return text
+}
+
+// ---- 下面这些全部在 setup 里同步算完，首帧就是最终形态 ----
+
+const userId = ref<string>(wfc.getUserId())
+const stamp = ref<string>(nowStamp())
+
+// 只读物理屏幕尺寸：不依赖排版，setup 里读就是准的（windowWidth/Height 才要等上屏）
+const win = uni.getWindowInfo()
+const maxSide = Math.max(win.screenWidth, win.screenHeight)
+const canvasSize = Math.ceil(maxSide * ROTATE_COS_PLUS_SIN) + ROW_STEP
+
+const enabled = computed<boolean>((): boolean => {
+    return Config.ENABLE_WATER_MARKER && userId.value != ''
+})
+
+// 深色底上同样 alpha 的白字比浅色底上的黑字更不明显，所以深色给得多一点（同 flutter）
+const markColor = computed<string>((): string => {
+    return isDark() ? ('rgba(255, 255, 255, ' + ALPHA_DARK + ')') : ('rgba(0, 0, 0, ' + ALPHA_LIGHT + ')')
+})
+
+/** 一个水印占的横向步长。用定宽样板算，所以每分钟刷新文案不会让排布跳动。 */
+const advance = computed<number>((): number => {
+    return estimateWidth(userId.value + '  ' + STAMP_TEMPLATE) + GAP_CHARS * CJK_CHAR_WIDTH
+})
+
+const rowText = computed<string>((): string => {
+    const label = userId.value + '  ' + stamp.value
+    return buildRowText(label, Math.ceil(canvasSize / advance.value) + 2)
+})
+
+const rows = computed<WatermarkRow[]>((): WatermarkRow[] => {
+    const half = Math.round(advance.value / 2)
+    const rowCount = Math.ceil(canvasSize / ROW_STEP) + 1
+    const list: WatermarkRow[] = []
+    for (let i = 0; i < rowCount; i++) {
+        // 奇数行错开半个步长；两种都往左顶出画布，保证左边缘不留白
+        list.push({
+            top: i * ROW_STEP,
+            left: i % 2 == 0 ? -half : -half * 2
+        } as WatermarkRow)
+    }
+    return list
+})
+
+let timer = 0
+
+onMounted(() => {
+    if (!Config.ENABLE_WATER_MARKER) {
+        return
+    }
+    // 每 20s 看一眼，只有「分钟」变了才改文案（改文案会让这一屏文本节点重排）。
+    // 顺带补一次 userId：极端情况下（页面比 wfc.connect 还早创建）setup 时可能是空的。
+    timer = setInterval((): void => {
+        if (userId.value == '') {
+            userId.value = wfc.getUserId()
+        }
+        const next = nowStamp()
+        if (next != stamp.value) {
+            stamp.value = next
+        }
+    }, 20000)
+})
+
+onUnmounted(() => {
+    if (timer != 0) {
+        clearInterval(timer)
+        timer = 0
+    }
+})
+</script>
+
+<style scoped>
+.wm-root {
+    position: fixed;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* 少了这一行，整屏的点击/滑动全被水印吃掉 */
+    pointer-events: none;
+    z-index: 10000;
+}
+
+.wm-canvas {
+    position: relative;
+    flex-shrink: 0;
+    transform: rotate(-15deg);
+    pointer-events: none;
+}
+
+.wm-row {
+    position: absolute;
+    white-space: nowrap;
+    pointer-events: none;
+}
+</style>

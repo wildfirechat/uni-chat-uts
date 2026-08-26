@@ -19,6 +19,7 @@
                 </form-card>
             </view>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

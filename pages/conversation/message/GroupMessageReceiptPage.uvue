@@ -16,6 +16,7 @@
         <view v-if="currentUsers.length == 0" class="empty-container">
             <text class="empty-text" :style="{ fontSize: fontPx(14), color: c.textTertiary }">{{ emptyTip }}</text>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

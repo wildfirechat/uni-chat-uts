@@ -12,6 +12,7 @@
                     :style="{ color: c.textSecondary, fontSize: fontPx(FONT_LG) }">{{ emptyText }}</text>
             </view>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

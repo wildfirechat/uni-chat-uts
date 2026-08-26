@@ -19,6 +19,7 @@
                     @tap="openDefaultScope" />
             </form-card>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

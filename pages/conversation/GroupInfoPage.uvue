@@ -11,6 +11,7 @@
                 <text class="action-button-text" :style="{ fontSize: fontPx(16), color: c.onAccent }">{{ isMember ? t('group.chat') : t('group.join') }}</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

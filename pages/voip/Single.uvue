@@ -78,6 +78,7 @@
                 <image class="minimize-img" src="/static/image/av/av_minimize.png" />
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

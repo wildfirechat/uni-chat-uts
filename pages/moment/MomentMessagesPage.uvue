@@ -29,6 +29,7 @@
                 <view class="divider" :style="{ backgroundColor: c.hairlineSoft }"></view>
             </view>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

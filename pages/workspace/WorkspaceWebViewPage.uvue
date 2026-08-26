@@ -1,5 +1,9 @@
 <template>
-    <web-view id="workspace-child-webview" class="webview" :src="url" @message="onPostMessage" @loaded="onLoaded"></web-view>
+    <view class="page-root">
+        <web-view id="workspace-child-webview" class="webview" :src="url" @message="onPostMessage" @loaded="onLoaded"></web-view>
+        <!-- web-view 自己不能有子节点，水印只好包一层 view 挂在它旁边 -->
+        <watermark-overlay />
+    </view>
 </template>
 
 <script setup lang="uts">
@@ -38,6 +42,12 @@ const onLoaded = (_event: UniWebViewLoadEvent) => {
 </script>
 
 <style scoped>
+.page-root {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
 .webview {
     flex: 1;
 }

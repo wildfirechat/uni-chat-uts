@@ -67,6 +67,7 @@
                 <text :style="{ color: primaryEnabled ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ primaryLabel }}</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

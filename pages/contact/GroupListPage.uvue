@@ -1,6 +1,7 @@
 <template>
     <scroll-view class="group-list-page" direction="vertical" :style="{ backgroundColor: c.surface }">
         <GroupListView />
+        <watermark-overlay />
     </scroll-view>
 </template>
 <script setup lang="uts">

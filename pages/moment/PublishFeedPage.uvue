@@ -35,6 +35,7 @@
                     @tap="openVisibleScope" />
             </form-card>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

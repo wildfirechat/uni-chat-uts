@@ -51,6 +51,7 @@
                     :style="{ color: c.textSecondary }">{{ label }}</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

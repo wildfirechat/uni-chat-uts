@@ -14,6 +14,7 @@
             <button v-else class="btn" type="primary" :loading="saving" @tap="save">{{ t('common.done') }}</button>
             <button v-if="editing" class="btn btn-plain" @tap="cancelEdit">{{ t('common.cancel') }}</button>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

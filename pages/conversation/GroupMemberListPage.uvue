@@ -10,6 +10,7 @@
         <list-view class="list" direction="vertical">
             <UserListView :users="visibleMembers" :show-category-label="filterQuery == ''" padding-left="15px" />
         </list-view>
+        <watermark-overlay />
     </view>
 </template>
 

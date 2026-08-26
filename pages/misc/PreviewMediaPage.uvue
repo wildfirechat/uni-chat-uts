@@ -23,6 +23,7 @@
                 <text class="action-text" :style="{ fontSize: fontPx(14) }">{{ t('common.forward') }}</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

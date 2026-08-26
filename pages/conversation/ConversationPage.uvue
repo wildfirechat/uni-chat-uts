@@ -52,6 +52,7 @@
                 class="message-input-container" ref="messageInputView" @panelShow="scrollToBottom" />
             <MultiSelectActionView v-if="enableMessageMultiSelection" />
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

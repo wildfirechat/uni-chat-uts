@@ -36,6 +36,7 @@
         </list-view>
 
         <bottom-action-sheet v-model="sheetVisible" :items="sheetItems" @select="onSheetSelect" />
+        <watermark-overlay />
     </view>
 </template>
 

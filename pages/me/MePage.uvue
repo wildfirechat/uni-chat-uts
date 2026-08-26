@@ -47,6 +47,7 @@
         <view class="tail"></view>
 
         <bottom-action-sheet v-model="portraitSheetVisible" :items="portraitSheetItems" @select="onPortraitSheetSelect" />
+        <watermark-overlay />
     </scroll-view>
 </template>
 

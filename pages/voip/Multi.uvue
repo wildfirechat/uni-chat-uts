@@ -82,6 +82,7 @@
                 <image class="invite-img" src="/static/image/av/add.png" />
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

@@ -54,6 +54,7 @@
         <bottom-action-sheet v-model="showCallSheet" :items="callSheetItems" @select="onCallSheetSelect" />
         <dropdown-menu v-model="showMoreMenu" :items="moreMenuItems" @select="onMoreMenuSelect"
             :targetX="moreMenuX" :targetY="moreMenuY" />
+        <watermark-overlay />
     </view>
 </template>
 

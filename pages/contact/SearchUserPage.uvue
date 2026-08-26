@@ -7,6 +7,7 @@
             <UserListView :users="users" :show-category-label="false" padding-left="10px" />
         </scroll-view>
         <text v-if="keyword != '' && users.length == 0" class="tip" :style="{ color: c.textSecondary }">没有搜索到用户</text>
+        <watermark-overlay />
     </view>
 </template>
 

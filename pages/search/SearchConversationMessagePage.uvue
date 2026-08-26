@@ -92,6 +92,7 @@
         </view>
 
         <bottom-action-sheet v-model="fileSheetVisible" :items="fileSheetItems" @select="onFileSheetSelect" />
+        <watermark-overlay />
     </view>
 </template>
 

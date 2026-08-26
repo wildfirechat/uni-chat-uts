@@ -23,6 +23,7 @@
                 <text class="arrow" :style="{ color: c.textTertiary, fontSize: iconPx(16) }">&#xf3d3;</text>
             </view>
         </view>
+        <watermark-overlay />
     </scroll-view>
 </template>
 

@@ -8,6 +8,7 @@
             <UserListView :users="filteredUsers" :show-category-label="showCategoryLabel && filterQuery == ''"
                 :emit-click-event="true" @userClick="onClickUser" padding-left="20px" />
         </list-view>
+        <watermark-overlay />
     </view>
 </template>
 

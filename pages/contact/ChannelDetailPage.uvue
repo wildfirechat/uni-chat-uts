@@ -28,6 +28,7 @@
             </view>
             <view class="bottom-gap"></view>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

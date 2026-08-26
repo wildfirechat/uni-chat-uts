@@ -26,6 +26,7 @@
                 <text :style="{ color: c.textSecondary, fontSize: fontPx(FONT_XS) }">{{ selectedTip }}</text>
             </view>
         </scroll-view>
+        <watermark-overlay />
     </view>
 </template>
 

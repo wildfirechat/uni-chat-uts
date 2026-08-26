@@ -1,6 +1,7 @@
 <template>
     <view class="page" :style="{ backgroundColor: c.surface }">
         <conversation-links v-if="conversation != null" :conversation="conversation!" />
+        <watermark-overlay />
     </view>
 </template>
 

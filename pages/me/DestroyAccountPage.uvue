@@ -17,6 +17,7 @@
         <view class="submit" :style="{ backgroundColor: canSubmit ? c.danger : c.buttonSecondaryBg }" @tap="destroy">
             <text :style="{ color: canSubmit ? c.onAccent : c.textTertiary, fontSize: fontPx(FONT_LG) }">{{ t('setting.destroy_account') }}</text>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

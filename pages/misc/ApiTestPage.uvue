@@ -4,6 +4,7 @@
         <button @tap="modifyMyInfo">modifyMyInfo</button>
         <button @tap="systemInfo">SystemInfo</button>
         <button @tap="setHiddenGroupMemberName">setHiddenGroupMemberName</button>
+        <watermark-overlay />
     </view>
 </template>
 

@@ -49,6 +49,7 @@
                     @tap="onPublish">&#xf118;</text>
             </view>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

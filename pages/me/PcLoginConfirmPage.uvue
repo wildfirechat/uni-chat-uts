@@ -13,6 +13,7 @@
                 <text class="cancel" :style="{ fontSize: fontPx(14), color: c.textSecondary }" @tap="cancelLogin">{{ t('pc.cancel_login') }}</text>
             </template>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 

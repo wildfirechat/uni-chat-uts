@@ -8,6 +8,7 @@
         <view v-else class="tip-container">
             <text class="tip" :style="{ color: c.textSecondary }">请输入关键字进行搜索</text>
         </view>
+        <watermark-overlay />
     </view>
 </template>
 
