@@ -9,8 +9,11 @@
 
     <!-- 前台服务：通话期间把进程钉在前台，否则 Android 9+ 退到后台会掐掉麦克风采集 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Android 14+ 起，按前台服务类型细分的权限。只要 microphone，理由见 VoipCallService.uts -->
+    <!-- Android 14+ 起，按前台服务类型细分的权限。故意不要 camera，理由见 VoipCallService.uts -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 屏幕共享期间前台服务会切成 mediaProjection 类型（见 VoipCallService.onStartCommand），
+         Android 14+ 要求同时声明这条，否则 startForeground 抛 SecurityException -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- Android 13+ 发通知要运行时授权，见 index.uts 的 requestVoipPermissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 最小化后的跨应用悬浮窗（VoipFloatingWindow.uts）。这是「特殊权限」，声明了也还得用户
@@ -19,10 +22,12 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application>
+        <!-- 两个类型都要声明：平时用 microphone 保通话，屏幕共享期间切成 mediaProjection。
+             清单里没声明的类型，startForeground 传进去会抛异常。 -->
         <service
             android:name="uts.sdk.modules.wfcAvClient.VoipCallService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|mediaProjection" />
 
         <!-- 点通知的落点：拉起 App 主任务 + 通知 JS 打开通话页，随即 finish。
              exported=false：只有本应用的 PendingIntent 会启动它。 -->

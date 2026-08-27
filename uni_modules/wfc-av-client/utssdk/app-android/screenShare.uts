@@ -1,0 +1,33 @@
+/**
+ * 屏幕共享的授权结果中转。
+ *
+ * MediaProjection 的授权结果（一个 Intent）要从 index.uts 交给 VoipCallService —— 因为
+ * Android 14 起强制要求「先把 mediaProjection 类型的前台服务跑起来，再把 data 交给 SDK」，
+ * 顺序反了直接 SecurityException（参考 android-chat 的 VoipBaseActivity + VoipCallService）。
+ *
+ * android-chat 是把它塞进 Intent 的 Parcelable extra 里传的；这里不这么做：
+ * 两边本来就在同一个进程、同一个 uts 模块里，放个模块级变量传递即可，
+ * 省掉一次 Parcel 编解码，也不用碰 getParcelableExtra 的泛型签名。
+ *
+ * 单独成文件而不是塞进 index.uts，是为了避开 index.uts ←→ VoipCallService.uts 的循环 import
+ * （index.uts 要 re-export VoipCallService，见 uni_modules 插件的组件注册要求）。
+ */
+import Intent from 'android.content.Intent'
+
+let pendingScreenShareData: Intent | null = null
+
+/** index.uts 拿到授权结果后存进来，紧接着 startForegroundService */
+export function setPendingScreenShareData(data: Intent | null): void {
+    pendingScreenShareData = data
+}
+
+/**
+ * VoipCallService.onStartCommand 取走。取到非 null 就说明「这一次启动是为了屏幕共享」，
+ * 前台服务类型要用 mediaProjection，并且在 startForeground 之后把它交给 SDK。
+ * 取一次就清掉：服务后续因为别的原因再被拉起时不该重复开共享。
+ */
+export function takePendingScreenShareData(): Intent | null {
+    const data = pendingScreenShareData
+    pendingScreenShareData = null
+    return data
+}

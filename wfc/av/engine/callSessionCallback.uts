@@ -20,4 +20,15 @@ export default class CallSessionCallback {
     didAudioDeviceChanged: (device: number) => void = (_device: number): void => {}
     didChangeType: (userId: string, audience: boolean, screenSharing: boolean) => void = (_userId: string, _audience: boolean, _screenSharing: boolean): void => {}
     didMuteStateChanged: (participants: string[]) => void = (_participants: string[]): void => {}
+    /**
+     * 屏幕共享已开始（本端）。这不是原生 SDK 的回调，是插件合成出来的：
+     * startScreenShare 是异步的（要等用户在系统确认框上点同意），成功与否只能靠事件回话。
+     */
+    didScreenShareStarted: () => void = (): void => {}
+    /**
+     * 屏幕共享已结束（本端）。三种情况都会走这里：主动 stopScreenShare、
+     * 用户在系统确认框上点了取消、以及 startScreenShare 本身失败。
+     * 页面照着它把「共享屏幕」按钮状态落回去即可，不要自己猜。
+     */
+    didScreenShareEnded: () => void = (): void => {}
 }

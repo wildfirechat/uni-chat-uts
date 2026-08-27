@@ -64,6 +64,7 @@
  */
 
 import { NativeEventListener } from '../interface.uts'
+import { setPendingScreenShareData } from './screenShare.uts'
 
 import AVEngineKit from 'cn.wildfirechat.avenginekit.AVEngineKit'
 import AVEngineCallback from 'cn.wildfirechat.avenginekit.AVEngineKit.AVEngineCallback'
@@ -96,6 +97,8 @@ import Looper from 'android.os.Looper'
 import Handler from 'android.os.Handler'
 import Runnable from 'java.lang.Runnable'
 import ComponentName from 'android.content.ComponentName'
+import Activity from 'android.app.Activity'
+import MediaProjectionManager from 'android.media.projection.MediaProjectionManager'
 import ComponentCallbacks2 from 'android.content.ComponentCallbacks2'
 import PowerManager from 'android.os.PowerManager'
 import {
@@ -340,6 +343,33 @@ function startVoipService(): void {
     }
 }
 
+/**
+ * 重新下发一次前台服务启动，用来切换它的 foregroundServiceType。
+ * 和 startVoipService 的区别是**不看 voipServiceStarted 去重**——服务已经在跑时，
+ * 再 startForegroundService 一次会走一遍 onStartCommand，那正是我们要的（重新 startForeground）。
+ *
+ * @param screenShareData MediaProjection 的授权结果；非 null 表示这次是为了开屏幕共享，
+ *                        服务会用 mediaProjection 类型并在 startForeground 之后交给 SDK。
+ */
+function restartVoipService(screenShareData: Intent | null): boolean {
+    const context = UTSAndroid.getAppContext()!
+    setPendingScreenShareData(screenShareData)
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(voipServiceIntent(context))
+        } else {
+            context.startService(voipServiceIntent(context))
+        }
+        voipServiceStarted = true
+        return true
+    } catch (e) {
+        console.error('restartVoipService failed', e)
+        // 没起来就别把授权结果留在那儿，否则下一次因为别的原因拉起服务时会莫名其妙开起共享
+        setPendingScreenShareData(null)
+        return false
+    }
+}
+
 function stopVoipService(): void {
     voipServiceStarted = false
     const context = UTSAndroid.getAppContext()!
@@ -535,6 +565,13 @@ export function initAVEngineKit(): void {
     // 从 +1 覆盖回 -1。所以最终是「大画面 -2、小窗 -1，两个都仍在 window 之下」，视频不会盖住页面按钮。
     // 这与多人版 aar 里恒定执行的那段编排完全一致。
     AVEngineKit.DISABLE_SURFACE_VIEW_AUTO_OVERLAY = false
+
+    // 屏幕共享用「替换摄像头轨道」模式：共享流顶替自己原来的视频流推出去，对端格子数不变。
+    // 另一种模式是再起一路 publisher（对端多出一个 screen_sharing_<userId> 的参与者）。
+    // 三个官方 UIKit（android-chat / hm-chat / hm-av）都用 true，鸿蒙端插件里也是 true——
+    // ⚠️ 两端必须一致，不一致的典型表现是「一端多出一格空画面，另一端人脸没了」。
+    AVEngineKit.SCREEN_SHARING_REPLACE_MODE = true
+
     AVEngineKit.init(UTSAndroid.getAppContext()!, nativeAVEngineCallback)
 
     // 「回到通话页」的唯一出口。两个入口都走它：点通知（VoipResumeActivity 把 App 拉回前台后调）、
@@ -761,6 +798,130 @@ export function switchCamera(callId: string): void {
     if (session != null && session.getCallId() == callId) {
         session.switchCamera()
     }
+}
+
+// ------------------------------------------------------------------
+// 屏幕共享（仅高级版音视频 SDK 支持）
+//
+// 为什么这么绕：Android 14 起，用 MediaProjection 之前必须已经有一个
+// foregroundServiceType=mediaProjection 的前台服务在跑，顺序反了直接 SecurityException。
+// 于是流程被劈成三段，参考 android-chat 的 VoipBaseActivity + VoipCallService：
+//   1. 这里 startActivityForResult(createScreenCaptureIntent()) 拉系统授权框；
+//   2. 结果经 UTSAndroid.onAppActivityResult 回来，存进 screenShare.uts 再重启前台服务；
+//   3. VoipCallService.onStartCommand 先 startForeground(mediaProjection)，再把结果交给 SDK。
+//
+// ⚠️ 用到的清单改动（FOREGROUND_SERVICE_MEDIA_PROJECTION 权限、service 的
+//    foregroundServiceType=microphone|mediaProjection）在 utssdk/app-android/AndroidManifest.xml，
+//    **只在云打包/自定义基座/离线打包时生效**，标准基座真机热运行测不出来。
+// ------------------------------------------------------------------
+
+// 只用低 16 位：宿主 Activity 是 FragmentActivity 时，startActivityForResult 的 requestCode
+// 高 16 位非零会抛 "Can only use lower 16 bits for requestCode"
+const SCREEN_CAPTURE_REQUEST_CODE : Int = 23057
+
+let screenCaptureListenerRegistered = false
+
+/**
+ * 注册一次全局的 onActivityResult 监听。不做反注册：
+ * 反注册要把同一个函数引用传回 offAppActivityResult，为此在模块里存一个可空函数变量，
+ * 收益（省一个常驻监听）远不如代价（多一处生命周期状态）。回调里按 requestCode 过滤，
+ * 别人的结果不会被误吃。
+ */
+function ensureScreenCaptureListener(): void {
+    if (screenCaptureListenerRegistered) {
+        return
+    }
+    screenCaptureListenerRegistered = true
+    UTSAndroid.onAppActivityResult((requestCode : Int, resultCode : Int, data : Intent | null): void => {
+        if (requestCode != SCREEN_CAPTURE_REQUEST_CODE) {
+            return
+        }
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            // 用户在系统授权框上点了取消
+            fireCallSessionEvent('didScreenShareEnded', [])
+            return
+        }
+        // SCREEN_SHARING_REPLACE_MODE 下屏幕轨道是顶替摄像头轨道推出去的，先把摄像头关掉，
+        // 顺序与 android-chat 的 ConferenceFragment 一致（那里也是 muteVideo(true) 后再开共享）。
+        //
+        // 和鸿蒙的一处行为差异：鸿蒙引擎自己会在 startScreenShare 里停掉摄像头轨道、并在
+        // stopScreenShare 时把它重建回来，videoMuted 全程是 false；Android 这边摄像头是被显式
+        // muteVideo(true) 关掉的，共享结束后**不会自动开回来**，要用户自己点「视频」。
+        //
+        // 刻意没抄 android-chat 的 muteAudio(false)：那是「开始演讲就顺手解除静音」的产品取舍，
+        // 不是屏幕共享的机制要求（鸿蒙侧完全不碰静音状态也能共享）。替用户打开麦克风的副作用太大。
+        const session = currentSessionOrNull()
+        if (AVEngineKit.SCREEN_SHARING_REPLACE_MODE && session != null && !session.videoMuted) {
+            // session.muteVideo(true)
+        }
+        if (restartVoipService(data)) {
+            // 乐观上报：真正的 startScreenShare 在服务里异步执行，这里拿不到它的结果。
+            // 用户刚点过按钮、App 必然在前台，服务起不来的概率极低；真起不来会走上面的 false 分支。
+            fireCallSessionEvent('didScreenShareStarted', [])
+        } else {
+            fireCallSessionEvent('didScreenShareEnded', [])
+        }
+    })
+}
+
+/**
+ * 当前 SDK 是否支持屏幕共享。屏幕共享只有高级版音视频 SDK 才有，判定条件和会议一致。
+ * 应用层拿它决定要不要显示「共享屏幕」入口。
+ */
+export function isSupportScreenShare(): boolean {
+    return AVEngineKit.isSupportConference()
+}
+
+export function isScreenSharing(callId: string): boolean {
+    const session = currentSessionOrNull()
+    return session != null && session.getCallId() == callId && session.isScreenSharing()
+}
+
+/**
+ * 开始屏幕共享。
+ *
+ * 结果是异步的（要等用户在系统授权框上点同意），所以这里不返回 boolean，而是统一用事件回话：
+ * 成功 didScreenShareStarted，失败/取消 didScreenShareEnded。
+ */
+export function startScreenShare(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session != null && session.getCallId() == callId && session.isScreenSharing()) {
+        // 页面状态和引擎不一致，把真实状态吐回去
+        fireCallSessionEvent('didScreenShareStarted', [])
+        return
+    }
+    if (session == null || session.getCallId() != callId || session.isAudioOnly()) {
+        // audioOnly 时 SDK 内部也是直接 return，这里提前挡掉，免得页面等一个永远不来的事件
+        fireCallSessionEvent('didScreenShareEnded', [])
+        return
+    }
+    const activity = UTSAndroid.getUniActivity()
+    if (activity == null) {
+        fireCallSessionEvent('didScreenShareEnded', [])
+        return
+    }
+    ensureScreenCaptureListener()
+    try {
+        // 用 application 的 service（跟 android-chat 一致）：MediaProjectionManager 是进程级的，
+        // 从 Activity 取会把授权和这个 Activity 实例绑得更紧
+        const manager = activity!.getApplication().getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        activity!.startActivityForResult(manager.createScreenCaptureIntent(), SCREEN_CAPTURE_REQUEST_CODE)
+    } catch (e) {
+        console.error('startScreenShare failed', e)
+        fireCallSessionEvent('didScreenShareEnded', [])
+    }
+}
+
+export function stopScreenShare(callId: string): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId || !session.isScreenSharing()) {
+        return
+    }
+    session.stopScreenShare()
+    // 把前台服务类型切回 microphone。不切的话，投屏一停系统会把 mediaProjection 类型的前台服务
+    // 一起收走，连带把通话的麦克风保活也带走 —— 表现是退到后台之后对方就听不见你说话了。
+    restartVoipService(null)
+    fireCallSessionEvent('didScreenShareEnded', [])
 }
 
 export function setSpeakerOn(callId: string, speakerOn: boolean): void {

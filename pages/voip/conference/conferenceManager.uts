@@ -18,9 +18,8 @@ import Message from "@/wfc/messages/message.uts";
 import Conversation from "@/wfc/model/conversation.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
 import wfc from "@/wfc/client/wfc.uts";
-import EventType from "@/wfc/client/wfcEvent.uts";
-import { WfcEventListener } from "@/wfc/util/eventEmitter.uts";
 import { getItem, setItem } from "@/pages/util/storageHelper.uts";
+import { onReceiveMessages, WfcSubscription } from "@/wfc/client/wfcEventSubscriber.uts";
 import { notify } from "@/common/nav.uts";
 import { showConfirmDialog } from "@/common/prompt.uts";
 

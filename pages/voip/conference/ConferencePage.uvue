@@ -48,6 +48,11 @@
                     :src="videoEnabled ? '/static/image/av/av_conference_video.png' : '/static/image/av/av_conference_video_mute.png'" />
                 <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">视频</text>
             </view>
+            <view v-if="screenShareEnabled" class="action" @tap="onScreenShareTap">
+                <image class="action-img"
+                    :src="selfScreenSharing ? '/static/image/av/av_conference_screen_sharing_hover.png' : '/static/image/av/av_conference_screen_sharing.png'" />
+                <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">共享</text>
+            </view>
             <view class="action" @tap="chat">
                 <text class="action-icon icomoon" :style="{ fontSize: iconPx(34) }">&#xf3fa;</text>
                 <text class="action-desc" :style="{ fontSize: fontPx(FONT_XS) }">聊天</text>
@@ -77,8 +82,9 @@
  * 与原版的差异：
  * - 原版有「宫格 / 演讲者」两套布局 + 布局选择浮层，移动端小屏上演讲者视图价值不大，
  *   这里只保留宫格（超过一页时左右箭头翻页），焦点用户排在第一格。
- * - 屏幕共享在 Android/iOS 的 uts 插件里还没接（原版这段代码也是注释掉的），这里不提供入口，
- *   但参与者里如果有别人的共享流，画面会正常显示（screenSharing 的那条 profile 照常渲染）。
+ * - 屏幕共享入口按 avEngineKit.isSupportScreenShare() 显示：鸿蒙和 Android 打的是高级版音视频
+ *   SDK，两端都能发起；iOS 恒为 false（原因见 app-ios/index.uts，不只是 SDK 版本的问题）。
+ *   收流侧一直是通的：参与者里有别人的共享流，画面就会正常显示（screenSharing 的那条 profile 照常渲染）。
  * - 原版用 uni-popup 做确认框，这里统一用 common/prompt.uts 的 showConfirmDialog。
  *
  * 三种进入方式：
@@ -120,6 +126,12 @@ const timer = ref<number>(0)
 const currentGridPageIndex = ref<number>(0)
 // conferenceManager 是普通单例，它内部状态变了要靠这个计数触发页面重算
 const managerRevision = ref<number>(0)
+// 本端是不是正在共享屏幕。共享期间页面通常是最小化的（收不到回调），
+// 所以恢复页面时要按 avEngineKit.isScreenSharing() 重新对齐，见 setupSessionCallback
+const selfScreenSharing = ref<boolean>(false)
+// SDK 支不支持屏幕共享是编译期就定死的（取决于打进来的是高级版还是多人版 SDK），
+// 取一次存着，别放进 computed 里反复过原生桥
+const screenShareSupported = avEngineKit.isSupportScreenShare()
 
 const conferenceInfo = computed<ConferenceInfo>((): ConferenceInfo => {
     // 读一下 managerRevision，保证 conferenceManager 更新后这里跟着重算
@@ -146,6 +158,12 @@ const audioEnabled = computed<boolean>((): boolean => {
 const videoEnabled = computed<boolean>((): boolean => {
     const s = session.value
     return s != null && !s!.audience && !s!.videoMuted
+})
+
+/** 纯语音会议下 SDK 会直接忽略 startScreenShare，入口干脆不出现（按不动比看不见更糟） */
+const screenShareEnabled = computed<boolean>((): boolean => {
+    const s = session.value
+    return screenShareSupported && s != null && !s!.audioOnly
 })
 
 /** 只要有一个人在推视频，就用视频宫格；全员关摄像头时退化成头像墙 */
@@ -384,6 +402,14 @@ const canUnmuteBySelf = (): boolean => {
 }
 
 const onMuteAudioTap = () => {
+    // 共享期间麦克风关不得：SCREEN_SHARING_REPLACE_MODE 下屏幕轨道是顶替摄像头轨道推上去的，
+    // 而鸿蒙引擎的静音实现是 stopAudioTrack(cameraVideoStream) —— 音频轨道和被停掉的摄像头轨道
+    // 同属一条流，停掉之后再解除静音只是把 track.enabled 置回 true，麦克风回不来。
+    // hm-av 的 ConferencePage 也是这么挡的，Android 侧一并挡住，保持两端行为一致。
+    if (selfScreenSharing.value) {
+        toast('正在共享屏幕，请先结束共享')
+        return
+    }
     const enable = !audioEnabled.value
     if (enable && !canUnmuteBySelf()) {
         requestUnmute(true)
@@ -393,6 +419,13 @@ const onMuteAudioTap = () => {
 }
 
 const onMuteVideoTap = () => {
+    // 共享期间摄像头开关不给动：鸿蒙引擎的 setVideoEnabled 对 REPLACE_MODE + 共享中直接 return，
+    // 点了没反应；Android 上摄像头是开共享时被显式关掉的，这时再打开会和屏幕轨道抢同一个 sender。
+    // 想开摄像头就先结束共享。
+    if (selfScreenSharing.value) {
+        toast('正在共享屏幕，请先结束共享')
+        return
+    }
     const enable = !videoEnabled.value
     if (enable && !canUnmuteBySelf()) {
         requestUnmute(false)
@@ -403,6 +436,34 @@ const onMuteVideoTap = () => {
 
 const handUp = () => {
     conferenceManager.handUp(!conferenceManager.isHandUp)
+}
+
+/**
+ * 开始/结束屏幕共享。
+ *
+ * 开始是异步的（要等用户在系统录屏确认框上点同意），所以这里不改 selfScreenSharing，
+ * 一律等 didScreenShareStarted / didScreenShareEnded 回来再落状态 —— 用户点取消时也走后者。
+ */
+const onScreenShareTap = () => {
+    const s = session.value
+    if (s == null) {
+        return
+    }
+    if (selfScreenSharing.value) {
+        avEngineKit.stopScreenShare(s!.callId)
+        return
+    }
+    // 观众不推流，共享之前得先切回互动者（与 hm-av 的 ConferencePage 一致）
+    if (s!.audience) {
+        if (!canUnmuteBySelf()) {
+            toast('主持人不允许自行切换为互动者')
+            return
+        }
+        avEngineKit.switchAudience(s!.callId, false)
+        refreshSelfSessionState()
+    }
+    toast('共享开始后会自动最小化，切到要共享的应用即可')
+    avEngineKit.startScreenShare(s!.callId)
 }
 
 // ------------------------------------------------------------------
@@ -516,7 +577,28 @@ const onConferenceConnected = () => {
 }
 
 const setupSessionCallback = () => {
+    // 共享期间通话页通常是最小化的（已销毁，收不到回调），恢复回来时状态得按引擎的实际情况重对一次
+    const cur = session.value
+    if (cur != null) {
+        selfScreenSharing.value = screenShareSupported && avEngineKit.isScreenSharing(cur!.callId)
+    }
+
     const callback = new CallSessionCallback()
+
+    callback.didScreenShareStarted = (): void => {
+        selfScreenSharing.value = true
+        // Android 上开始共享会把摄像头关掉（videoMuted 变 true），状态得跟着刷
+        refreshSelfSessionState()
+        // 共享的意义就是去别的应用里操作，所以直接挂起通话页（android-chat 和 hm-av 也都是
+        // 共享成功后立即最小化/finish）。放在回调里而不是点按钮时：用户可能在系统确认框上点取消，
+        // 那种情况下不该被最小化。
+        minimize()
+    }
+
+    callback.didScreenShareEnded = (): void => {
+        selfScreenSharing.value = false
+        refreshSelfSessionState()
+    }
 
     callback.didChangeState = (state: number): void => {
         if (callState.value == state) {

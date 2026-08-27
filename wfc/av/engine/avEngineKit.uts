@@ -233,6 +233,38 @@ class AVEngineKit {
         native.switchCamera(callId)
     }
 
+    /**
+     * 当前平台 + 当前 SDK 是否支持屏幕共享。屏幕共享只有高级版音视频 SDK 才有，
+     * 页面拿它决定要不要显示入口。
+     *
+     * 鸿蒙 / Android 打的都是高级版 SDK，跟着 isSupportConference() 走；
+     * iOS 恒为 false —— 那不是 SDK 版本的问题，官方实现要一个独立的 Broadcast Upload Extension
+     * target，uts 插件定义不了，详见 app-ios/index.uts 的 isSupportScreenShare。
+     */
+    isSupportScreenShare(): boolean {
+        return native.isSupportScreenShare()
+    }
+
+    isScreenSharing(callId: string): boolean {
+        return native.isScreenSharing(callId)
+    }
+
+    /**
+     * 开始屏幕共享。结果是异步的（要等用户在系统确认框上点同意），成功走
+     * CallSessionCallback.didScreenShareStarted，失败/取消走 didScreenShareEnded，
+     * 页面不要在调用后立刻假定已经共享上了。
+     *
+     * 纯语音通话（audioOnly）下 SDK 会直接忽略，入口应该按这个条件隐藏。
+     */
+    startScreenShare(callId: string): void {
+        native.startScreenShare(callId)
+    }
+
+    /** 结束屏幕共享。结束后同样会收到 didScreenShareEnded */
+    stopScreenShare(callId: string): void {
+        native.stopScreenShare(callId)
+    }
+
     setSpeakerOn(callId: string, speakerOn: boolean): void {
         native.setSpeakerOn(callId, speakerOn)
     }
@@ -473,6 +505,12 @@ class AVEngineKit {
                 break
             case 'didChangeType':
                 cb.didChangeType(argString(args, 0), argBoolean(args, 1), argBoolean(args, 2))
+                break
+            case 'didScreenShareStarted':
+                cb.didScreenShareStarted()
+                break
+            case 'didScreenShareEnded':
+                cb.didScreenShareEnded()
                 break
             case 'didMuteStateChanged': {
                 const arr = JSON.parseArray(argString(args, 0))

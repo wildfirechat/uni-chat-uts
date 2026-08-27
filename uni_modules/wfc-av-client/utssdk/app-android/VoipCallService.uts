@@ -22,8 +22,10 @@ import IBinder from 'android.os.IBinder'
 import Build from 'android.os.Build'
 import ServiceInfo from 'android.content.pm.ServiceInfo'
 import AVEngineKit from 'cn.wildfirechat.avenginekit.AVEngineKit'
+import CallSession from 'cn.wildfirechat.avenginekit.AVEngineKit.CallSession'
 import CallState from 'cn.wildfirechat.avenginekit.AVEngineKit.CallState'
 import { VOIP_NOTIFICATION_ID, buildVoipNotification, cancelVoipNotification } from './voipNotification.uts'
+import { takePendingScreenShareData } from './screenShare.uts'
 
 export class VoipCallService extends Service {
     constructor() {
@@ -38,30 +40,57 @@ export class VoipCallService extends Service {
     // ⚠️ flags / startId / 返回值在 Java 侧都是 int，uts 这里必须写大写 Int，
     // 写 number 会让 Kotlin 认为签名不匹配，报 "onStartCommand overrides nothing"。
     override onStartCommand(intent: Intent | null, flags: Int, startId: Int): Int {
+        // 这一次启动是不是为了开屏幕共享。非 null 就是刚拿到的 MediaProjection 授权结果，
+        // 见 screenShare.uts；取一次就清掉。
+        const screenShareData = takePendingScreenShareData()
+
+        let session: CallSession | null = null
+        try {
+            session = AVEngineKit.Instance().getCurrentSession()
+        } catch (e) {
+            session = null
+        }
+        const hasCall = session != null && session!.getState() != CallState.Idle
+
         // ⚠️ 顺序不能调：被 startForegroundService() 拉起来的服务**必须**在 5 秒内调用
         // startForeground，否则系统直接把进程 crash 掉。所以哪怕下面判定「没有通话、要自杀」，
         // 也得先把这个约束满足了再 stopSelf。
         const notification = buildVoipNotification(this)
         if (Build.VERSION.SDK_INT >= 29) {
-            // 前台服务类型：只声明 microphone，**故意不带 camera**。
-            // Android 14 起，带 camera 类型启动前台服务要求当前已经拿到 CAMERA 运行时权限，
-            // 而纯语音通话根本不会去申请摄像头 —— 带上就是一个必崩的 SecurityException。
+            // 前台服务类型在共享期间要切成 mediaProjection，其余时候是 microphone。
+            //
+            // ⚠️ 这是 Android 14+ 的硬要求，而且顺序是「先让 mediaProjection 类型的前台服务跑起来，
+            //    再把授权结果交给 SDK 去建 MediaProjection」—— 反过来直接 SecurityException。
+            //    整个屏幕共享要绕这么一大圈（授权在 index.uts 拿、共享在服务里开）就是为了这个约束。
+            //
+            // 判定里带上 isScreenSharing()：共享期间服务可能因为别的原因（通话状态刷新）被重新拉起，
+            // 那时 screenShareData 已经是 null 了，不看这一条就会把类型降回 microphone，
+            // 正在投的屏会被系统掐掉。
+            //
+            // **故意不带 camera**：Android 14 起，带 camera 类型启动前台服务要求当前已经拿到 CAMERA
+            // 运行时权限，而纯语音通话根本不会去申请摄像头 —— 带上就是一个必崩的 SecurityException。
             // 视频通话退到后台丢画面、保声音是可以接受的降级。
-            this.startForeground(VOIP_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            const mediaProjection = screenShareData != null || (hasCall && session!.isScreenSharing())
+            this.startForeground(VOIP_NOTIFICATION_ID, notification,
+                mediaProjection ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION : ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             this.startForeground(VOIP_NOTIFICATION_ID, notification)
         }
 
-        let hasCall = false
-        try {
-            const session = AVEngineKit.Instance().getCurrentSession()
-            hasCall = session != null && session!.getState() != CallState.Idle
-        } catch (e) {
-            hasCall = false
-        }
         if (!hasCall) {
             // 服务被系统重建、但通话早已结束：自杀，别留一条永远消不掉的通知
             this.stopSelf()
+            return Service.START_NOT_STICKY
+        }
+
+        if (screenShareData != null) {
+            // 到这里前台服务已经是 mediaProjection 类型了，可以安全地把授权结果交给 SDK
+            try {
+                console.log('VoipCallService startScreenShare')
+                session!.startScreenShare(screenShareData!)
+            } catch (e) {
+                console.error('startScreenShare failed', e)
+            }
         }
 
         // START_NOT_STICKY：进程被杀之后不要自动重启服务 —— 那时通话早没了，

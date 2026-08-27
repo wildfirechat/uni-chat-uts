@@ -72,6 +72,11 @@ let avSession: AVSessionManager.AVSession | null = null
 let activeSession: CallSession | null = null
 // 最近一次挂断原因，由 CallSessionCallback.didCallEndWithReason 记录，见 didCallEnded 的注释
 let lastCallEndReason = 0
+// 最近一次 didCreateLocalVideoTrack 给出的本地轨道。
+// 为什么要缓存：引擎的 getParticipantVideoTrack(自己) 只会返回 previewStream/cameraVideoStream，
+// **拿不到 screenShareStream**；而 SCREEN_SHARING_REPLACE_MODE 下开始共享时摄像头轨道已被停掉，
+// 再去查就只能查到一条死轨道，本地预览会定格。所以本地视图一律优先用这里缓存的轨道。
+let localVideoTrack: VideoTrack | null = null
 
 // <native-view> 元素 -> 绑定在它上面的视频渲染信息。
 // 轨道可能在视图创建之后才产生（本地流是异步开的，远端流要等对方连上），
@@ -216,6 +221,10 @@ function trackOf(userId: string, screenSharing: boolean): VideoTrack | null {
     }
     // getParticipantVideoTrack 传自己的 userId 时返回本地流
     const uid = userId == '' ? wfcShim.getUserId() : userId
+    if (uid == wfcShim.getUserId() && localVideoTrack != null) {
+        // 见 localVideoTrack 的声明：屏幕共享期间查不到共享轨道，只能用回调缓存下来的那条
+        return localVideoTrack
+    }
     return session.getParticipantVideoTrack(uid, screenSharing)
 }
 
@@ -306,6 +315,7 @@ function onCallStarted(session: CallSession): void {
 
 function onCallStopped(): void {
     activeSession = null
+    localVideoTrack = null
     if (avSession != null) {
         avSession!.deactivate()
         avSession!.destroy()
@@ -411,9 +421,15 @@ function createCallSessionCallback(): CallSessionCallback {
     cb.didChangeInitiator = (initiator: string) => {
         fireCallSessionEvent('didChangeInitiator', [initiator])
     }
-    cb.didCreateLocalVideoTrack = (_videoTrack: VideoTrack, _screenSharing: boolean) => {
+    cb.didCreateLocalVideoTrack = (videoTrack: VideoTrack, _screenSharing: boolean) => {
+        localVideoTrack = videoTrack
         refreshVideoViews('')
         fireCallSessionEvent('didCreateLocalVideoTrack', [])
+    }
+    cb.didScreenShareEnded = () => {
+        // 只有 stopScreenShare() 里会发这条；SCREEN_SHARING_REPLACE_MODE 下摄像头轨道是异步重建的，
+        // 重建完引擎会再发一次 didCreateLocalVideoTrack(track, false)，本地预览由那一下负责恢复。
+        fireCallSessionEvent('didScreenShareEnded', [])
     }
     cb.didReceiveRemoteVideoTrack = (userId: string, _track: VideoTrack, screenSharing: boolean) => {
         refreshVideoViews(userId)
@@ -646,6 +662,63 @@ export function switchCamera(callId: string): void {
     sessionOf(callId)?.switchCamera()
 }
 
+// ------------------------------------------------------------------
+// 屏幕共享（仅高级版音视频 SDK 支持，多人版上 isSupportScreenShare() 恒为 false）
+// ------------------------------------------------------------------
+
+/**
+ * 当前 SDK 是否支持屏幕共享。屏幕共享只在高级版（会议版）有，判定条件和会议一致。
+ * 应用层拿它决定要不要显示「共享屏幕」入口。
+ */
+export function isSupportScreenShare(): boolean {
+    return avengineKitImpl.isSupportConference()
+}
+
+export function isScreenSharing(callId: string): boolean {
+    const session = sessionOf(callId)
+    return session != null && session!.isScreenSharing()
+}
+
+/**
+ * 开始屏幕共享。
+ *
+ * 鸿蒙这边不需要应用层做任何前置：引擎内部走 webrtc 的 getDisplayMedia()，
+ * 系统会自己弹录屏确认框，module.json5 里也不用加权限（对齐 hm-av 的 chat/module.json5）。
+ *
+ * 结果是异步的，且用户可以在系统确认框上点取消（那时 Promise reject），所以这里不返回 boolean，
+ * 而是统一用事件回话：成功 didScreenShareStarted，失败/取消 didScreenShareEnded ——
+ * 后者和「共享正常结束」用的是同一条事件，页面只要照着它把按钮状态落回去就行。
+ */
+export function startScreenShare(callId: string): void {
+    const session = sessionOf(callId)
+    if (session != null && session!.isScreenSharing()) {
+        // 页面状态和引擎不一致（比如最小化期间共享起来了），把真实状态吐回去
+        fireCallSessionEvent('didScreenShareStarted', [])
+        return
+    }
+    if (session == null || session!.audioOnly) {
+        // audioOnly 时引擎内部也是直接 return，这里提前挡掉，免得页面等一个永远不来的事件
+        fireCallSessionEvent('didScreenShareEnded', [])
+        return
+    }
+    session!.startScreenShare().then(() => {
+        fireCallSessionEvent('didScreenShareStarted', [])
+    }).catch((err: BusinessError) => {
+        // 最常见的就是用户在系统录屏确认框上点了取消
+        console.error(TAG, 'startScreenShare failed', err.code, err.message)
+        fireCallSessionEvent('didScreenShareEnded', [])
+    })
+}
+
+export function stopScreenShare(callId: string): void {
+    const session = sessionOf(callId)
+    if (session == null || !session!.isScreenSharing()) {
+        return
+    }
+    // 引擎内部会回调 didScreenShareEnded，页面状态由那一条负责
+    session!.stopScreenShare()
+}
+
 export function setSpeakerOn(callId: string, speakerOn: boolean): void {
     if (sessionOf(callId) == null) {
         return
@@ -693,6 +766,18 @@ export function getParticipantProfile(callId: string, userId: string, screenShar
         const p = profiles[i]
         if (p.userId == userId && p.screenSharing == screenSharing) {
             return JSON.stringify(participantProfileToJson(p))
+        }
+    }
+    // ⚠️ 查不到时兜底查自己。鸿蒙的 getParticipantProfiles() 只遍历 subscriberMap（远端订阅者），
+    // **自己不在里面**；而 Android 的 getParticipantProfile 找不到时会 return getMyProfile()。
+    // 不补这一刀，应用层「按 userId 查资料」在自己身上就是 null：didMuteStateChanged([自己])
+    // 拿不到 profile 直接 continue，关摄像头后自己那格的 videoMuted 不会更新，
+    // 格子继续挂 native-view，而摄像头轨道已经停了 —— 表现为黑屏而不是头像。
+    // 屏幕共享那条（screenSharing = true）不兜底：自己的共享流在 REPLACE_MODE 下不单独成格。
+    if (!screenSharing && userId == wfcShim.getUserId()) {
+        const selfProfile = session!.getSelfProfile()
+        if (selfProfile != null) {
+            return JSON.stringify(participantProfileToJson(selfProfile!))
         }
     }
     return null

@@ -416,6 +416,43 @@ export function switchCamera(callId: string): void {
     }
 }
 
+// ------------------------------------------------------------------
+// 屏幕共享
+// ------------------------------------------------------------------
+
+/**
+ * 当前 SDK 是否支持屏幕共享。屏幕共享只有高级版音视频 SDK 才有，
+ * 应用层拿它决定要不要显示「共享屏幕」入口。
+ *
+ * iOS 恒为 false，而且**不只是 SDK 版本的问题**，换成高级版 framework 也还是接不了：
+ * 官方唯一的实现（ios-chat 的 WFCUConferenceManager）靠的是一个独立的
+ * Broadcast Upload Extension target + App Group + 本地 socket 传帧（端口 36622），
+ * 而 uts 插件定义不了新的 app extension target —— 这条路在当前工程结构下走不通。
+ *
+ * 顺带记一下现状：Frameworks 里打的是**多人版** WFAVEngineKit.xcframework
+ * （头文件里 isBroadcasting / externalVideoSource / setBroadcastingWithVideoSource 三处
+ * 都标着「此属性没有意义，仅为了兼容UI代码」），所以即便不看上面那条，现在也是 false。
+ *
+ * 还有一条没验证过的路：SDK 上有个 inAppScreenSharing（应用内共享，只共享 App 自己的画面，
+ * 不需要 extension）。ios-chat 的 UIKit 一次都没用过，没有可参考的实现，要用得先自己趟。
+ */
+export function isSupportScreenShare(): boolean {
+    return false
+}
+
+export function isScreenSharing(_callId: string): boolean {
+    return false
+}
+
+export function startScreenShare(_callId: string): void {
+    // 未接。isSupportScreenShare() 恒为 false，应用层不会走到这里；
+    // 万一走到了也要把状态吐回去，免得页面卡在「共享中」。
+    emitCallSessionEvent('didScreenShareEnded', '[]')
+}
+
+export function stopScreenShare(_callId: string): void {
+}
+
 export function setSpeakerOn(callId: string, speakerOn: boolean): void {
     const session = currentSessionOrNull()
     if (session != null && session!.callId == callId) {
