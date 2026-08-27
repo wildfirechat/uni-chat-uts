@@ -177,6 +177,8 @@ class NativeAVEngineDelegate implements WFAVEngineDelegate {
 
     didCallEnded(reason: WFAVCallEndReason, @argumentLabel("duration") duration: Int32): void {
         clearVideoContainers()
+        // 通话没了，最小化悬浮窗必须跟着消失（页面可能早就 pop 掉了，没人替它收场）
+        VoipFloatingWindow.hide()
         emitAVEngineEvent("didCallEnded", jsonArrayString([reason.rawValue, duration]))
     }
 
@@ -190,6 +192,8 @@ class NativeAVEngineDelegate implements WFAVEngineDelegate {
 class NativeCallSessionDelegate implements WFAVCallSessionDelegate {
     // 协议方法在 Swift 里被改名为 didChange(_:)，事件名仍用 didChangeState 透传，避免动应用层
     didChange(state: WFAVEngineState): void {
+        // 悬浮窗上的「等待接听 → 通话中」靠这一下；它不抢 session.delegate，只能由这里推
+        VoipFloatingWindow.refresh()
         emitCallSessionEvent("didChangeState", jsonArrayString([state.rawValue]))
     }
 
@@ -270,6 +274,28 @@ export function initAVEngineKit(): void {
     }
     initialized = true
     WFAVEngineKit.shared().delegate = nativeAVEngineDelegate
+
+    /**
+     * App 切到后台 → 自动最小化：挂起悬浮窗，并让应用层把通话页收掉，
+     * 结果和用户手动点最小化完全一致（回来的路也就都收敛到 resumeVoipPage 上）。
+     *
+     * iOS 画不到别的 App 之上，所以切后台这一下用户当场是看不见悬浮窗的；意义在于**切回来之后**：
+     * 看到的是聊天列表 + 一个通话悬浮窗，点它回到通话页，而不是直接落回通话页。
+     * 这与 Android（../android-chat 的 VoipBaseActivity.onStop → showFloatingView）
+     * 和鸿蒙（画中画 autoStart）的行为对齐。
+     *
+     * 判断「通话还在 / 悬浮窗是不是已经挂着了」都在 Swift 里做（见 showOnAppBackground），
+     * 这里只在它真的最小化了之后，才通知应用层收页面。
+     */
+    VoipFloatingWindow.observeAppBackground((): void => {
+        const minimized = VoipFloatingWindow.showOnAppBackground((): void => {
+            // 悬浮窗自己已经收掉了，这里只负责把通话页推回来（同 minimize()）
+            emitCallSessionEvent("resumeVoipPage", jsonArrayString([]))
+        })
+        if (minimized) {
+            emitCallSessionEvent("minimizeVoipPage", jsonArrayString([]))
+        }
+    })
 }
 
 export function addICEServer(url: string, name: string, password: string): void {
@@ -460,8 +486,35 @@ export function checkOverlayPermission(): boolean {
     return true
 }
 
+// 仅 Android 需要（跳系统设置页开悬浮窗权限）。iOS 上 checkOverlayPermission 恒为 true，
+// 应用层永远不会调到这里；但三端导出必须齐全 —— uts 插件走运行时 proxy，缺函数编译期无感，
+// 真机点到才报 not a function。
+export function requestOverlayPermission(): void {
+}
+
+/**
+ * 通话中挂在悬浮窗上的文案，由应用层在 avEngineKit.init() 时用当前语言的 i18n 词条送进来。
+ * resumeHint 是 Android 通知栏的「点击返回通话界面」，iOS 悬浮窗一眼就知道能点，用不上，忽略。
+ * 三端都必须导出这个函数 —— uts 插件走运行时 proxy，少导出一个编译期无感，真机调到才 not a function。
+ */
+export function setVoipUIStrings(ongoing: string, waitingAnswer: string, connecting: string, resumeHint: string): void {
+    VoipFloatingWindow.setTexts(ongoing, waitingAnswer, connecting)
+}
+
+/**
+ * 最小化：挂起一个 App 内的 UIWindow 悬浮窗，点它回到通话页。
+ * iOS 没有 Android 那种常驻通知，也不允许画到别的 App 之上，App 内悬浮窗就是 iOS 的最小化上限；
+ * 真正的系统级通话挂起 UI 只有 CallKit，本插件尚未接入。实现见同目录 VoipFloatingWindow.swift。
+ */
 export function minimize(callId: string, focusVideoUser: string): void {
-    // no-op：iOS 下由调用方（uts 应用层）自行处理返回上一页
+    const session = currentSessionOrNull()
+    if (session == null || session!.callId != callId) {
+        return
+    }
+    VoipFloatingWindow.show(focusVideoUser, (): void => {
+        // 悬浮窗自己已经收掉了，这里只负责把通话页推回来
+        emitCallSessionEvent("resumeVoipPage", jsonArrayString([]))
+    })
 }
 
 export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {

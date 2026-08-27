@@ -91,6 +91,7 @@ import CallSession from "@/wfc/av/engine/callSession.uts";
 import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
 import CallState from "@/wfc/av/engine/callState.uts";
 import CallEndReason from "@/wfc/av/engine/callEndReason.uts";
+import { minimizeCall } from "@/wfc/av/voipUtil.uts";
 import ConferenceInfo from "@/wfc/av/model/conferenceInfo.uts";
 import conferenceManager from "./conferenceManager.uts";
 import { ConferenceParticipant, loadConferenceParticipants, participantOfProfile } from "./conferenceParticipant.uts";
@@ -450,17 +451,9 @@ const minimize = () => {
     if (s == null) {
         return
     }
-    if (!avEngineKit.checkOverlayPermission()) {
-        toast('需要悬浮窗权限')
-        return
-    }
-    avEngineKit.minimize(s!.callId, '')
-    uni.navigateBack({
-        delta: 1,
-        fail: (err) => {
-            console.log('nav back err', err)
-        }
-    } as NavigateBackOptions)
+    // 挂起 UI + 退出通话页都在 minimizeCall 里，三个通话页共用（含 Android 悬浮窗权限的一次性引导）。
+    // 主持人焦点了谁，挂起的小画面就跟着显示谁；没设焦点（空串）时由插件自己挑第一个有画面的人。
+    minimizeCall(s!.callId, conferenceInfo.value.focus)
 }
 
 /** @param destroyed 会议是不是真结束了，只有真结束才会把散会时间写进本地历史，见 conferenceManager.addHistory */

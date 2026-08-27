@@ -1,0 +1,648 @@
+/**
+ * 通话最小化后的系统级悬浮窗（Android）。
+ *
+ * ---- 它和「通话进行中」通知的分工 ----
+ * 通知（VoipCallService + voipNotification.uts）解决的是**后台保活**（Android 9+ 退到后台会掐掉
+ * 麦克风采集）和**兜底入口**；悬浮窗解决的是**跨应用可见**：用户切到别的 App 时仍然看得见通话在继续，
+ * 点一下就回来。两者互不依赖 —— 没有 SYSTEM_ALERT_WINDOW 权限时悬浮窗直接不出，通知照常，
+ * 最小化本身永远不会因此失败。
+ *
+ * ---- 为什么不 inflate XML ----
+ * 参考实现（../uni-wfc-client 的 VoipFloatingWindowManager、../android-chat 的 VoipCallService）
+ * 用的是 R.layout.av_voip_float_view。uts 插件里引 R 类很别扭（同 voipNotification 里 setSmallIcon
+ * 的处理），而这个界面只有两行文字 + 一个视频容器，直接代码搭更省事，也不用往插件里塞 res/。
+ *
+ * ---- 刻意和参考实现不同的三处 ----
+ * 1. **不调 session.restVideoViews()**。javap 反编译看到它就是
+ *    `setupLocalVideoView(null, null)` + 每个 client `setupView(null, null)` —— scalingType 也被写成
+ *    null。本插件用的是多人版 aar，解绑时把记住的 scalingType 写成 null 之后，
+ *    SurfaceViewRenderer.setScalingType(null) 会 NPE（见 index.uts ensureRemoteVideoAttached 的注释）。
+ *    页面弹栈后那些容器已经是死 View 了，解不解绑没有区别，所以干脆不碰；只在自己挂过的那一路
+ *    解绑，且**照样传真实的 scalingType**。
+ * 2. **拖动用 getRawX/getRawY 的绝对增量**，不是参考实现的 `(x - lastX) / 3`。那个除以 3 是为了
+ *    压抖动，代价是手指和窗口对不上、拖起来发黏。
+ * 3. **位置存进 SharedPreferences**，下次最小化还在原地（和 iOS 的 VoipFloatingWindow.swift 一致）。
+ *
+ * ---- SurfaceView 的两个坑 ----
+ * - 视频画面是 SurfaceViewRenderer（SurfaceView 子类）。把它从悬浮窗里移走之后，窗口不会自己重画
+ *   那块区域，会留一个黑洞；必须把整个窗口 removeView + addView 一次。参考实现里那几段
+ *   `wm.removeView(view); wm.addView(view, params)` 就是干这个的，这里保留。
+ * - z 序不去动。引擎的 DISABLE_SURFACE_VIEW_AUTO_OVERLAY=false 会自己编排（见 index.uts
+ *   initAVEngineKit 的长注释），../android-chat 在同一套 aar 上跑生产也没有额外处理。
+ */
+import Context from 'android.content.Context'
+import WindowManager from 'android.view.WindowManager'
+import WindowLayoutParams from 'android.view.WindowManager.LayoutParams'
+import Gravity from 'android.view.Gravity'
+import PixelFormat from 'android.graphics.PixelFormat'
+import View from 'android.view.View'
+import OnTouchListener from 'android.view.View.OnTouchListener'
+import MotionEvent from 'android.view.MotionEvent'
+import LinearLayout from 'android.widget.LinearLayout'
+import LinearLayoutParams from 'android.widget.LinearLayout.LayoutParams'
+import FrameLayout from 'android.widget.FrameLayout'
+import FrameLayoutParams from 'android.widget.FrameLayout.LayoutParams'
+import TextView from 'android.widget.TextView'
+import GradientDrawable from 'android.graphics.drawable.GradientDrawable'
+import Color from 'android.graphics.Color'
+import TypedValue from 'android.util.TypedValue'
+import Build from 'android.os.Build'
+import Settings from 'android.provider.Settings'
+import Looper from 'android.os.Looper'
+import Handler from 'android.os.Handler'
+import Runnable from 'java.lang.Runnable'
+import JavaSystem from 'java.lang.System'
+import AVEngineKit from 'cn.wildfirechat.avenginekit.AVEngineKit'
+import CallSession from 'cn.wildfirechat.avenginekit.AVEngineKit.CallSession'
+import CallState from 'cn.wildfirechat.avenginekit.AVEngineKit.CallState'
+import PeerConnectionClient from 'cn.wildfirechat.avenginekit.PeerConnectionClient'
+import ChatManager from 'cn.wildfirechat.remote.ChatManager'
+import ScalingType from 'org.webrtc.RendererCommon.ScalingType'
+import {
+    invokeVoipResumeCallback,
+    bringAppToFront,
+    voipTextOngoing,
+    voipTextWaitingAnswer,
+    voipTextConnecting
+} from './voipNotification.uts'
+
+/** 悬浮窗位置记在这里，下次最小化回到原处 */
+const PREF_NAME = 'wfc_voip_float'
+const PREF_KEY_X = 'x'
+const PREF_KEY_Y = 'y'
+
+// 白卡片 + 蓝字，和 ../uni-wfc-client / ../android-chat 的 av_float_bg.xml 一致
+const COLOR_CARD = '#F2FFFFFF'
+const COLOR_TITLE = '#333333'
+const COLOR_ACCENT = '#0195FF'
+
+let windowManager: WindowManager | null = null
+let rootView: LinearLayout | null = null
+let layoutParams: WindowLayoutParams | null = null
+let infoBox: LinearLayout | null = null
+let titleView: TextView | null = null
+let durationView: TextView | null = null
+let videoBox: FrameLayout | null = null
+
+let showing = false
+/** 最小化时应用层指定要显示谁的画面，空表示自动挑 */
+let focusTargetId = ''
+/** 当前挂在 videoBox 里的是谁的画面，null 表示没挂视频 */
+let attachedVideoUser: string | null = null
+
+let touchSlop: Int = 24
+let downRawX: Int = 0
+let downRawY: Int = 0
+let downX: Int = 0
+let downY: Int = 0
+let dragged = false
+
+// 传 null 表示解绑。声明成变量而不是字面量 null，是为了让 Kotlin 在重载里挑得出 ViewGroup? 那个签名
+// （同 index.uts 的 noVideoContainer）。
+const noContainer: FrameLayout | null = null
+
+// ------------------------------------------------------------------
+// 线程 / 单位换算
+// ------------------------------------------------------------------
+
+class UiTask implements Runnable {
+    private action: () => void
+    constructor(action: () => void) {
+        this.action = action
+    }
+    override run(): void {
+        this.action()
+    }
+}
+
+const uiHandler = new Handler(Looper.getMainLooper())
+
+/**
+ * 切主线程。WindowManager.addView / updateViewLayout、以及往容器里塞 SurfaceViewRenderer
+ * 都只能在主线程做，而 minimize() 是从 JS 线程调进来的。
+ * （index.uts 里有一份同样的 runOnMainThread —— 不能复用，index 要 import 本文件，反过来会成环。）
+ */
+function onMain(action: () => void): void {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        action()
+    } else {
+        uiHandler.post(new UiTask(action))
+    }
+}
+
+function dp(context: Context, value: number): Int {
+    return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), context.getResources().getDisplayMetrics()).toInt()
+}
+
+function absInt(value: Int): Int {
+    return value < 0 ? -value : value
+}
+
+function clampInt(value: Int, min: Int, max: Int): Int {
+    if (max < min) {
+        return min
+    }
+    if (value < min) {
+        return min
+    }
+    return value > max ? max : value
+}
+
+function pad2(value: Int): string {
+    return value < 10 ? ('0' + value.toString()) : value.toString()
+}
+
+// ------------------------------------------------------------------
+// 会话状态
+// ------------------------------------------------------------------
+
+function currentSession(): CallSession | null {
+    try {
+        return AVEngineKit.Instance().getCurrentSession()
+    } catch (e) {
+        return null
+    }
+}
+
+function myUserId(): string {
+    try {
+        return ChatManager.Instance().getUserId() ?? ''
+    } catch (e) {
+        return ''
+    }
+}
+
+function durationText(session: CallSession): string {
+    const connected = session.getConnectedTime()
+    if (connected <= 0) {
+        return ''
+    }
+    let seconds = ((JavaSystem.currentTimeMillis() - connected) / 1000).toInt()
+    if (seconds < 0) {
+        seconds = 0
+    }
+    const hour = seconds / 3600
+    const minute = (seconds % 3600) / 60
+    const second = seconds % 60
+    if (hour > 0) {
+        return hour.toString() + ':' + pad2(minute) + ':' + pad2(second)
+    }
+    return pad2(minute) + ':' + pad2(second)
+}
+
+function isVideoUsable(session: CallSession, userId: string): boolean {
+    const client: PeerConnectionClient | null = session.getClient(userId)
+    if (client == null) {
+        return false
+    }
+    return client!.state == CallState.Connected && !client!.audience && !client!.videoMuted
+}
+
+/**
+ * 挑一个有画面的人显示。优先应用层指定的 focusTargetId，其次第一个「已连接 + 不是观众 + 没关摄像头」
+ * 的参与者，最后退回自己的本地预览；都没有就返回 null，由调用方改显示文字。
+ */
+function pickVideoUser(session: CallSession): string | null {
+    const me = myUserId()
+    if (focusTargetId.length > 0) {
+        if (focusTargetId == me) {
+            if (!session.videoMuted) {
+                return me
+            }
+        } else if (isVideoUsable(session, focusTargetId)) {
+            return focusTargetId
+        }
+    }
+    let picked: string | null = null
+    session.getParticipantIds().forEach((userId: string): void => {
+        if (picked == null && userId != me && isVideoUsable(session, userId)) {
+            picked = userId
+        }
+    })
+    if (picked != null) {
+        return picked
+    }
+    if (me.length > 0 && !session.videoMuted) {
+        return me
+    }
+    return null
+}
+
+// ------------------------------------------------------------------
+// 视图
+// ------------------------------------------------------------------
+
+/**
+ * 高级版 aar 在 setupRemoteVideoView 这条路径上给渲染器用的是 WRAP_CONTENT，统一改回 MATCH_PARENT，
+ * 否则 SCALE_ASPECT_FILL 会被 wrap_content 按宽高比缩成一小块（同 index.uts 的 stretchRenderersToContainer）。
+ */
+function stretchRenderers(container: FrameLayout): void {
+    for (let i = 0; i < container.getChildCount(); i++) {
+        container.getChildAt(i.toInt()).setLayoutParams(new FrameLayoutParams(-1, -1))
+    }
+}
+
+class FloatTouchListener implements OnTouchListener {
+    override onTouch(v: View, event: MotionEvent): boolean {
+        const params = layoutParams
+        const wm = windowManager
+        if (params == null || wm == null) {
+            return false
+        }
+        const action = event.getAction()
+        if (action == MotionEvent.ACTION_DOWN) {
+            downRawX = event.getRawX().toInt()
+            downRawY = event.getRawY().toInt()
+            downX = params!.x
+            downY = params!.y
+            dragged = false
+            return true
+        }
+        if (action == MotionEvent.ACTION_MOVE) {
+            const dx = event.getRawX().toInt() - downRawX
+            const dy = event.getRawY().toInt() - downRawY
+            if (!dragged && (absInt(dx) > touchSlop || absInt(dy) > touchSlop)) {
+                dragged = true
+            }
+            if (dragged) {
+                const metrics = v.getContext().getResources().getDisplayMetrics()
+                params!.x = clampInt(downX + dx, 0, metrics.widthPixels - v.getWidth())
+                params!.y = clampInt(downY + dy, 0, metrics.heightPixels - v.getHeight())
+                try {
+                    wm!.updateViewLayout(v, params!)
+                } catch (e) {
+                    console.error('move voip floating window failed', e)
+                }
+            }
+            return true
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            if (dragged) {
+                savePosition(v.getContext(), params!.x, params!.y)
+            } else if (action == MotionEvent.ACTION_UP) {
+                v.performClick()
+                onTapped()
+            }
+            return true
+        }
+        return false
+    }
+}
+
+const floatTouchListener = new FloatTouchListener()
+
+function onTapped(): void {
+    // ⚠️ 第一步必须是把 App 拉回前台，不能只发 resumeVoipPage 事件。用户点悬浮窗的时候人在
+    // 别的 App 里，只发事件的话 JS 那边 navigateTo 通话页是在后台悄悄完成的，屏幕上什么都
+    // 不变 —— 症状就是「点通知能回来，点悬浮窗没反应」。点通知那条路之所以好使，是因为
+    // PendingIntent 落在 VoipResumeActivity 上，那里做了同样的 startActivity。
+    // context 要赶在 hide 之前取：hide 会把 rootView 置空。
+    const context = UTSAndroid.getAppContext()
+    // 留一条日志：真机上「点了没反应」时，logcat 里有没有这行能直接分开两种原因 ——
+    // 没这行是触摸压根没到（窗口层级/ROM 问题），有这行但没回到前台是被 ROM 的
+    // 「后台弹出界面」开关拦了（小米/vivo/OPPO 把它和悬浮窗权限分成了两项）。
+    console.log('wfc-av: 悬浮窗被点击，准备拉回前台')
+    if (context == null || !bringAppToFront(context!)) {
+        // 没拉起来就把悬浮窗留着。否则用户既没回到通话页、悬浮窗也没了，只剩通知栏一条入口。
+        return
+    }
+    // 收窗口要在通知 JS 之前：不然通话页重新挂 <native-view> 时，悬浮窗还占着同一路视频轨。
+    // index.uts 注册的回调里也会再 hide 一次 —— hide 是幂等的。
+    hideVoipFloatingWindow()
+    invokeVoipResumeCallback()
+}
+
+function buildViews(context: Context): void {
+    touchSlop = dp(context, 8)
+
+    const root = new LinearLayout(context)
+    root.setOrientation(LinearLayout.VERTICAL)
+    root.setGravity(Gravity.CENTER)
+    const background = new GradientDrawable()
+    background.setShape(GradientDrawable.RECTANGLE)
+    background.setColor(Color.parseColor(COLOR_CARD))
+    const radius = dp(context, 8)
+    background.setCornerRadius(radius.toFloat())
+    root.setBackground(background)
+    const padH = dp(context, 12)
+    const padV = dp(context, 10)
+    root.setPadding(padH, padV, padH, padV)
+    root.setOnTouchListener(floatTouchListener)
+
+    const info = new LinearLayout(context)
+    info.setOrientation(LinearLayout.VERTICAL)
+    info.setGravity(Gravity.CENTER)
+
+    // 字号不能写 setTextSize(COMPLEX_UNIT_SP, 12.0.toFloat())：数字字面量上直接调方法
+    // 会让整个文件 GenericFailure（且不报行号），必须先落到变量上。
+    const titleSp: number = 12
+    const durationSp: number = 14
+
+    const title = new TextView(context)
+    title.setTextColor(Color.parseColor(COLOR_TITLE))
+    title.setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSp.toFloat())
+    title.setGravity(Gravity.CENTER)
+    info.addView(title)
+
+    const duration = new TextView(context)
+    duration.setTextColor(Color.parseColor(COLOR_ACCENT))
+    duration.setTextSize(TypedValue.COMPLEX_UNIT_SP, durationSp.toFloat())
+    duration.setGravity(Gravity.CENTER)
+    info.addView(duration)
+
+    // -2 = WRAP_CONTENT
+    root.addView(info, new LinearLayoutParams(-2, -2))
+
+    const video = new FrameLayout(context)
+    video.setVisibility(View.GONE)
+    root.addView(video, new LinearLayoutParams(dp(context, 90), dp(context, 126)))
+
+    rootView = root
+    infoBox = info
+    titleView = title
+    durationView = duration
+    videoBox = video
+}
+
+function buildLayoutParams(context: Context): WindowLayoutParams {
+    const params = new WindowLayoutParams()
+    // TYPE_APPLICATION_OVERLAY 是 API 26(O) 才有的类型；更低版本上只能用已废弃的 TYPE_PHONE。
+    params.type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        ? WindowLayoutParams.TYPE_APPLICATION_OVERLAY
+        : WindowLayoutParams.TYPE_PHONE
+    // NOT_FOCUSABLE：不抢输入焦点，别人 App 的输入框照常能打字；
+    // NOT_TOUCH_MODAL：窗口外的点击照常传给下面的应用；
+    // ALT_FOCUSABLE_IM：不参与输入法焦点，避免把键盘顶起来。
+    params.flags = WindowLayoutParams.FLAG_NOT_FOCUSABLE
+        | WindowLayoutParams.FLAG_NOT_TOUCH_MODAL
+        | WindowLayoutParams.FLAG_ALT_FOCUSABLE_IM
+    params.format = PixelFormat.TRANSLUCENT
+    // -2 = WRAP_CONTENT：窗口跟着内容大小走（文字态小、视频态大）
+    params.width = -2
+    params.height = -2
+    // 用 TOP|START，x/y 就是左上角的绝对偏移，拖动时直接加增量即可。
+    // 参考实现用的是 Gravity.CENTER + 一个等于屏宽的 x，那套坐标很难读。
+    params.gravity = Gravity.TOP | Gravity.START
+
+    const metrics = context.getResources().getDisplayMetrics()
+    const defaultX = metrics.widthPixels - dp(context, 100)
+    const defaultY = metrics.heightPixels / 4
+    try {
+        const preferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        params.x = preferences.getInt(PREF_KEY_X, defaultX)
+        params.y = preferences.getInt(PREF_KEY_Y, defaultY)
+    } catch (e) {
+        params.x = defaultX
+        params.y = defaultY
+    }
+    params.x = clampInt(params.x, 0, metrics.widthPixels)
+    params.y = clampInt(params.y, 0, metrics.heightPixels)
+    return params
+}
+
+function savePosition(context: Context, x: Int, y: Int): void {
+    try {
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().putInt(PREF_KEY_X, x).putInt(PREF_KEY_Y, y).apply()
+    } catch (e) {
+        console.error('save voip floating window position failed', e)
+    }
+}
+
+/**
+ * 把窗口摘下来重新挂一次。SurfaceView 从窗口里移走后那块区域不会自动重画（留一个黑洞），
+ * updateViewLayout 也救不回来，只有 removeView + addView 管用。
+ */
+function reAddWindow(): void {
+    const wm = windowManager
+    const root = rootView
+    const params = layoutParams
+    if (!showing || wm == null || root == null || params == null) {
+        return
+    }
+    try {
+        wm!.removeView(root!)
+        wm!.addView(root!, params!)
+    } catch (e) {
+        console.error('re-add voip floating window failed', e)
+    }
+}
+
+// ------------------------------------------------------------------
+// 内容刷新
+// ------------------------------------------------------------------
+
+function detachVideo(): void {
+    const userId = attachedVideoUser
+    if (userId == null) {
+        return
+    }
+    attachedVideoUser = null
+    const session = currentSession()
+    if (session == null || session!.getState() == CallState.Idle) {
+        return
+    }
+    // 解绑必须照样传真实的 scalingType：多人版 aar 的解绑会把记住的 scalingType 一起写成 null，
+    // 之后 SurfaceViewRenderer.setScalingType(null) 会 NPE。SDK 自带的 restVideoViews() 内部
+    // 就是 (null, null)，所以整个文件都不用它。
+    try {
+        if (userId! == myUserId()) {
+            session!.setupLocalVideoView(noContainer, ScalingType.SCALE_ASPECT_FILL)
+        } else {
+            session!.setupRemoteVideoView(userId!, false, noContainer, ScalingType.SCALE_ASPECT_FILL)
+        }
+    } catch (e) {
+        console.error('detach voip floating window video failed', e)
+    }
+}
+
+function showInfo(title: string, duration: string): void {
+    const box = videoBox
+    if (box != null && box!.getVisibility() == View.VISIBLE) {
+        detachVideo()
+        box!.removeAllViews()
+        box!.setVisibility(View.GONE)
+        reAddWindow()
+    }
+    infoBox?.setVisibility(View.VISIBLE)
+    titleView?.setText(title)
+    const view = durationView
+    if (view != null) {
+        view!.setText(duration)
+        view!.setVisibility(duration.length == 0 ? View.GONE : View.VISIBLE)
+    }
+}
+
+function showVideo(session: CallSession, userId: string): void {
+    const box = videoBox
+    if (box == null) {
+        return
+    }
+    infoBox?.setVisibility(View.GONE)
+    box!.setVisibility(View.VISIBLE)
+
+    const attached = attachedVideoUser
+    if (attached != null && attached! == userId) {
+        stretchRenderers(box!)
+        return
+    }
+    detachVideo()
+    try {
+        if (userId == myUserId()) {
+            session.setupLocalVideoView(box!, ScalingType.SCALE_ASPECT_FILL)
+        } else {
+            session.setupRemoteVideoView(userId, false, box!, ScalingType.SCALE_ASPECT_FILL)
+        }
+        attachedVideoUser = userId
+    } catch (e) {
+        console.error('attach voip floating window video failed', e)
+        return
+    }
+    // 只在「视频态 → 文字态」那一侧 reAddWindow（见 showInfo）。反过来这一侧不重挂窗口：
+    // removeView/addView 会把 SurfaceView 的 surface 销毁重建，白白让渲染器断一下；
+    // 子 View 变 VISIBLE 触发的 requestLayout 本来就够 wrap_content 的窗口重新量尺寸。
+    // ../android-chat 的 VoipCallService 也只在隐藏视频那一侧重挂。
+    stretchRenderers(box!)
+}
+
+function applyState(session: CallSession): void {
+    const state = session.getState()
+    if (state != CallState.Connected) {
+        showInfo(state == CallState.Connecting ? voipTextConnecting() : voipTextWaitingAnswer(), '')
+        return
+    }
+    // 屏幕共享时本端没有可显示的画面，统一走文字态
+    if (session.isAudioOnly() || session.isScreenSharing()) {
+        showInfo(voipTextOngoing(), durationText(session))
+        return
+    }
+    const focus = pickVideoUser(session)
+    if (focus == null) {
+        showInfo(voipTextOngoing(), durationText(session))
+        return
+    }
+    showVideo(session, focus!)
+}
+
+class TickTask implements Runnable {
+    override run(): void {
+        tick()
+    }
+}
+
+const tickTask = new TickTask()
+
+function scheduleTick(): void {
+    uiHandler.removeCallbacks(tickTask)
+    uiHandler.postDelayed(tickTask, 1000)
+}
+
+/**
+ * 每秒一次：刷计时、跟着状态换显示形态、通话没了就自己收摊。
+ * 通知那边用的是系统 chronometer（不用轮询），这里必须轮询 —— 计时之外还要盯着「谁的摄像头开了/关了」。
+ */
+function tick(): void {
+    if (!showing) {
+        return
+    }
+    const session = currentSession()
+    if (session == null || session!.getState() == CallState.Idle) {
+        hideVoipFloatingWindow()
+        return
+    }
+    applyState(session!)
+    scheduleTick()
+}
+
+// ------------------------------------------------------------------
+// 对外接口
+// ------------------------------------------------------------------
+
+/**
+ * 有没有悬浮窗权限。和 index.uts 的 checkOverlayPermission 是同一套判断，这里再写一遍是因为
+ * index 要 import 本文件，反过来 import 会成环。
+ */
+function canDrawOverlays(context: Context): boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        return true
+    }
+    return Settings.canDrawOverlays(context)
+}
+
+export function isVoipFloatingWindowShowing(): boolean {
+    return showing
+}
+
+export function showVoipFloatingWindow(focusVideoUser: string): void {
+    onMain((): void => {
+        focusTargetId = focusVideoUser
+        if (showing) {
+            return
+        }
+        const context = UTSAndroid.getAppContext()
+        if (context == null) {
+            return
+        }
+        if (!canDrawOverlays(context!)) {
+            // 没授权就安静地不出悬浮窗：通知栏那条常驻通知一样能把用户带回通话页，
+            // 最小化本身不该因为少一个权限就失败。要不要引导用户去开，是应用层的事
+            // （见 wfc/av/voipUtil.uts 的 minimizeCall）。
+            console.log('wfc-av: 无悬浮窗权限，最小化只保留通知栏入口')
+            return
+        }
+        const session = currentSession()
+        if (session == null || session!.getState() == CallState.Idle) {
+            return
+        }
+        attachedVideoUser = null
+        buildViews(context!)
+        const params = buildLayoutParams(context!)
+        layoutParams = params
+        const wm = context!.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        try {
+            wm.addView(rootView!, params)
+        } catch (e) {
+            // 权限被中途撤销 / 厂商 ROM 拦截，都会在这里抛 BadTokenException
+            console.error('add voip floating window failed', e)
+            rootView = null
+            layoutParams = null
+            infoBox = null
+            titleView = null
+            durationView = null
+            videoBox = null
+            return
+        }
+        windowManager = wm
+        showing = true
+        applyState(session!)
+        scheduleTick()
+    })
+}
+
+export function hideVoipFloatingWindow(): void {
+    onMain((): void => {
+        uiHandler.removeCallbacks(tickTask)
+        if (!showing) {
+            return
+        }
+        showing = false
+        detachVideo()
+        const wm = windowManager
+        const root = rootView
+        if (wm != null && root != null) {
+            savePosition(root!.getContext(), layoutParams!.x, layoutParams!.y)
+            try {
+                wm!.removeView(root!)
+            } catch (e) {
+                console.error('remove voip floating window failed', e)
+            }
+        }
+        windowManager = null
+        rootView = null
+        layoutParams = null
+        infoBox = null
+        titleView = null
+        durationView = null
+        videoBox = null
+        focusTargetId = ''
+    })
+}

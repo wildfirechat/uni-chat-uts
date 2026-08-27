@@ -94,7 +94,7 @@ import CallState from "@/wfc/av/engine/callState.uts";
 import VideoType from "@/wfc/av/engine/videoType.uts";
 import ParticipantProfile from "@/wfc/av/engine/participantProfile.uts";
 import MultiCallOngoingMessageContent from "@/wfc/av/messages/multiCallOngoingMessageContent.uts";
-import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
+import checkVoipPermissions, { minimizeCall } from "@/wfc/av/voipUtil.uts";
 import { getUserInfo } from "@/wfc/client/userBrief.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
@@ -383,20 +383,8 @@ const minimize = () => {
     if (callSession == null) {
         return
     }
-    if (avEngineKit.checkOverlayPermission()) {
-        avEngineKit.minimize(callSession.callId)
-        uni.navigateBack({
-            delta: 1,
-            fail: (err) => {
-                console.log('nav back err', err)
-            }
-        } as NavigateBackOptions)
-    } else {
-        uni.showToast({
-            title: '需要悬浮窗权限',
-            icon: 'none',
-        } as ShowToastOptions)
-    }
+    // 挂起 UI + 退出通话页都在 minimizeCall 里，三个通话页共用（含 Android 悬浮窗权限的一次性引导）
+    minimizeCall(callSession.callId)
 }
 
 onLoad((_options: OnLoadOptions) => {

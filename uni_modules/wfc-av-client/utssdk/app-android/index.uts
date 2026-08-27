@@ -89,9 +89,33 @@ import Context from 'android.content.Context'
 import ScalingType from 'org.webrtc.RendererCommon.ScalingType'
 import StatsReport from 'org.webrtc.StatsReport'
 import Settings from 'android.provider.Settings'
+import Intent from 'android.content.Intent'
+import Uri from 'android.net.Uri'
+import Build from 'android.os.Build'
 import Looper from 'android.os.Looper'
 import Handler from 'android.os.Handler'
 import Runnable from 'java.lang.Runnable'
+import ComponentName from 'android.content.ComponentName'
+import ComponentCallbacks2 from 'android.content.ComponentCallbacks2'
+import PowerManager from 'android.os.PowerManager'
+import {
+    VOIP_CALL_SERVICE,
+    setVoipResumeCallback,
+    setVoipTexts,
+    refreshVoipNotification,
+    cancelVoipNotification
+} from './voipNotification.uts'
+import {
+    showVoipFloatingWindow,
+    hideVoipFloatingWindow,
+    isVoipFloatingWindowShowing
+} from './VoipFloatingWindow.uts'
+
+// uts 插件里定义的 Android 组件必须从 index 再导出一遍才会被打进产物
+// （同官方样例 uts-progressNotification 的 `export { TransparentActivity } from ...`）。
+// 两个类都只被 AndroidManifest.xml 按类名引用，代码里不会 import 它们。
+export { VoipCallService } from './VoipCallService.uts'
+export { VoipResumeActivity } from './VoipResumeActivity.uts'
 
 let avEngineEventListener: NativeEventListener | null = null
 let callSessionEventListener: NativeEventListener | null = null
@@ -187,6 +211,12 @@ function stretchRenderersToContainer(container: FrameLayout): void {
  * 空转四轮 create/release。
  */
 function ensureRemoteVideoAttached(userId: string, screenSharing: boolean): void {
+    // 最小化期间这一路视频轨归悬浮窗管（它自己有每秒一次的巡检）。这里再插一手会把画面从悬浮窗里
+    // 抢到页面那个已经作废的容器上。minimize() 里已经把两张表清空了，正常走不到这个 return，
+    // 留着是因为「表是空的」这个前提太隐晦，哪天有别的路径往表里写就破了。
+    if (isVoipFloatingWindowShowing()) {
+        return
+    }
     const container = remoteVideoContainers.get(remoteVideoKey(userId, screenSharing))
     if (container == null) {
         return
@@ -277,6 +307,59 @@ function currentSessionOrNull(): CallSession | null {
     }
 }
 
+// ------------------------------------------------------------------
+// 前台服务：通话期间的常驻通知 + 后台保活（麦克风不被系统掐掉）
+// 见 VoipCallService.uts / voipNotification.uts
+// ------------------------------------------------------------------
+
+let voipServiceStarted = false
+
+function voipServiceIntent(context: Context): Intent {
+    const intent = new Intent()
+    intent.setComponent(new ComponentName(context.getPackageName(), VOIP_CALL_SERVICE))
+    return intent
+}
+
+function startVoipService(): void {
+    if (voipServiceStarted) {
+        return
+    }
+    const context = UTSAndroid.getAppContext()!
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(voipServiceIntent(context))
+        } else {
+            context.startService(voipServiceIntent(context))
+        }
+        voipServiceStarted = true
+    } catch (e) {
+        // Android 12+ 禁止从后台启动前台服务（ForegroundServiceStartNotAllowedException）。
+        // 来电时 App 正在后台就会走到这里 —— 不能让它把整个来电流程带崩，记一笔就好，
+        // 用户接听（App 必然回到前台）时 didChangeState 会再试一次，见 syncVoipService。
+        console.error('startVoipService failed', e)
+    }
+}
+
+function stopVoipService(): void {
+    voipServiceStarted = false
+    const context = UTSAndroid.getAppContext()!
+    try {
+        context.stopService(voipServiceIntent(context))
+    } catch (e) {
+        console.error('stopVoipService failed', e)
+    }
+    cancelVoipNotification(context)
+}
+
+/** 通话状态变了：服务没起来就补起一次，起来了就原地刷新通知标题/计时器 */
+function syncVoipService(): void {
+    if (!voipServiceStarted) {
+        startVoipService()
+        return
+    }
+    refreshVoipNotification(UTSAndroid.getAppContext()!)
+}
+
 // AVEngineKit 的回调是在 SDK 内部的线程池（如 startCall 提交给 wf executor 的 pool-x-thread-y）里
 // 触发的，而这些事件的应用层处理会调用 uni.createInnerAudioContext()（铃声，底层 ExoPlayer）、
 // navigateBack/showToast、以及更新 uvue 响应式状态——都必须在主线程执行，否则会抛
@@ -319,6 +402,7 @@ function fireCallSessionEvent(event: string, args: any[]): void {
 class NativeAVEngineCallback implements AVEngineCallback {
     override onReceiveCall(session: CallSession): void {
         session.setCallback(nativeCallSessionCallback)
+        startVoipService()
         fireAVEngineEvent("onReceiveCall", [callSessionToJson(session)])
     }
 
@@ -333,6 +417,8 @@ class NativeAVEngineCallback implements AVEngineCallback {
     override didCallEnded(reason: CallEndReason, duration: Int): void {
         videoContainers.clear()
         remoteVideoContainers.clear()
+        hideVoipFloatingWindow()
+        stopVoipService()
         fireAVEngineEvent("didCallEnded", [reason.ordinal, duration])
     }
 }
@@ -343,6 +429,8 @@ class NativeCallSessionCallback implements CallSessionCallback {
     }
 
     override didChangeState(state: CallState): void {
+        // 振铃 → 接通时通知标题要换，接通后还要把计时器跑起来
+        syncVoipService()
         fireCallSessionEvent("didChangeState", [state.ordinal])
     }
 
@@ -448,6 +536,89 @@ export function initAVEngineKit(): void {
     // 这与多人版 aar 里恒定执行的那段编排完全一致。
     AVEngineKit.DISABLE_SURFACE_VIEW_AUTO_OVERLAY = false
     AVEngineKit.init(UTSAndroid.getAppContext()!, nativeAVEngineCallback)
+
+    // 「回到通话页」的唯一出口。两个入口都走它：点通知（VoipResumeActivity 把 App 拉回前台后调）、
+    // 点悬浮窗（VoipFloatingWindow 自己调 invokeVoipResumeCallback）。
+    // 收悬浮窗要在发事件之前 —— 通话页重新挂 <native-view> 时，悬浮窗不能还占着同一路视频轨。
+    // hide 是幂等的，悬浮窗那边点击时已经收过一次也没关系。
+    // fireCallSessionEvent 内部会 post 到主线程，这里不用自己切。
+    setVoipResumeCallback((): void => {
+        hideVoipFloatingWindow()
+        fireCallSessionEvent("resumeVoipPage", [])
+    })
+
+    // App 切到后台时自动最小化，见 autoMinimizeOnBackground 的注释
+    UTSAndroid.onAppTrimMemory((level: Number): void => {
+        if (level.toInt() == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            autoMinimizeOnBackground()
+        }
+    })
+}
+
+/** 屏幕是不是亮着。见 autoMinimizeOnBackground 里熄屏那条分支 */
+function isScreenInteractive(): boolean {
+    const context = UTSAndroid.getAppContext()
+    if (context == null) {
+        return true
+    }
+    try {
+        const pm = context!.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isInteractive()
+    } catch (e) {
+        // 取不到就当亮着，宁可多最小化一次也别让功能整个失灵
+        return true
+    }
+}
+
+/**
+ * App 切到后台 → 自动最小化（挂悬浮窗 + 让应用层把通话页收掉）。
+ *
+ * ---- 为什么用 TRIM_MEMORY_UI_HIDDEN 判断「切到后台」 ----
+ * 参考实现 ../android-chat 是在 VoipBaseActivity.onStop() 里 showFloatingView()，但 uts 插件
+ * 钩不到宿主 Activity 的 onStop：UTSAndroid 只给了 onAppActivityPause/Resume/Destroy 三个钩子，
+ * 而 **onPause 不等于切后台** —— 权限弹框（GrantPermissionsActivity 是半透明的）盖上来时
+ * 只有 onPause 没有 onStop，用 onPause 判断的话，用户在通话页上点「接听」触发麦克风授权弹框，
+ * 就会被误判成切后台、把通话页收掉。
+ * TRIM_MEMORY_UI_HIDDEN 的语义正好是「本进程原来有可见界面，现在没有了」，等价于 onStop 那一侧，
+ * 半透明弹框不会触发它。自己注册 ActivityLifecycleCallbacks 数 started 计数也行，但 API 29 起
+ * 那个接口多了 14 个 Pre/Post default 方法，uts 里必须全部显式 override，否则运行期 AbstractMethodError。
+ *
+ * ---- 四条前提 ----
+ * 1. 已经在最小化状态（悬浮窗挂着）就什么都不做 —— 用户是从别的页面切后台的，通话页早没了。
+ * 2. 熄屏不算切后台，见下面那条分支的注释。
+ * 3. 没有悬浮窗权限就**不收通话页**：收了之后用户既看不到悬浮窗，回来还得从通知栏找路，
+ *    不如让通话页留在栈里（../android-chat 的 showFloatingView 同样是权限不足就直接 return、不 finish）。
+ * 4. 不弹「去开悬浮窗权限」的引导框。此刻 App 已经在后台，弹框是挂在页面上的 dialog page，
+ *    用户根本看不见（见应用层 voipUtil.minimizeCall 的注释）。引导只在用户手动点最小化时做。
+ */
+function autoMinimizeOnBackground(): void {
+    const session = currentSessionOrNull()
+    if (session == null || session.getState() == CallState.Idle) {
+        return
+    }
+    if (isVoipFloatingWindowShowing()) {
+        return
+    }
+    // 熄屏/锁屏同样会让「界面不可见」，但那不是切到别的应用：用户亮屏回来还想接着看通话页，
+    // 这时候把通话页收掉纯属打扰（语音通话最容易撞上——屏幕默认几十秒就自己灭了）。
+    // 而且悬浮窗本来也画不到锁屏之上，收了页面连个入口都换不来。
+    if (!isScreenInteractive()) {
+        console.log('wfc-av: 熄屏不算切后台，通话页保持不动')
+        return
+    }
+    if (!checkOverlayPermission()) {
+        console.log('wfc-av: 切后台自动最小化跳过 —— 没有悬浮窗权限，通话页保持不动')
+        return
+    }
+    console.log('wfc-av: App 切到后台，自动最小化')
+    // 和 minimize() 一样：通话页马上要弹栈，它 <native-view> 上的容器随之作废，
+    // 留着会被 ensureRemoteVideoAttached 把画面从悬浮窗里抢走。
+    videoContainers.clear()
+    remoteVideoContainers.clear()
+    // 空字符串 = 让悬浮窗自己挑一路有画面的（优先对方）。自动最小化拿不到通话页当前聚焦的是谁，
+    // 而单人通话挑出来的本来就是对方，会议里挑到的也是一路远端流，够用。
+    showVoipFloatingWindow('')
+    fireCallSessionEvent("minimizeVoipPage", [])
 }
 
 export function addICEServer(url: string, name: string, password: string): void {
@@ -472,13 +643,21 @@ export function setVideoProfile(profile: number, swapWidthHeight: boolean): void
 export function startSingleCall(userId: string, audioOnly: boolean): string | null {
     const conv = toConversation(0 /* Single */, userId, 0)
     const session = AVEngineKit.Instance().startCall(conv, [userId].toKotlinList(), audioOnly, nativeCallSessionCallback)
-    return session == null ? null : callSessionToJson(session)
+    if (session == null) {
+        return null
+    }
+    startVoipService()
+    return callSessionToJson(session)
 }
 
 export function startMultiCall(groupId: string, participants: string[], audioOnly: boolean): string | null {
     const conv = toConversation(1 /* Group */, groupId, 0)
     const session = AVEngineKit.Instance().startCall(conv, participants.toKotlinList(), audioOnly, nativeCallSessionCallback)
-    return session == null ? null : callSessionToJson(session)
+    if (session == null) {
+        return null
+    }
+    startVoipService()
+    return callSessionToJson(session)
 }
 
 /**
@@ -494,6 +673,7 @@ export function startConference(callId: string, audioOnly: boolean, pin: string,
     }
     // 会议画面由应用层自己排版，关掉 SDK 的自动大小流切换，避免和 setParticipantVideoType 打架
     session.autoSwitchVideoType = false
+    startVoipService()
     return callSessionToJson(session)
 }
 
@@ -504,6 +684,7 @@ export function joinConference(callId: string, audioOnly: boolean, pin: string, 
         return null
     }
     session.autoSwitchVideoType = false
+    startVoipService()
     return callSessionToJson(session)
 }
 
@@ -649,33 +830,101 @@ export function getMyProfile(callId: string): string | null {
 
 // 用 UTSAndroid.requestSystemPermission 申请摄像头/麦克风权限（uts 插件内可用，应用层代码不可直接用）
 export function requestVoipPermissions(audioOnly: boolean, successCB: () => void, failCB: () => void): void {
-    const permissions: string[] = audioOnly
+    // 通话必需的权限：少一个就不能通话
+    const required: string[] = audioOnly
         ? ["android.permission.RECORD_AUDIO"]
         : ["android.permission.RECORD_AUDIO", "android.permission.CAMERA"]
-    UTSAndroid.requestSystemPermission(UTSAndroid.getUniActivity()!, permissions, (allSuccess: boolean, grantedPermissions: string[]) => {
-        if (allSuccess) {
-            successCB()
-        } else {
-            failCB()
+
+    const permissions: string[] = required.slice(0)
+    // Android 13(API 33)+ 发通知要运行时授权。顺带一起问，但**不算进 required**：
+    // 用户拒了只是看不到「通话进行中」那条通知，通话本身照常，不该因此拦下整个通话。
+    if (Build.VERSION.SDK_INT >= 33) {
+        permissions.push("android.permission.POST_NOTIFICATIONS")
+    }
+
+    // 两个回调都走同一个判定：只看 required 里的有没有齐，不看 allSuccess
+    // （allSuccess 会因为通知被拒而变成 false）。
+    const settle = (grantedList: string[]): void => {
+        for (let i = 0; i < required.length; i++) {
+            if (grantedList.indexOf(required[i]) < 0) {
+                failCB()
+                return
+            }
         }
+        successCB()
+    }
+
+    UTSAndroid.requestSystemPermission(UTSAndroid.getUniActivity()!, permissions, (allSuccess: boolean, grantedPermissions: string[]) => {
+        settle(grantedPermissions)
     }, (doNotAskAgain: boolean, grantedList: string[]) => {
-        failCB()
+        settle(grantedList)
     })
 }
 
+// 悬浮窗权限（SYSTEM_ALERT_WINDOW）是「特殊权限」，不能走 requestPermissions，只能跳系统设置页让用户手动开，
+// 而且没有可靠的授权回调 —— 只能等用户回到 App 后再 check 一次。所以这里拆成 check / request 两个函数：
+// check 是纯查询（无副作用），request 只负责跳设置页。
+// 参考实现 ../uni-wfc-client 的 AVEngineKitModule.checkOverlayPermission() 把两件事揉在一个函数里，
+// 一个名为 check 的函数会 startActivity，调用点很难读，这里故意拆开。
 export function checkOverlayPermission(): boolean {
-    const context = UTSAndroid.getAppContext()!
-    if (Settings.canDrawOverlays(context)) {
+    // canDrawOverlays 是 API 23(M) 才有的方法，本插件 minSdkVersion=21，低版本上直接调会 NoSuchMethodError。
+    // API 23 以下悬浮窗默认可用（装了就有），所以直接返回 true。
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
         return true
     }
-    return false
+    const context = UTSAndroid.getAppContext()!
+    return Settings.canDrawOverlays(context)
 }
 
-// 未实现系统级悬浮窗挂起 UI（需要额外的 WindowManager 悬浮控件开发），当前 minimize 仅退回会话列表，
-// 通话仍在原生层继续进行，可通过 resumeVoipPage（应用层 onReceiveCall/currentCallSession 兜底）重新进入。
+export function requestOverlayPermission(): void {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        return
+    }
+    // 优先用 Activity 起，拿不到再退回 Application context（那种情况必须加 NEW_TASK，否则直接抛异常）
+    const activity = UTSAndroid.getUniActivity()
+    const context = activity == null ? UTSAndroid.getAppContext()! : activity!
+    const intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse('package:' + context.getPackageName()))
+    if (activity == null) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    // 部分厂商 ROM 删掉了这个设置页，startActivity 会抛 ActivityNotFoundException。
+    // 参考实现是先 queryIntentActivities 判空，这里用 try/catch —— 效果一样，还能兜住其它 ROM 定制异常。
+    try {
+        context.startActivity(intent)
+    } catch (e) {
+        console.error('requestOverlayPermission 跳转失败，当前 ROM 可能没有悬浮窗设置页', e)
+    }
+}
+
+/**
+ * 通话中挂在通知栏/悬浮窗上的文案，由应用层在 avEngineKit.init() 时用当前语言的 i18n 词条送进来。
+ * 插件读不到 App 的 i18n，不送就是默认中文。三端都必须导出这个函数 —— uts 插件走运行时 proxy，
+ * 少导出一个编译期无感，真机调到才 not a function。
+ */
+export function setVoipUIStrings(ongoing: string, waitingAnswer: string, connecting: string, resumeHint: string): void {
+    setVoipTexts(ongoing, waitingAnswer, connecting, resumeHint)
+}
+
+/**
+ * 最小化：挂起跨应用的系统级悬浮窗（见 VoipFloatingWindow.uts）。退回上一页由调用方
+ * （应用层 uni.navigateBack）负责。
+ *
+ * 「回到通话页」在 Android 上有两条路，都收敛到同一个 resumeVoipPage 事件：
+ *   悬浮窗 —— 点它 → invokeVoipResumeCallback()
+ *   通知栏 —— 点通知 → VoipResumeActivity → invokeVoipResumeCallback()
+ * 没有 SYSTEM_ALERT_WINDOW 权限时悬浮窗不出，只剩通知那条，最小化本身照常成功。
+ */
 export function minimize(callId: string, focusVideoUser: string): void {
-    // no-op：具体的“返回上一页”交给调用方（uts 应用层 uni.navigateBack）处理。
-    // focusVideoUser 为悬浮窗要显示谁的视频流，等实现悬浮窗后才有意义。
+    const session = currentSessionOrNull()
+    if (session == null || session.getCallId() != callId) {
+        return
+    }
+    // 通话页马上就要弹栈，它 <native-view> 上的宿主 View 随之作废。留着这两张表的话，
+    // didReceiveRemoteVideoTrack / didVideoMuted 里的 ensureRemoteVideoAttached 会把视频轨
+    // 重新挂回那些死容器上，把画面从悬浮窗里抢走。清掉之后它读不到容器，自然会跳过。
+    videoContainers.clear()
+    remoteVideoContainers.clear()
+    showVoipFloatingWindow(focusVideoUser)
 }
 
 export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {

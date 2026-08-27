@@ -1,0 +1,226 @@
+/**
+ * 「通话进行中」常驻通知的构造与发布。
+ *
+ * ---- 为什么单独一个文件 ----
+ * VoipCallService.uts / VoipResumeActivity.uts / index.uts 三边都要用到这里的东西，
+ * 放 index.uts 会绕成环（Service 要 import index，index 又要 re-export Service）。
+ *
+ * ---- 通知长什么样 ----
+ * 标题按通话状态变（等待接听 / 接听中 / 通话中），接通后靠 `setUsesChronometer(true)` +
+ * `setWhen(connectedTime)` 让**系统自己**渲染跳秒的计时器 —— 不需要我们每秒 notify 一次。
+ * 参考实现（android-chat 的 VoipCallService）是 1 秒一次 handler 轮询重建通知，那是因为它
+ * 顺带要刷悬浮窗；只做通知的话 chronometer 更省。
+ *
+ * ---- 图标 ----
+ * `setSmallIcon` 要一个 drawable 资源 id。uts 插件里引 R 类很别扭，所以直接用
+ * `context.getApplicationInfo().icon`（App 自己的图标）—— 这是 DCloud 官方样例
+ * uts-progressNotification 的做法。
+ */
+import Context from 'android.content.Context'
+import Intent from 'android.content.Intent'
+import ComponentName from 'android.content.ComponentName'
+import Build from 'android.os.Build'
+import Notification from 'android.app.Notification'
+import NotificationBuilder from 'android.app.Notification.Builder'
+import NotificationChannel from 'android.app.NotificationChannel'
+import NotificationManager from 'android.app.NotificationManager'
+import PendingIntent from 'android.app.PendingIntent'
+import AVEngineKit from 'cn.wildfirechat.avenginekit.AVEngineKit'
+import CallSession from 'cn.wildfirechat.avenginekit.AVEngineKit.CallSession'
+import CallState from 'cn.wildfirechat.avenginekit.AVEngineKit.CallState'
+
+/** 通知 id。同一个 id 反复 notify 就是原地更新，不会堆出多条 */
+export const VOIP_NOTIFICATION_ID: Int = 10086
+
+const CHANNEL_ID = 'wfc_voip'
+const CHANNEL_NAME = '音视频通话'
+
+/** VoipResumeActivity 的全限定名。uts 生成的 Kotlin 落在 uts.sdk.modules.<插件id 驼峰> 包下 */
+export const VOIP_RESUME_ACTIVITY = 'uts.sdk.modules.wfcAvClient.VoipResumeActivity'
+/** 前台服务的全限定名，同上 */
+export const VOIP_CALL_SERVICE = 'uts.sdk.modules.wfcAvClient.VoipCallService'
+
+/**
+ * 点通知回到通话页时要执行的回调。由 index.uts 在初始化时塞进来（发 resumeVoipPage 事件给 JS），
+ * VoipResumeActivity 取出来调 —— 这样 Activity 不用 import index.uts，避免循环依赖。
+ * 同 DCloud 样例 uts-progressNotification 的 callbacks.uts 做法。
+ */
+let resumeCallback: (() => void) | null = null
+
+export function setVoipResumeCallback(cb: (() => void) | null): void {
+    resumeCallback = cb
+}
+
+/**
+ * 通知上显示的文案。默认中文，应用层 avEngineKit.init() 会用当前语言的 i18n 文案覆盖一次
+ * （见 index.uts 的 setVoipUIStrings）—— 插件读不到 App 的 i18n 词条，只能由应用层送进来。
+ * 进程被杀后服务不会自动重启（START_NOT_STICKY），所以不存在“重启后回到默认中文”的场景。
+ */
+let textOngoing = '通话中'
+let textWaitingAnswer = '等待接听'
+let textConnecting = '接听中'
+let textResumeHint = '点击返回通话界面'
+
+export function setVoipTexts(ongoing: string, waitingAnswer: string, connecting: string, resumeHint: string): void {
+    textOngoing = ongoing
+    textWaitingAnswer = waitingAnswer
+    textConnecting = connecting
+    textResumeHint = resumeHint
+}
+
+// 悬浮窗（VoipFloatingWindow.uts）显示的是同一组状态文案，从这里取，不再单独存一份。
+// 写成函数而不是直接 export 变量：uts 的 export let 拿到的是导入时的快照，
+// setVoipTexts 之后读到的还是旧值。
+export function voipTextOngoing(): string {
+    return textOngoing
+}
+
+export function voipTextWaitingAnswer(): string {
+    return textWaitingAnswer
+}
+
+export function voipTextConnecting(): string {
+    return textConnecting
+}
+
+export function invokeVoipResumeCallback(): void {
+    resumeCallback?.()
+}
+
+/**
+ * 把 App 主任务拉回前台。
+ *
+ * 点通知（VoipResumeActivity）和点悬浮窗（VoipFloatingWindow）都要做这一步，所以放这里共用。
+ * ⚠️ 只发 resumeVoipPage 事件是不够的：用户此刻人在别的 App 里，JS 那边 navigateTo 通话页
+ *    是在后台悄悄完成的，屏幕上什么都不会变 —— 表现就是「点了没反应」。
+ *
+ * getLaunchIntentForPackage 拿到的就是「点桌面图标」那个 intent：任务还在就整个提到前台，
+ * 不会重建已有的 Activity；任务已经没了（进程被杀过）才会冷启动。
+ *
+ * 后台启动 Activity 的限制（Android 10+）在这两条路径上都不成立：点通知走的是 PendingIntent，
+ * 系统自带豁免；点悬浮窗时应用必然已经拿到 SYSTEM_ALERT_WINDOW —— 那本身就是官方豁免项之一
+ * （没这个权限，悬浮窗压根不会显示出来给用户点）。
+ */
+export function bringAppToFront(context: Context): boolean {
+    try {
+        const launchIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName())
+        if (launchIntent == null) {
+            console.error('bringAppToFront: 找不到启动 intent')
+            return false
+        }
+        // getLaunchIntentForPackage 返回的 intent 自带 NEW_TASK，这里再加一次是防御 ——
+        // 用 application context 调 startActivity 少了这个 flag 会直接抛 AndroidRuntimeException。
+        launchIntent!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(launchIntent!)
+        return true
+    } catch (e) {
+        console.error('bringAppToFront failed', e)
+        return false
+    }
+}
+
+function currentSession(): CallSession | null {
+    try {
+        return AVEngineKit.Instance().getCurrentSession()
+    } catch (e) {
+        return null
+    }
+}
+
+function notificationManagerOf(context: Context): NotificationManager {
+    return context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+}
+
+function ensureChannel(context: Context): void {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        return
+    }
+    // IMPORTANCE_LOW：状态栏有图标、通知栏有常驻条目，但不响铃不弹横幅 ——
+    // 通话本身的铃声是应用层 InnerAudioContext 在放的，通知再响一次就是两重铃声。
+    const channel = new NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+    channel.setShowBadge(false)
+    channel.setSound(null, null)
+    notificationManagerOf(context).createNotificationChannel(channel)
+}
+
+function resumePendingIntent(context: Context): PendingIntent {
+    const intent = new Intent()
+    intent.setComponent(new ComponentName(context.getPackageName(), VOIP_RESUME_ACTIVITY))
+    // Android 12 起禁止「通知 → 服务/广播 → 再拉 Activity」这种蹦床，所以 PendingIntent 必须
+    // 直接指向一个 Activity（VoipResumeActivity 再去把 App 主任务拉回前台）。
+    let flags = PendingIntent.FLAG_UPDATE_CURRENT
+    if (Build.VERSION.SDK_INT >= 23) {
+        flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+    }
+    return PendingIntent.getActivity(context, VOIP_NOTIFICATION_ID, intent, flags)
+}
+
+@Suppress("DEPRECATION")
+export function buildVoipNotification(context: Context): Notification {
+    ensureChannel(context)
+    const builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        ? new NotificationBuilder(context, CHANNEL_ID)
+        : new NotificationBuilder(context)
+
+    const session = currentSession()
+    let title = textOngoing
+    if (session != null) {
+        const state = session.getState()
+        if (state == CallState.Outgoing || state == CallState.Incoming) {
+            title = textWaitingAnswer
+        } else if (state == CallState.Connecting) {
+            title = textConnecting
+        }
+    }
+
+    builder.setSmallIcon(context.getApplicationInfo().icon)
+    builder.setContentTitle(title)
+    builder.setContentText(textResumeHint)
+    builder.setContentIntent(resumePendingIntent(context))
+    // setOngoing：不能划掉。前台服务的通知本来就划不掉，但通话结束前若服务被系统重启过，
+    // 这一条能保证通知仍然是常驻形态。
+    builder.setOngoing(true)
+    builder.setSound(null)
+    if (Build.VERSION.SDK_INT >= 21) {
+        builder.setCategory(Notification.CATEGORY_CALL)
+        builder.setVisibility(Notification.VISIBILITY_PUBLIC)
+    }
+
+    // 接通之后让系统渲染跳秒计时器；未接通时不显示时间（否则会显示一个从 0 开始乱跳的秒表）。
+    // ⚠️ 别写成 `session == null ? 0.toLong() : session.getConnectedTime()` —— 数字字面量上
+    // 直接调方法（`0.toLong()`）uts 解析不了，整个文件会 GenericFailure。
+    let chronometerSet = false
+    if (session != null) {
+        const connectedTime = session!.getConnectedTime()
+        if (connectedTime > 0) {
+            builder.setWhen(connectedTime)
+            builder.setShowWhen(true)
+            builder.setUsesChronometer(true)
+            chronometerSet = true
+        }
+    }
+    if (!chronometerSet) {
+        builder.setShowWhen(false)
+    }
+    return builder.build()
+}
+
+/**
+ * 原地刷新通知内容。通话状态变了（振铃 → 接通）时调，不需要重启服务。
+ * 没有权限（Android 13+ 用户拒了 POST_NOTIFICATIONS）时 notify 会被系统静默丢弃，不会抛异常。
+ */
+export function refreshVoipNotification(context: Context): void {
+    try {
+        notificationManagerOf(context).notify(VOIP_NOTIFICATION_ID, buildVoipNotification(context))
+    } catch (e) {
+        console.error('refreshVoipNotification failed', e)
+    }
+}
+
+export function cancelVoipNotification(context: Context): void {
+    try {
+        notificationManagerOf(context).cancel(VOIP_NOTIFICATION_ID)
+    } catch (e) {
+        console.error('cancelVoipNotification failed', e)
+    }
+}

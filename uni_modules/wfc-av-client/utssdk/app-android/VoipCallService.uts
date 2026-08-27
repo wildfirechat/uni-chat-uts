@@ -1,0 +1,77 @@
+/**
+ * 通话期间的前台服务。只干两件事：挂一条「通话进行中」的常驻通知，把进程钉在前台。
+ *
+ * ---- 为什么非要是「前台服务」而不是光发一条通知 ----
+ * 光 `NotificationManager.notify` 也能出常驻通知，但解决不了真正的问题：
+ * Android 9(P) 起，进入后台的应用会被掐掉麦克风采集。用户按 Home 离开 App，通话就哑了。
+ * 只有前台服务（或可见 UI）能让麦克风继续工作 —— 这也是 android-chat 的 VoipCallService
+ * 存在的理由。所以「最小化之后还能继续说话」这件事，靠的是这个服务，不是那条通知。
+ *
+ * ---- 生命周期 ----
+ * 通话建立/接到来电时由 index.uts 启动，didCallEnded 时停止；不由应用层显式调用，
+ * 免得哪天新增一个通话入口忘了拉服务。
+ *
+ * ---- 注意 ----
+ * Service 必须在 utssdk/app-android/AndroidManifest.xml 里声明，而插件目录下的
+ * AndroidManifest.xml **只在云打包/自定义基座/离线打包时生效** —— 标准基座真机热运行
+ * （uts→dex 直编、只扫 libs/）看不到它，服务起不来，也就没有通知。
+ */
+import Service from 'android.app.Service'
+import Intent from 'android.content.Intent'
+import IBinder from 'android.os.IBinder'
+import Build from 'android.os.Build'
+import ServiceInfo from 'android.content.pm.ServiceInfo'
+import AVEngineKit from 'cn.wildfirechat.avenginekit.AVEngineKit'
+import CallState from 'cn.wildfirechat.avenginekit.AVEngineKit.CallState'
+import { VOIP_NOTIFICATION_ID, buildVoipNotification, cancelVoipNotification } from './voipNotification.uts'
+
+export class VoipCallService extends Service {
+    constructor() {
+        super()
+    }
+
+    // Service 的抽象方法，必须实现。不做绑定，返回 null。
+    override onBind(intent: Intent | null): IBinder | null {
+        return null
+    }
+
+    // ⚠️ flags / startId / 返回值在 Java 侧都是 int，uts 这里必须写大写 Int，
+    // 写 number 会让 Kotlin 认为签名不匹配，报 "onStartCommand overrides nothing"。
+    override onStartCommand(intent: Intent | null, flags: Int, startId: Int): Int {
+        // ⚠️ 顺序不能调：被 startForegroundService() 拉起来的服务**必须**在 5 秒内调用
+        // startForeground，否则系统直接把进程 crash 掉。所以哪怕下面判定「没有通话、要自杀」，
+        // 也得先把这个约束满足了再 stopSelf。
+        const notification = buildVoipNotification(this)
+        if (Build.VERSION.SDK_INT >= 29) {
+            // 前台服务类型：只声明 microphone，**故意不带 camera**。
+            // Android 14 起，带 camera 类型启动前台服务要求当前已经拿到 CAMERA 运行时权限，
+            // 而纯语音通话根本不会去申请摄像头 —— 带上就是一个必崩的 SecurityException。
+            // 视频通话退到后台丢画面、保声音是可以接受的降级。
+            this.startForeground(VOIP_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            this.startForeground(VOIP_NOTIFICATION_ID, notification)
+        }
+
+        let hasCall = false
+        try {
+            const session = AVEngineKit.Instance().getCurrentSession()
+            hasCall = session != null && session!.getState() != CallState.Idle
+        } catch (e) {
+            hasCall = false
+        }
+        if (!hasCall) {
+            // 服务被系统重建、但通话早已结束：自杀，别留一条永远消不掉的通知
+            this.stopSelf()
+        }
+
+        // START_NOT_STICKY：进程被杀之后不要自动重启服务 —— 那时通话早没了，
+        // 重启只会挂出一条假的「通话进行中」。
+        return Service.START_NOT_STICKY
+    }
+
+    override onDestroy(): void {
+        super.onDestroy()
+        // 前台服务销毁时系统一般会带走通知，但部分 ROM 不保证，补一刀 cancel
+        cancelVoipNotification(this)
+    }
+}

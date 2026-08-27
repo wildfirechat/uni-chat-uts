@@ -9,11 +9,13 @@
 import * as native from '@/uni_modules/wfc-av-client'
 import CallSession from './callSession.uts'
 import CallSessionCallback from './callSessionCallback.uts'
+import CallState from './callState.uts'
 import ParticipantProfile from './participantProfile.uts'
 import Config from '../../../config.uts'
 import ConversationType from '../../model/conversationType.uts'
 import wfc from '../../client/wfc.uts'
 import { navigateToPage, notify } from '../../../common/nav.uts'
+import { t } from '../../../i18n/i18n.uts'
 import { onReceiveProtoMessages, onConferenceEvent } from "../../client/wfcEventSubscriber.uts";
 
 
@@ -75,6 +77,9 @@ class AVEngineKit {
         this.initialized = true
         console.log('avEngineKit init')
         native.initAVEngineKit()
+        // 通话挂起时原生侧要显示的文案（Android 通知栏、iOS 悬浮窗、鸿蒙画中画）。
+        // 插件读不到 App 的 i18n 词条，只能由这里按当前语言送一次进去。
+        native.setVoipUIStrings(t('voip.ongoing'), t('voip.waiting_answer'), t('voip.connecting'), t('voip.resume_hint'))
         Config.ICE_SERVERS.forEach(s => native.addICEServer(s.uri, s.userName, s.password))
         native.onAVEngineEvent((event: string, argsJson: string) => {
             this._handleAVEngineEvent(event, parseArgs(argsJson))
@@ -124,6 +129,7 @@ class AVEngineKit {
         if (str == null) {
             // 原生 startCall 内部异常只会 printStackTrace 后返回 null，具体原因需查 logcat 中 avenginekit/PCRTCClient 相关日志
             console.error('startSingleCall 失败：原生 startCall 返回 null')
+            return null
         }
         return CallSession.fromJsonStr(str)
     }
@@ -132,6 +138,7 @@ class AVEngineKit {
         const str = native.startMultiCall(groupId, participants, audioOnly)
         if (str == null) {
             console.error('startMultiCall 失败：原生 startCall 返回 null')
+            return null
         }
         return CallSession.fromJsonStr(str)
     }
@@ -157,6 +164,7 @@ class AVEngineKit {
         const str = native.startConference(callId, audioOnly, pin, host, title, desc, audience, advance, record, callExtra)
         if (str == null) {
             console.error('startConference 失败：原生返回 null')
+            return null
         }
         return CallSession.fromJsonStr(str)
     }
@@ -174,6 +182,7 @@ class AVEngineKit {
         const str = native.joinConference(callId, audioOnly, pin, host, title, desc, audience, advance, muteAudio, muteVideo, callExtra)
         if (str == null) {
             console.error('joinConference 失败：原生返回 null')
+            return null
         }
         return CallSession.fromJsonStr(str)
     }
@@ -270,13 +279,39 @@ class AVEngineKit {
         return ParticipantProfile.fromJsonObject(JSON.parseObject(str))
     }
 
+    /**
+     * 是否已有悬浮窗权限（SYSTEM_ALERT_WINDOW）。纯查询，没有副作用。
+     * iOS / 鸿蒙没有这个概念，恒为 true。
+     */
     checkOverlayPermission(): boolean {
         return native.checkOverlayPermission()
     }
 
     /**
-     * 最小化
-     * @param focusVideoUser 视频通话/会议时有效，表示悬浮窗显示哪个用户的视频流
+     * 跳系统设置页让用户开悬浮窗权限。仅 Android 有效，其余平台是空实现。
+     *
+     * ⚠️ 没有授权回调 —— 跳走之后拿不到结果，只能等用户自己回到 App 再 checkOverlayPermission()。
+     * 所以调用点不要 `requestOverlayPermission(); if (check()) {...}` 这样连着写。
+     */
+    requestOverlayPermission(): void {
+        native.requestOverlayPermission()
+    }
+
+    /**
+     * 最小化。三端的 minimize 都只负责挂起 UI，不管页面栈 —— 页面侧请用
+     * wfc/av/voipUtil.uts 的 minimizeCall()，它会顺带 navigateBack，并处理 Android 的悬浮窗权限引导。
+     *
+     * 「怎么回到通话页」三端不一样，都由插件内部触发 resumeVoipPage 事件（见 _handleCallSessionEvent）：
+     *   Android —— 跨应用的系统级悬浮窗，点它回来；没有 SYSTEM_ALERT_WINDOW 权限时悬浮窗不出，
+     *              还有前台服务那条常驻通知兜底，点通知一样能回来
+     *   iOS     —— App 内的 UIWindow 悬浮窗，点它回来
+     *   鸿蒙     —— 画中画，点「恢复」回来；画中画起不来时还有长时任务那条系统通知兜底
+     *
+     * @param focusVideoUser 视频通话/会议时有效，表示挂起 UI 显示哪个用户的视频流；空表示由插件自己挑
+     *
+     * ⚠️ 除了用户点最小化按钮，**App 切到后台时插件会自己最小化一次**（不经过这个方法）：
+     * 挂起 UI 由原生侧直接挂上，再发 minimizeVoipPage 事件让这边把通话页收掉（见 _popVoipPage）。
+     * 所以「通话页不在栈里但通话还在」这个状态，不止手动最小化一条来路。
      */
     minimize(callId: string, focusVideoUser: string = ''): void {
         native.minimize(callId, focusVideoUser)
@@ -340,16 +375,52 @@ class AVEngineKit {
             return
         }
         const session = this.currentCallSession()
-        if (session == null || session.state == 0 /* CallState.STATUS_IDLE */) {
+        if (session == null || session.state == CallState.STATUS_IDLE) {
             return
         }
         this._navigateToCallPage(session)
+    }
+
+    /**
+     * App 切到后台，原生侧已经自己把挂起 UI 挂起来了（Android 悬浮窗 / iOS 悬浮窗 / 鸿蒙画中画），
+     * 这里只负责把通话页从页面栈里收掉 —— 和用户手动点最小化后的状态完全一致，
+     * 回来的路也就都收敛到同一条 resumeVoipPage 上。
+     *
+     * 不用 navigateBack({delta: 1})：通话页上面可能还压着别的页（比如会议里点了「邀请成员」再切后台），
+     * 那样只会弹掉最上面那一层，通话页还留在栈里。按通话页在栈中的位置算 delta，一次弹干净。
+     */
+    private _popVoipPage(): void {
+        const pages = getCurrentPages()
+        let index = -1
+        for (let i = pages.length - 1; i >= 0; i--) {
+            if (VOIP_ROUTES.indexOf(pages[i].route) >= 0) {
+                index = i
+                break
+            }
+        }
+        // 栈里没有通话页 → 不用收；通话页就是栈底（正常走不到，通话页总是从别的页 push 出来的）
+        // → 弹了就一个页面都不剩了，宁可留着。
+        if (index <= 0) {
+            return
+        }
+        uni.navigateBack({
+            delta: pages.length - index,
+            fail: (err) => {
+                console.log('auto minimize nav back err', err)
+            }
+        } as NavigateBackOptions)
     }
 
     private _handleCallSessionEvent(event: string, args: Array<any | null>): void {
         // 点悬浮窗回到通话页面：此时页面已销毁、sessionCallback 为 null，必须在下面的判空之前处理
         if (event == 'resumeVoipPage') {
             this.resumeVoipPage()
+            return
+        }
+        // App 切到后台时原生侧自动最小化。同样要在判空之前处理：这一下之后通话页才销毁，
+        // 但事件到达的时机没有保证，不该依赖 sessionCallback 还在。
+        if (event == 'minimizeVoipPage') {
+            this._popVoipPage()
             return
         }
         const cb = this.sessionCallback

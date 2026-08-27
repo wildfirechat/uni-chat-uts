@@ -212,7 +212,12 @@ export default {
         "desc": "Audio and Video Call",
         "not_answer": "The other party did not answer",
         "ongoing": "Calling",
-        "duration": "Call duration"
+        "duration": "Call duration",
+        "waiting_answer": "Ringing",
+        "connecting": "Connecting",
+        "resume_hint": "Tap to return to the call",
+        "float_permission_tip": "Allow display over other apps, and minimizing a call will show a small window you can tap to jump back to the call.",
+        "float_permission_grant": "Open settings"
     },
     "pick": {
         "start_chat": "Start Group Chat",

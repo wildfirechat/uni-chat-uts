@@ -21,6 +21,14 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:startIcon",
         "startWindowBackground": "$color:start_window_background",
+        // 音视频通话的长时任务（backgroundTaskManager.startBackgroundRunning）必须在这里声明对应的
+        // 后台模式，否则 startBackgroundRunning 直接报错 —— 表现是退到后台通话就断、通知栏也不出
+        // 「通话中」条目。取值对齐 ../hm-chat 的 chat/src/main/module.json5。
+        "backgroundModes": [
+          "audioPlayback",
+          "audioRecording",
+          "voip"
+        ],
         "exported": true,
         "skills": [
           {

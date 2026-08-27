@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  插件自带的 Info.plist，云打包时合并进宿主工程的 Info.plist。
+  ⚠️ 和 app-android/AndroidManifest.xml 一样，只在云打包/自定义基座生效。
+
+  UIBackgroundModes 是 iOS 版「最小化之后通话还能继续」的前提：
+    audio —— 退到后台后 AVAudioSession 继续采集/播放，否则一按 Home 通话就哑了
+             （对应 Android 的前台服务，iOS 没有前台服务这种东西，靠的是后台模式）
+    voip  —— 插件用 PushKit 收 VoIP 推送来电（见 index.uts 的 didReceiveIncomingPush）
+  取值与 ../ios-chat 的 wfchat/WildFireChat/Info.plist 一致。
+-->
+<plist version="1.0">
+<dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+	</array>
+</dict>
+</plist>

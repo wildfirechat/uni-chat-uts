@@ -1,4 +1,7 @@
 import * as native from '@/uni_modules/wfc-av-client'
+import avEngineKit from '@/wfc/av/engine/avEngineKit.uts'
+import { getItem, setItem } from '@/pages/util/storageHelper.uts'
+import { t } from '@/i18n/i18n.uts'
 
 /**
  * 发起/接听音视频通话前检查摄像头、麦克风权限。
@@ -20,4 +23,57 @@ export default function checkVoipPermissions(audioOnly: boolean): Promise<boolea
             resolve(false)
         })
     })
+}
+
+/** 问过一次就不再打扰。悬浮窗权限没有授权回调，问第二遍也只是再跳一次设置页 */
+const OVERLAY_ASKED_KEY = 'voip_overlay_permission_asked'
+
+function doMinimize(callId: string, focusVideoUser: string): void {
+    avEngineKit.minimize(callId, focusVideoUser)
+    uni.navigateBack({
+        delta: 1,
+        fail: (err) => {
+            console.log('nav back err', err)
+        }
+    } as NavigateBackOptions)
+}
+
+/**
+ * 最小化通话：挂起原生的悬起 UI，然后退出通话页。三个通话页（Single / Multi / ConferencePage）
+ * 共用这一个入口。
+ *
+ * 挂起 UI 三端不一样，都在插件里，见 avEngineKit.minimize 的注释。这里只多做一件事：
+ * Android 的悬浮窗要 SYSTEM_ALERT_WINDOW —— 这是「特殊权限」，不能走运行时权限弹框，只能跳系统设置页
+ * 让用户手动开，而且**没有授权回调**。所以第一次最小化且尚未授权时问一句，之后不再问。
+ * iOS / 鸿蒙的 checkOverlayPermission 恒为 true，走不到这个分支。
+ *
+ * ⚠️ 这里只管**用户手动点最小化**。App 切到后台时插件会自己最小化（挂悬浮窗/画中画 + 发
+ * minimizeVoipPage 事件收页面），那条路走不到这个函数，也**不会**弹下面这个权限引导框 ——
+ * 那时 App 已经在后台，弹框是挂在页面上的 dialog page，用户根本看不见。
+ * 也就是说 Android 上没授权的用户，得先手动最小化一次、在这个框里把权限开了，
+ * 之后「切后台自动挂悬浮窗」才有效果。
+ *
+ * 两条刻意的设计：
+ * 1. **没权限也照样最小化**。悬浮窗只是「回到通话页」的其中一条路，通知栏那条常驻通知一直都在，
+ *    不该因为少一个可选权限就把最小化按钮变成死的。
+ * 2. **弹框必须在 navigateBack 之前**。showModal 是挂在当前页上的 dialog page，返回转场还没结束时
+ *    挂出来就永远看不见（见 memory: uniappx-android-dialog-during-transition）。
+ */
+export function minimizeCall(callId: string, focusVideoUser: string = ''): void {
+    if (avEngineKit.checkOverlayPermission() || getItem(OVERLAY_ASKED_KEY).length > 0) {
+        doMinimize(callId, focusVideoUser)
+        return
+    }
+    setItem(OVERLAY_ASKED_KEY, '1')
+    uni.showModal({
+        content: t('voip.float_permission_tip'),
+        confirmText: t('voip.float_permission_grant'),
+        cancelText: t('common.cancel'),
+        success: (res) => {
+            if (res.confirm) {
+                avEngineKit.requestOverlayPermission()
+            }
+            doMinimize(callId, focusVideoUser)
+        }
+    } as ShowModalOptions)
 }

@@ -26,6 +26,16 @@
 import { NativeEventListener } from '../interface.uts'
 import { buildVideoView } from './videoBuilder.ets'
 import { dispatchProtoMessages, emitConferenceEvent } from './messageBridge.ets'
+import {
+    setVoipMinimizeTexts,
+    startVoipBackgroundTask,
+    stopVoipBackgroundTask,
+    setupVoipResume,
+    setVoipAutoMinimizeCallback,
+    prepareVoipPiP,
+    startVoipPiP,
+    destroyVoipPiP
+} from './voipMinimize.ets'
 
 import avengineKitImpl from '@wfc/avenginekit'
 import WfcAVEngineKit from '@wfc/avenginekit/src/main/ets/wfc/av/engine/avenginekit'
@@ -43,10 +53,9 @@ import ConversationType from '@wfc/client/src/main/ets/wfc/model/conversationTyp
 
 import { VideoTrack } from '@ohos/webrtc/src/main/libohos_webrtc/webrtc'
 
-import { common, wantAgent, WantAgent } from '@kit.AbilityKit'
+import { common } from '@kit.AbilityKit'
 import abilityAccessCtrl, { PermissionRequestResult, Permissions } from '@ohos.abilityAccessCtrl'
-import { backgroundTaskManager } from '@kit.BackgroundTasksKit'
-import { BusinessError, deviceInfo } from '@kit.BasicServicesKit'
+import { BusinessError } from '@kit.BasicServicesKit'
 import audio from '@ohos.multimedia.audio'
 import AVSessionManager from '@ohos.multimedia.avsession'
 import { window } from '@kit.ArkUI'
@@ -265,42 +274,9 @@ function clearVideoViews(): void {
 }
 
 // ------------------------------------------------------------------
-// 通话期间的系统能力：AVSession + 长时任务 + 常亮
+// 通话期间的系统能力：AVSession + 常亮。
+// 长时任务（后台保活 + 通知栏那条「通话中」）和画中画在 voipMinimize.ets 里。
 // ------------------------------------------------------------------
-
-function startContinuousTask(): void {
-    const ctx = context()
-    const wantAgentInfo: wantAgent.WantAgentInfo = {
-        wants: [
-            {
-                bundleName: ctx.abilityInfo.bundleName,
-                abilityName: ctx.abilityInfo.name,
-            }
-        ],
-        actionType: wantAgent.OperationType.START_ABILITY,
-        requestCode: 0,
-        wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
-    }
-    wantAgent.getWantAgent(wantAgentInfo).then((wantAgentObj: WantAgent) => {
-        // VOIP 后台模式 API 13 才有，低版本退回录音模式
-        let bgMode: backgroundTaskManager.BackgroundMode = deviceInfo.sdkApiVersion >= 13
-            ? backgroundTaskManager.BackgroundMode.VOIP
-            : backgroundTaskManager.BackgroundMode.AUDIO_RECORDING
-        backgroundTaskManager.startBackgroundRunning(ctx, bgMode, wantAgentObj)
-            .catch((err: BusinessError) => {
-                console.error(TAG, 'startBackgroundRunning failed', err.code, err.message)
-            })
-    }).catch((err: BusinessError) => {
-        console.error(TAG, 'getWantAgent failed', err.code, err.message)
-    })
-}
-
-function stopContinuousTask(): void {
-    backgroundTaskManager.stopBackgroundRunning(context())
-        .catch((err: BusinessError) => {
-            console.error(TAG, 'stopBackgroundRunning failed', err.code, err.message)
-        })
-}
 
 function setKeepScreenOn(on: boolean): void {
     window.getLastWindow(context()).then((win: window.Window) => {
@@ -321,7 +297,10 @@ function onCallStarted(session: CallSession): void {
     }).catch((err: BusinessError) => {
         console.error(TAG, 'createAVSession failed', err.code, err.message)
     })
-    startContinuousTask()
+    startVoipBackgroundTask(context())
+    // 画中画控制器要提前建好：PiPWindow.create 是异步的，而 minimize() 一返回应用层立刻 pop 通话页，
+    // 那时再建来不及。建失败不影响通话，只是最小化时进不了画中画（见 voipMinimize.ets 的日志）。
+    prepareVoipPiP(context())
     setKeepScreenOn(true)
 }
 
@@ -332,7 +311,8 @@ function onCallStopped(): void {
         avSession!.destroy()
         avSession = null
     }
-    stopContinuousTask()
+    destroyVoipPiP()
+    stopVoipBackgroundTask(context())
     setKeepScreenOn(false)
 }
 
@@ -481,6 +461,18 @@ export function initAVEngineKit(): void {
     avengineKitImpl.sessionCallback = createCallSessionCallback()
     avengineKitImpl.setup(ctx, new NativeAVEngineCallback(ctx))
     WfcAVEngineKit.SCREEN_SHARING_REPLACE_MODE = true
+    // 点通话通知（长时任务那条）/ 从画中画恢复 → 让应用层把通话页推回来。
+    // 事件名和 Android/iOS 保持一致：应用层在 sessionCallback 判空**之前**就处理 resumeVoipPage，
+    // 所以最小化状态下（通话页已销毁、sessionCallback 为 null）这条也送得到。
+    setupVoipResume(ctx, () => {
+        fireCallSessionEvent('resumeVoipPage', [])
+    })
+    // App 切到后台 → 系统按 autoStart 自动进画中画（见 voipMinimize.ets 的 prepareVoipPiP），
+    // 通话页还留在页面栈里，得让应用层把它收掉 —— 收完的状态和用户手动点最小化一模一样，
+    // 回来的路也就都收敛到上面那条 resumeVoipPage 上。Android/iOS 用的是同一个事件名。
+    setVoipAutoMinimizeCallback(() => {
+        fireCallSessionEvent('minimizeVoipPage', [])
+    })
 }
 
 export function addICEServer(url: string, name: string, password: string): void {
@@ -736,15 +728,34 @@ export function requestVoipPermissions(audioOnly: boolean, successCB: () => void
         })
 }
 
-// 鸿蒙没有 Android 那种"悬浮窗权限"，退到后台后通话由长时任务（VOIP 后台模式）维持，
-// 所以这里直接返回 true，让应用层的"最小化"能正常退回上一页。
-// 真正的画中画（PiP）挂起 UI 未实现，重新进入通话走应用层的 currentCallSession 兜底。
+// 鸿蒙没有 Android 那种"悬浮窗权限"（跨应用悬浮要 SYSTEM_FLOAT_WINDOW，三方应用申请不到），
+// 退到后台后通话由长时任务（VOIP 后台模式）维持，所以这里直接返回 true。
 export function checkOverlayPermission(): boolean {
     return true
 }
 
+// 仅 Android 需要（跳系统设置页开悬浮窗权限）。鸿蒙上 checkOverlayPermission 恒为 true，
+// 应用层永远不会调到这里；但三端导出必须齐全 —— uts 插件走运行时 proxy，缺函数编译期无感，
+// 真机点到才报 not a function。
+export function requestOverlayPermission(): void {
+}
+
+/**
+ * 通话中挂在通知/画中画上的文案，由应用层在 avEngineKit.init() 时用当前语言的 i18n 词条送进来。
+ * resumeHint 是 Android 通知栏的「点击返回通话界面」，鸿蒙的通知文案由系统长时任务生成，改不了，忽略。
+ * 三端都必须导出这个函数 —— uts 插件走运行时 proxy，少导出一个编译期无感，真机调到才 not a function。
+ */
+export function setVoipUIStrings(ongoing: string, waitingAnswer: string, connecting: string, _resumeHint: string): void {
+    setVoipMinimizeTexts(ongoing, waitingAnswer, connecting)
+}
+
+/**
+ * 最小化：进画中画（鸿蒙唯一被系统认可的通话挂起 UI，见 voipMinimize.ets）。
+ * 画中画没起来也不影响最小化本身 —— 通话由长时任务在后台继续，用户点那条系统通知也能回到通话页。
+ * 返回上一页仍由调用方（应用层 uni.navigateBack）负责。
+ */
 export function minimize(_callId: string, _focusVideoUser: string): void {
-    // no-op：返回上一页由调用方（应用层 uni.navigateBack）处理，通话在后台继续
+    startVoipPiP()
 }
 
 export function setLocalVideoView(callId: string, element: UniNativeViewElement): void {

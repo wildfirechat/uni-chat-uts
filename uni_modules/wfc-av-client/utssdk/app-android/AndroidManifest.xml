@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  插件自带的清单，打包时会并进宿主 App 的 AndroidManifest。
+  ⚠️ 只在云打包 / 自定义基座 / 离线打包时生效；标准基座真机热运行看不到，
+     表现是前台服务起不来、没有「通话进行中」通知（通话本身正常）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="uts.sdk.modules.wfcAvClient">
+
+    <!-- 前台服务：通话期间把进程钉在前台，否则 Android 9+ 退到后台会掐掉麦克风采集 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+ 起，按前台服务类型细分的权限。只要 microphone，理由见 VoipCallService.uts -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Android 13+ 发通知要运行时授权，见 index.uts 的 requestVoipPermissions -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 最小化后的跨应用悬浮窗（VoipFloatingWindow.uts）。这是「特殊权限」，声明了也还得用户
+         去系统设置里手动开（见 index.uts 的 requestOverlayPermission）；没开就只剩通知栏那条入口。
+         宿主的 manifest.json 里也有一份，这里再声明一遍是为了插件自带完整依赖。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <application>
+        <service
+            android:name="uts.sdk.modules.wfcAvClient.VoipCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- 点通知的落点：拉起 App 主任务 + 通知 JS 打开通话页，随即 finish。
+             exported=false：只有本应用的 PendingIntent 会启动它。 -->
+        <activity
+            android:name="uts.sdk.modules.wfcAvClient.VoipResumeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+
+</manifest>

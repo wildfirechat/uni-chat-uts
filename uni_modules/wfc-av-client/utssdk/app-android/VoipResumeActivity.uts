@@ -1,0 +1,35 @@
+/**
+ * 点「通话进行中」通知时的落点：把 App 主任务拉回前台，再让 JS 打开通话页，然后自己消失。
+ *
+ * ---- 为什么要多这么一个 Activity ----
+ * 1. Android 12 起禁止通知蹦床（notification trampoline）：通知的 PendingIntent 不能指向
+ *    Service/BroadcastReceiver 再由它去 startActivity，只能直接指向一个 Activity。
+ * 2. 通话页是 uni 的页面不是 Activity，没法直接 startActivity 打开 —— 得先把宿主 Activity
+ *    弄到前台，再发一个 resumeVoipPage 事件让 JS 自己 navigateTo。
+ *
+ * 对应参考实现里的 VoipDummyActivity（android-chat）/ 官方样例的 TransparentActivity。
+ */
+import Activity from 'android.app.Activity'
+import Bundle from 'android.os.Bundle'
+import { invokeVoipResumeCallback, bringAppToFront } from './voipNotification.uts'
+
+export class VoipResumeActivity extends Activity {
+    constructor() {
+        super()
+    }
+
+    override onCreate(savedInstanceState: Bundle | null) {
+        super.onCreate(savedInstanceState)
+
+        // 拉主任务回前台。和点悬浮窗（VoipFloatingWindow 的 onTapped）共用同一份实现，
+        // 免得两条入口的行为各走各的。
+        bringAppToFront(this)
+
+        // 通知 JS 打开通话页。进程刚冷启动时 JS 侧还没注册监听器，这一发会落空 ——
+        // 那种情况下通话本身也早随进程死了，用户看到的是正常的 App 首页，可以接受。
+        invokeVoipResumeCallback()
+
+        this.overridePendingTransition(0, 0)
+        this.finish()
+    }
+}

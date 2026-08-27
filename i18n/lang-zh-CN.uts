@@ -212,7 +212,12 @@ export default {
         "desc": "音视频通话",
         "not_answer": "对方未接听",
         "ongoing": "通话中",
-        "duration": "通话时长"
+        "duration": "通话时长",
+        "waiting_answer": "等待接听",
+        "connecting": "接听中",
+        "resume_hint": "点击返回通话界面",
+        "float_permission_tip": "开启悬浮窗权限后，通话最小化时会显示一个小窗，点它就能回到通话界面",
+        "float_permission_grant": "去开启"
     },
     "pick": {
         "start_chat": "发起群聊",

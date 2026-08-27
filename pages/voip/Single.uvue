@@ -88,7 +88,7 @@ import CallSessionCallback from "@/wfc/av/engine/callSessionCallback.uts";
 import CallSession from "@/wfc/av/engine/callSession.uts";
 import CallState from "@/wfc/av/engine/callState.uts";
 import VideoType from "@/wfc/av/engine/videoType.uts";
-import checkVoipPermissions from "@/wfc/av/voipUtil.uts";
+import checkVoipPermissions, { minimizeCall } from "@/wfc/av/voipUtil.uts";
 import { getUserInfo } from "@/wfc/client/userBrief.uts";
 import wfc from "@/wfc/client/wfc.uts";
 import UserInfo from "@/wfc/model/userInfo.uts";
@@ -272,20 +272,9 @@ const minimize = () => {
     if (callSession == null) {
         return
     }
-    if (avEngineKit.checkOverlayPermission()) {
-        avEngineKit.minimize(callSession.callId)
-        uni.navigateBack({
-            delta: 1,
-            fail: (err) => {
-                console.log('nav back err', err)
-            }
-        } as NavigateBackOptions)
-    } else {
-        uni.showToast({
-            title: '需要悬浮窗权限',
-            icon: 'none',
-        } as ShowToastOptions)
-    }
+    // 挂起 UI + 退出通话页都在 minimizeCall 里，三个通话页共用（含 Android 悬浮窗权限的一次性引导）。
+    // 单人通话固定聚焦对方 —— 挂起 UI 里那块小画面要显示对方，不是自己的前置摄像头。
+    minimizeCall(callSession.callId, callSession.conversation.target)
 }
 
 onLoad((_options: OnLoadOptions) => {
