@@ -1,0 +1,86 @@
+/**
+ * 语音消息的播放通道：扬声器（默认）/ 听筒。
+ *
+ * 对齐 android-chat 的 `AudioPlayModeUtils` + `AudioPlayManager`
+ * （`../android-chat/uikit/src/main/java/cn/wildfire/chat/kit/audio/`）：
+ * 全局一个开关、持久化保存、重启后仍生效，切换入口在语音消息的长按菜单里。
+ *
+ * ## 通道是怎么切的
+ *
+ * android-chat 是自己 new MediaPlayer，直接 `setAudioStreamType(STREAM_VOICE_CALL)`；
+ * 本项目用的是框架的 `uni.createInnerAudioContext()`，播放器拿不到，只能走框架给的
+ * `uni.setInnerAudioOption({ speakerOn })`（三端 uni-app x 5.0+ 都支持，本仓库 HBuilderX 5.24）：
+ * - Android：`AudioPlayer.play()` 时按 speakerOn 建 ExoPlayer 的 AudioAttributes，
+ *   `usage = speakerOn ? USAGE_MEDIA(1) : USAGE_VOICE_COMMUNICATION(2)`，
+ *   后者映射到 STREAM_VOICE_CALL，效果与 android-chat 一致（反编译 android_base.apk 的
+ *   `uts/sdk/modules/DCloudUniCreateInnerAudioContext/AudioPlayer` 核对过）。
+ * - 鸿蒙：`sessionManager.setDefaultOutputDevice(SPEAKER / EARPIECE)`，**要求 API ≥ 20**
+ *   （runtime 里 `deviceInfo.sdkApiVersion >= 20` 才走这段，低版本静默不切）。
+ * - iOS：框架内部切 AVAudioSession。
+ *
+ * ⚠️ **这个选项是全局的、且在每次 `play()` 时被读取**，不是挂在某个 InnerAudioContext 上。
+ * 通话铃声（`wfc/av/engine/avEngineKit.uts` 的 startRing）用的是同一套 InnerAudioContext，
+ * 所以听筒模式只在语音消息播放期间打开，播完/停掉必须 [applyAudioRoute](false) 还原，
+ * 否则来电铃声也会从听筒里响。
+ */
+import { ref } from 'vue'
+import { getItem, setItem } from '@/pages/util/storageHelper.uts'
+
+const EARPIECE_MODE_KEY = 'audio_play_in_earpiece'
+
+// 做成 ref 是因为会话页标题栏要跟着它显示/隐藏听筒图标（同 android-chat 的
+// ConversationTitleHelper）—— 长按菜单切换后标题栏要立刻变。用法同 common/theme.uts 的 _mode。
+const _earpiece = ref(false)
+
+/** true 表示听筒播放，false 表示扬声器播放（**默认**）。 */
+export function isEarpieceMode(): boolean {
+    return _earpiece.value
+}
+
+/**
+ * 读取用户存的档位。**只碰 storage，不碰任何 ext-api**，可以放在 onLaunch 最前面，
+ * 保证第一次进会话页标题栏上的听筒标识就是对的。
+ */
+export function initAudioPlayMode(): void {
+    _earpiece.value = getItem(EARPIECE_MODE_KEY) == '1'
+}
+
+/** 切换播放通道并落盘。真正的通道切换发生在下一次 [applyAudioRoute]。 */
+export function setEarpieceMode(earpiece: boolean): void {
+    if (earpiece == _earpiece.value) {
+        return
+    }
+    _earpiece.value = earpiece
+    setItem(EARPIECE_MODE_KEY, earpiece ? '1' : '0')
+}
+
+// 当前已经交给框架的通道。框架侧默认就是扬声器，所以初值 false。
+let _routed = false
+
+/**
+ * 把播放通道交给框架，**必须在 `InnerAudioContext.play()` 之前调**（框架是在 play 时读的）。
+ *
+ * 只在通道真的要变时才调下去：一来免掉每次播放前的无谓调用，二来鸿蒙实现里
+ * `speakerOn: true` 会顺带把音频会话激活成 `CONCURRENCY_PAUSE_OTHERS`，
+ * 从没切过听筒的用户不该被这个副作用碰到。
+ *
+ * 整段兜底：`setInnerAudioOption` 属于 uni-createInnerAudioContext 这个 ext-api 模块，
+ * 老基座/离线工程没带对应实现时调用会在运行时抛错（编译期看不出来），
+ * 丢掉的只是「用听筒放」，不能把播放本身打断。
+ */
+export function applyAudioRoute(earpiece: boolean): void {
+    if (earpiece == _routed) {
+        return
+    }
+    _routed = earpiece
+    try {
+        uni.setInnerAudioOption({
+            speakerOn: !earpiece,
+            fail: (e: SetInnerAudioOptionFail) => {
+                console.log('setInnerAudioOption fail', e.errMsg)
+            }
+        } as SetInnerAudioOptionOptions)
+    } catch (e) {
+        console.log('setInnerAudioOption 不可用，按扬声器播放', e)
+    }
+}

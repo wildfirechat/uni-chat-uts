@@ -3,6 +3,7 @@
         <view class="head-gap"></view>
 
         <form-card>
+            <option-item :title="t('setting.chat')" @tap="open('/pages/me/ChatSettingsPage')" />
             <option-item :title="t('setting.privacy_settings')" @tap="open('/pages/me/PrivacySettingsPage')" />
             <option-item :title="t('setting.lang')" :desc="langDesc" @tap="langSheetVisible = true" />
             <option-item :title="t('setting.font_size')" @tap="open('/pages/me/FontSizeSettingsPage')" />

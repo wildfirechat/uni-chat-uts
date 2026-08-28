@@ -1,0 +1,71 @@
+<template>
+    <scroll-view class="page" direction="vertical" :style="{ backgroundColor: c.primaryBackground }">
+        <view class="head-gap"></view>
+
+        <form-card>
+            <option-switch-item :title="t('setting.play_audio_in_earpiece')" :value="earpiece"
+                :show-bottom-divider="false" @change="onEarpieceChange" />
+        </form-card>
+
+        <view class="tail"></view>
+        <watermark-overlay />
+    </scroll-view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 聊天设置。对齐 android-chat `settings/ChatSettingFragment.java`，目前只有
+ * 「使用听筒播放语音消息」一项。
+ *
+ * 这一项和语音消息长按菜单里的「听筒/扬声器播放」是同一个全局设置，两边写的都是
+ * common/audioPlayMode.uts。android-chat 那边为了让两个入口互相看见改动，专门加了
+ * OnAudioPlayModeChangedListener 广播；这里不需要 —— 那个模块存的就是个 ref，
+ * 本页的开关和会话页标题上的听筒图标都直接读它，谁改了另一边自己就变。
+ *
+ * 唯一要注意的是 option-switch-item 的开关**没法从外部受控**（见该组件的说明），
+ * 所以本页停留期间别处改了播放方式，开关不会自己拨过去，重新进页面才回填。
+ * 眼下没有这种路径（长按菜单在会话页上，切到本页必然重新走一次 setup）。
+ */
+import store from "@/store.uts";
+import { colors, AppColors } from "@/common/theme.uts";
+import { isEarpieceMode, setEarpieceMode } from "@/common/audioPlayMode.uts";
+import { t } from "@/i18n/i18n.uts";
+
+defineOptions({
+    name: "ChatSettingsPage"
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+const earpiece = computed<boolean>((): boolean => isEarpieceMode())
+
+const onEarpieceChange = (value: boolean) => {
+    if (value == isEarpieceMode()) {
+        // 回填开关触发的 change，不是用户拨的，什么都不用做
+        return
+    }
+    setEarpieceMode(value)
+    // 与长按菜单一致：切换播放通道后停掉正在播的那条，下一条按新通道播。
+    // 真正 stop 的是会话页（播放器在那边），它跟着 currentVoiceMessage 走；
+    // 通道的还原也在那儿，见 ConversationPage 的 currentVoiceMessage。
+    store.playVoice(null)
+}
+</script>
+
+<style scoped>
+.page {
+    width: 100%;
+    flex: 1;
+}
+
+/* 同 GeneralSettingsPage：首个分组上方留 10，不是 section-divider 的 18 */
+.head-gap {
+    width: 100%;
+    height: 10px;
+}
+
+.tail {
+    width: 100%;
+    height: 18px;
+}
+</style>

@@ -300,6 +300,8 @@ export default {
     },
     "setting": {
         "setting": "Settings",
+        "chat": "Chat",
+        "play_audio_in_earpiece": "Play voice messages through earpiece",
         "privacy_settings": "Privacy Settings",
         "lang": "Language",
         "follow_system": "Follow System",
@@ -569,6 +571,13 @@ export default {
         "fail": "Speech to text failed",
         "success": "Speech to text success",
         "audio_not_available": "Audio file not available"
+    },
+    "audio": {
+        "play_mode_speaker": "Play via Speaker",
+        "play_mode_earpiece": "Play via Earpiece",
+        "switched_to_speaker": "Switched to speaker",
+        "switched_to_earpiece": "Switched to earpiece",
+        "earpiece_playing_hint": "Playing via earpiece, hold phone to your ear"
     },
     "organization": {
         "title": "Organization",

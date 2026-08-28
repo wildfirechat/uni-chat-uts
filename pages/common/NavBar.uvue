@@ -5,7 +5,13 @@
             <view class="nav-bar-left" @tap="onBack">
                 <text v-if="showBack" class="back-icon" :style="{ color: c.iconPrimary }">‹</text>
             </view>
-            <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: px(17, ROW_CAP) }">{{ title }}</text>
+            <!-- titleIcon 走嵌套 text 而不是并排的兄弟节点：标题是 flex:1（截断需要，见下面样式块的
+                 注释），并排的图标只会被推到中间区域的最右侧，离标题老远。嵌进来才能像 android-chat
+                 的 ConversationTitleHelper 那样紧跟在标题文字后面、和标题一起居中。
+                 子 text 不继承父样式，所以字号/颜色/字体都要自己写全。 -->
+            <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: px(17, ROW_CAP) }">{{ title }}<text
+                    v-if="titleIcon != ''" class="icomoon nav-bar-title-icon"
+                    :style="{ color: c.textTertiary }">{{ ' ' + titleIcon }}</text></text>
             <view class="nav-bar-right" :style="{ width: rightText != '' ? 'auto' : '70px' }">
                 <text v-if="rightText != ''" class="nav-bar-text-action"
                     :style="{ color: rightTextDisabled ? c.textTertiary : c.accent, fontSize: px(16, ROW_CAP) }"
@@ -24,6 +30,8 @@
  * 自定义导航栏。
  * uni-app x 不支持原生 titleNView 按钮，原来配置在 pages.json 的标题栏按钮改用本组件实现。
  * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
+ * titleIcon 传 icomoon 的 unicode 字符（见 static/iconfonts/icomoon/ICONS.md），
+ * 显示在标题文字右侧，用来做状态标识（如「听筒播放」）。
  */
 import { colors, AppColors } from "../../common/theme.uts"
 import { px, ROW_CAP } from "../../common/layoutScale.uts"
@@ -37,6 +45,8 @@ const c = computed<AppColors>((): AppColors => colors())
 
 const props = withDefaults(defineProps<{
     title?: string
+    /** 跟在标题后面的状态标识图标（icomoon 码位），空字符串表示不显示 */
+    titleIcon?: string
     showBack?: boolean
     rightIcon1?: string
     rightIcon2?: string
@@ -51,6 +61,7 @@ const props = withDefaults(defineProps<{
     interceptBack?: boolean
 }>(), {
     title: '',
+    titleIcon: '',
     showBack: false,
     rightIcon1: '',
     rightIcon2: '',
@@ -129,6 +140,12 @@ const onRightTextTap = () => {
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
+}
+
+/* 标题里的状态标识图标。嵌套 text 的排版类样式（margin/padding）不生效，
+ * 与标题的间距只能靠模板里那个空格；字号也不跟字号档位放大，它是图形。 */
+.nav-bar-title-icon {
+    font-size: 15px;
 }
 
 .nav-bar-right {

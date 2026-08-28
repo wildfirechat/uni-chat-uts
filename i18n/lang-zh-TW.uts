@@ -300,6 +300,8 @@ export default {
     },
     "setting": {
         "setting": "設置",
+        "chat": "聊天",
+        "play_audio_in_earpiece": "使用聽筒播放語音訊息",
         "privacy_settings": "隱私設置",
         "lang": "語言",
         "follow_system": "跟隨系統",
@@ -569,6 +571,13 @@ export default {
         "fail": "語音轉文字失敗",
         "success": "轉文字成功",
         "audio_not_available": "音頻文件不可用"
+    },
+    "audio": {
+        "play_mode_speaker": "揚聲器播放",
+        "play_mode_earpiece": "聽筒播放",
+        "switched_to_speaker": "已切換為揚聲器播放",
+        "switched_to_earpiece": "已切換為聽筒播放",
+        "earpiece_playing_hint": "聽筒播放，請貼近手機聆聽"
     },
     "organization": {
         "title": "組織架構",

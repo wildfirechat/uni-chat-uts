@@ -300,6 +300,8 @@ export default {
     },
     "setting": {
         "setting": "设置",
+        "chat": "聊天",
+        "play_audio_in_earpiece": "使用听筒播放语音消息",
         "privacy_settings": "隐私设置",
         "lang": "语言",
         "follow_system": "跟随系统",
@@ -569,6 +571,13 @@ export default {
         "fail": "语音转文字失败",
         "success": "转文字成功",
         "audio_not_available": "音频文件不可用"
+    },
+    "audio": {
+        "play_mode_speaker": "扬声器播放",
+        "play_mode_earpiece": "听筒播放",
+        "switched_to_speaker": "已切换为扬声器播放",
+        "switched_to_earpiece": "已切换为听筒播放",
+        "earpiece_playing_hint": "听筒播放，请贴近手机聆听"
     },
     "organization": {
         "title": "组织架构",

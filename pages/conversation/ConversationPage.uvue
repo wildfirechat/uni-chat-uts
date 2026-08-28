@@ -1,7 +1,7 @@
 <template>
     <view class="conversation-page">
-        <NavBar :title="navTitle" :showBack="true" :rightIcon1="conversationInfo != null ? moreIcon : ''"
-            @right1Tap="showConversationInfo" />
+        <NavBar :title="navTitle" :titleIcon="navTitleIcon" :showBack="true"
+            :rightIcon1="conversationInfo != null ? moreIcon : ''" @right1Tap="showConversationInfo" />
         <view v-if="conversationInfo == null" class="conversation-empty-container">
             <text>^~^</text>
         </view>
@@ -90,6 +90,7 @@ import eventBus from "@/common/eventBus.uts";
 import { getTouchPoint, getElementScreenRect, rectContainsPoint, ScreenRect, TouchPoint } from "@/common/touch.uts";
 import { OpenMessageContextMenuEvent } from "./message/messageEvents.uts";
 import { isAsrEnabled, speechToText } from "@/common/asr.uts";
+import { isEarpieceMode, setEarpieceMode, applyAudioRoute } from "@/common/audioPlayMode.uts";
 import { isFavoriteAble, favoriteMessage } from "@/common/favorite.uts";
 import { report } from "@/common/report.uts";
 import { colors, AppColors } from "@/common/theme.uts";
@@ -265,6 +266,12 @@ const navTitle = computed<string>((): string => {
         : conversationTitle.value
 })
 
+/**
+ * 听筒播放模式下在标题后挂一个听筒图标做标识，同 android-chat 的 ConversationTitleHelper
+ * （它画的是自绘的耳朵 vector，icomoon 里没有耳朵，用和长按菜单同一个听筒字形，两处能对上）。
+ */
+const navTitleIcon = computed<string>((): string => isEarpieceMode() ? '\uf4b9' : '')
+
 // 同时只能播放一个语音，逻辑放在会话页统一控制
 const playVoice = (message: Message) => {
     let ctx = innerAudioContext
@@ -279,6 +286,18 @@ const playVoice = (message: Message) => {
     let mp3RemotePath = voice.remotePath
     if (!voice.remotePath.endsWith(".mp3") && Config.AMR_TO_MP3_SERVER_ADDRESS != '') {
         mp3RemotePath = Config.AMR_TO_MP3_SERVER_ADDRESS + voice.remotePath;
+    }
+    // 播放通道（扬声器/听筒）是全局的，且框架在 play() 时才读，所以每次播放前都要设一遍；
+    // 播完/停掉再还原成扬声器，见下面 currentVoiceMessage 的 else 分支。
+    const earpiece = isEarpieceMode()
+    applyAudioRoute(earpiece)
+    if (earpiece) {
+        // 与 android-chat 一致：听筒模式下开始播放时提示贴近听筒。
+        // 它还会在插了耳机时跳过这条提示，uni-app x 没有查输出设备的 API，这里一律提示。
+        uni.showToast({
+            title: t('audio.earpiece_playing_hint'),
+            icon: 'none'
+        } as ShowToastOptions)
     }
     ctx = uni.createInnerAudioContext();
     innerAudioContext = ctx;
@@ -312,6 +331,9 @@ const currentVoiceMessage = computed<Message | null>((): Message | null => {
             ctx.stop();
             innerAudioContext = null;
         }
+        // 还原成扬声器：这个选项是全局的，通话铃声用的也是 InnerAudioContext，
+        // 不还原的话听筒模式下来电铃声也会从听筒里响。
+        applyAudioRoute(false)
     }
     return voice;
 })
@@ -761,6 +783,25 @@ const isQuotable = (message: Message): boolean => {
     MessageContentType.CONFERENCE_CONTENT_TYPE_INVITE].indexOf(message.messageContent.type) <= -1;
 }
 
+/** 语音消息（普通语音 + 对讲语音，PttSoundMessageContent 继承自 SoundMessageContent）。 */
+const isAudioMessage = (message: Message): boolean => {
+    return message.messageContent instanceof SoundMessageContent
+}
+
+/**
+ * 切换语音消息的播放通道，对齐 android-chat `AudioMessageContentViewHolder.switchAudioPlayMode`：
+ * 菜单项显示的是「切换到」的目标通道，切完停掉当前播放（正在响的那条不换通道，下次播放才生效）。
+ */
+const switchAudioPlayMode = () => {
+    const earpiece = !isEarpieceMode()
+    setEarpieceMode(earpiece)
+    store.playVoice(null)
+    uni.showToast({
+        title: earpiece ? t('audio.switched_to_earpiece') : t('audio.switched_to_speaker'),
+        icon: 'none'
+    } as ShowToastOptions)
+}
+
 /**
  * 语音转文字。只对还没转过的语音消息显示，且要配了 ASR 服务地址。
  * 与 flutter 一致：转过一次之后菜单里就不再出现这一项（结果已经贴在气泡下面了）。
@@ -1029,6 +1070,12 @@ const showMessageContextMenu = (e: UniTouchEvent, message: Message) => {
     if (isSpeechToTextable(message)) {
         items.push(new PopupMenuItem(t('asr.speech_to_text'), 'speechToText', '\uf12e'))
     }
+    if (isAudioMessage(message)) {
+        // 显示「切换到」的目标通道：当前听筒就给「扬声器播放」，反之亦然，同 android-chat
+        items.push(isEarpieceMode()
+            ? new PopupMenuItem(t('audio.play_mode_speaker'), 'audioPlayMode', '\uf2b2')
+            : new PopupMenuItem(t('audio.play_mode_earpiece'), 'audioPlayMode', '\uf4b9'))
+    }
     if (isForwardable(message)) {
         items.push(new PopupMenuItem('转发', 'forward', '\uf13a'))
     }
@@ -1113,6 +1160,9 @@ const onContextMenuItemSelect = (t: PopupMenuItem) => {
             break;
         case 'speechToText':
             speechToTextMessage(message);
+            break;
+        case 'audioPlayMode':
+            switchAudioPlayMode();
             break;
         case 'favorite':
             favoriteMessage(message);
@@ -1204,6 +1254,14 @@ onUnload(() => {
     if (keyboardHeightChangeId != 0) {
         uni.offKeyboardHeightChange(keyboardHeightChangeId);
         keyboardHeightChangeId = 0;
+    }
+    // 离开会话页要停掉语音并把播放通道还原成扬声器。不能只靠 currentVoiceMessage 那个
+    // computed —— 它是页面的 effect，onUnload 之后组件很快销毁，再没有求值机会。
+    const voiceCtx = innerAudioContext
+    if (voiceCtx != null) {
+        voiceCtx.stop();
+        innerAudioContext = null;
+        applyAudioRoute(false);
     }
     store.setCurrentConversationInfo(null);
     eventBus.$off('openMessageContextMenu', onOpenMessageContextMenu)

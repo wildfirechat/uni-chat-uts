@@ -387,6 +387,12 @@
             }
         },
         {
+            "path": "pages/me/ChatSettingsPage",
+            "style": {
+                "navigationBarTitleText": "聊天"
+            }
+        },
+        {
             "path": "pages/me/MessageNotificationSettingsPage",
             "style": {
                 "navigationBarTitleText": "消息通知"

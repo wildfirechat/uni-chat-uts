@@ -7,6 +7,7 @@ import avEngineKit from './wfc/av/engine/avEngineKit.uts'
 import pttClient from './wfc/ptt/pttClient.uts'
 import { initTheme, syncNativeTheme } from './common/theme.uts'
 import { initFontScale } from './common/layoutScale.uts'
+import { initAudioPlayMode } from './common/audioPlayMode.uts'
 
 onLaunch(() => {
     console.log("App Launch");
@@ -15,6 +16,8 @@ onLaunch(() => {
     // 真正会碰 uni-theme 的 syncNativeTheme() 放在本函数最后，见那里的说明。
     initTheme();
     initFontScale();
+    // 语音消息走扬声器还是听筒，同样只读 storage（会话页标题栏的听筒标识依赖它）
+    initAudioPlayMode();
 
     // 图标字体（原 css :before 方案 uni-app x 不支持，改为 loadFontFace + 文本内联 unicode）
     uni.loadFontFace({
