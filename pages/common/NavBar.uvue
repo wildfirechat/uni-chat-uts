@@ -5,13 +5,25 @@
             <view class="nav-bar-left" @tap="onBack">
                 <text v-if="showBack" class="back-icon" :style="{ color: c.iconPrimary }">‹</text>
             </view>
-            <!-- titleIcon 走嵌套 text 而不是并排的兄弟节点：标题是 flex:1（截断需要，见下面样式块的
-                 注释），并排的图标只会被推到中间区域的最右侧，离标题老远。嵌进来才能像 android-chat
-                 的 ConversationTitleHelper 那样紧跟在标题文字后面、和标题一起居中。
-                 子 text 不继承父样式，所以字号/颜色/字体都要自己写全。 -->
-            <text class="nav-bar-title" :style="{ color: c.textPrimary, fontSize: px(17, ROW_CAP) }">{{ title }}<text
-                    v-if="titleIcon != ''" class="icomoon nav-bar-title-icon"
-                    :style="{ color: c.textTertiary }">{{ ' ' + titleIcon }}</text></text>
+            <!-- 标题区是一列：标题行 + 副标题行。副标题为空时只剩标题行，
+                 视觉上和改造前的单行标题栏一致，其余 30 多个页面不受影响。
+                 栏高恒定 44px（副标题出现/消失不改变栏高）—— 副标题的内容
+                 （在线状态、正在输入、连接状态）是异步来去的，栏高一变，
+                 下面整页内容会跟着上下跳，而且 ConversationPage 里按 44px
+                 算长按菜单锚点的 NAV_BAR_HEIGHT 也会跟着失准。
+                 titleIcon 走嵌套 text 而不是并排的兄弟节点：标题是 flex 布局里
+                 唯一撑满宽度的那个 text（截断需要确定宽度，见下面样式块的注释），
+                 并排的图标只会被推到中间区域的最右侧，离标题老远。嵌进来才能像
+                 android-chat 的 ConversationTitleHelper 那样紧跟在标题文字后面、
+                 和标题一起居中。子 text 不继承父样式，字号/颜色/字体都要自己写全。 -->
+            <view class="nav-bar-center">
+                <text class="nav-bar-title"
+                    :style="{ color: c.textPrimary, fontSize: titleFontSize, lineHeight: titleLineHeight }">{{ title }}<text
+                        v-if="titleIcon != ''" class="icomoon nav-bar-title-icon"
+                        :style="{ color: c.textTertiary }">{{ ' ' + titleIcon }}</text></text>
+                <text v-if="subtitle != ''" class="nav-bar-subtitle"
+                    :style="{ color: c.textSecondary, fontSize: subtitleFontSize, lineHeight: subtitleLineHeight }">{{ subtitle }}</text>
+            </view>
             <view class="nav-bar-right" :style="{ width: rightText != '' ? 'auto' : '70px' }">
                 <text v-if="rightText != ''" class="nav-bar-text-action"
                     :style="{ color: rightTextDisabled ? c.textTertiary : c.accent, fontSize: px(16, ROW_CAP) }"
@@ -31,7 +43,9 @@
  * uni-app x 不支持原生 titleNView 按钮，原来配置在 pages.json 的标题栏按钮改用本组件实现。
  * rightIcon1/rightIcon2 传 wx_iconfont.ttf 中的 unicode 字符（如 ''）。
  * titleIcon 传 icomoon 的 unicode 字符（见 static/iconfonts/icomoon/ICONS.md），
- * 显示在标题文字右侧，用来做状态标识（如「听筒播放」）。
+ * 显示在标题文字右侧，用来做状态标识（如「免打扰」「听筒播放」）；要挂多个就把码位拼成
+ * 一个字符串（中间加空格），如 `'\uf39a \uf4b9'`。
+ * subtitle 非空时标题栏变成两行（标题 + 副标题），栏高不变，见模板里的注释。
  */
 import { colors, AppColors } from "../../common/theme.uts"
 import { px, ROW_CAP } from "../../common/layoutScale.uts"
@@ -43,10 +57,26 @@ defineOptions({
 
 const c = computed<AppColors>((): AppColors => colors())
 
+/**
+ * 两行标题时的字号上限。44px 的固定栏高里要塞下两行，[ROW_CAP]（1.35）会溢出：
+ * 最大档下两行的行距合计 (20 + 14) × 1.35 = 45.9px，直接顶破 44px。
+ * 1.15 是能塞下的最大档位（39.1px），再往下压就该牺牲大字号用户的可读性了。
+ */
+const TWO_LINE_CAP: number = 1.15
+
 const props = withDefaults(defineProps<{
     title?: string
-    /** 跟在标题后面的状态标识图标（icomoon 码位），空字符串表示不显示 */
+    /**
+     * 跟在标题后面的状态标识图标（icomoon 码位），空字符串表示不显示。
+     * 多个码位拼一个字符串即可，如 `'\uf39a \uf4b9'`。
+     */
     titleIcon?: string
+    /**
+     * 副标题。非空时标题栏变成两行 —— 用来放**随时会变、且没了也不影响识别会话**的状态
+     * （在线状态、正在输入、连接状态）；会话身份本身（名字 + 免打扰/听筒这类持久属性）
+     * 一律留在标题行，不要让它在副标题里闪来闪去。
+     */
+    subtitle?: string
     showBack?: boolean
     rightIcon1?: string
     rightIcon2?: string
@@ -62,6 +92,7 @@ const props = withDefaults(defineProps<{
 }>(), {
     title: '',
     titleIcon: '',
+    subtitle: '',
     showBack: false,
     rightIcon1: '',
     rightIcon2: '',
@@ -69,6 +100,26 @@ const props = withDefaults(defineProps<{
     rightTextDisabled: false,
     interceptBack: false
 })
+
+/**
+ * 标题字号：两行时让掉 1px 给副标题、并换用更紧的上限（[TWO_LINE_CAP]）；单行时维持改造前的
+ * 17px + [ROW_CAP]，其余 30 多个页面的视觉一点不变。
+ *
+ * lineHeight 显式写死、不靠平台默认行距：两行到底占多高必须是算得出来的数，
+ * 才敢断言它塞得进 44px 的固定栏高 ——
+ *   两行，最大档：20×1.15 + 14×1.15 = 39.1px  ✓（余 4.9px）
+ *   单行，最大档：24×1.35 = 32.4px            ✓
+ * 行距与字号的比值（两行是 20/16 和 14/11）留得比 1.2 宽，中日韩字形不会被裁到。
+ */
+const titleFontSize = computed<string>((): string =>
+    props.subtitle != '' ? px(16, TWO_LINE_CAP) : px(17, ROW_CAP))
+
+const titleLineHeight = computed<string>((): string =>
+    props.subtitle != '' ? px(20, TWO_LINE_CAP) : px(24, ROW_CAP))
+
+const subtitleFontSize = computed<string>((): string => px(11, TWO_LINE_CAP))
+
+const subtitleLineHeight = computed<string>((): string => px(14, TWO_LINE_CAP))
 
 const emit = defineEmits(['right1Tap', 'right2Tap', 'rightTextTap', 'backTap'])
 
@@ -112,8 +163,9 @@ const onRightTextTap = () => {
 /* 颜色和字号走 :style（common/theme.uts、common/layoutScale.uts），尺寸留在这里。
  * 图标字号（back-icon / nav-bar-icon）刻意不跟字号档位放大：它们是图形，
  * 放大只会顶破 44px 的固定栏高。
- * 标题也不完整跟随：栏高固定 44px，所以按 ROW_CAP 封顶（最大档 22.95px），
- * 并且强制单行截断 —— 会话名很长时，换行会把标题顶出标题栏。 */
+ * 标题也不完整跟随：栏高固定 44px，所以单行时按 ROW_CAP 封顶（最大档 22.95px）、
+ * 两行时按 TWO_LINE_CAP 封顶，并且两行都强制单行截断 —— 会话名很长时，
+ * 换行会把标题顶出标题栏。 */
 .nav-bar {
     height: 44px;
     display: flex;
@@ -134,8 +186,29 @@ const onRightTextTap = () => {
     font-size: 28px;
 }
 
-.nav-bar-title {
+/* 中间的标题区。左右两侧各是固定 70px，这里 flex: 1 吃掉剩下的，
+ * 于是它自己有确定宽度，里面两行文字才敢用 overflow: hidden + ellipsis
+ * （`text` 带截断而宽度不确定时，鸿蒙上会被量成 0 宽，短标题也只剩省略号）。
+ * 两行文字再各自写死 width: 100%：列方向的 align-items 默认是 stretch，
+ * 本来就能撑满，写出来只是把「宽度是确定的」这件事钉死，别人改 align-items 时不会踩雷。 */
+.nav-bar-center {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.nav-bar-title {
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.nav-bar-subtitle {
+    width: 100%;
     text-align: center;
     white-space: nowrap;
     text-overflow: ellipsis;

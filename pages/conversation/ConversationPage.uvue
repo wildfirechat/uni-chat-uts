@@ -1,6 +1,6 @@
 <template>
     <view class="conversation-page">
-        <NavBar :title="navTitle" :titleIcon="navTitleIcon" :showBack="true"
+        <NavBar :title="navTitle" :titleIcon="navTitleIcon" :subtitle="navSubtitle" :showBack="true"
             :rightIcon1="conversationInfo != null ? moreIcon : ''" @right1Tap="showConversationInfo" />
         <view v-if="conversationInfo == null" class="conversation-empty-container">
             <text>^~^</text>
@@ -75,8 +75,9 @@ import MessageContentType from "@/wfc/messages/messageContentType.uts";
 import Message from "@/wfc/messages/message.uts";
 import ConversationInfo from "@/wfc/model/conversationInfo.uts";
 import ConversationType from "@/wfc/model/conversationType.uts";
+import ConnectionStatus from "@/wfc/client/connectionStatus.uts";
 import GroupMemberType from "@/wfc/model/groupMemberType.uts";
-import store, { conversationState } from "@/store.uts";
+import store, { conversationState, miscState } from "@/store.uts";
 import wfc from "../../wfc/client/wfc.uts";
 import Config from "../../config.uts";
 import { getItem, setItem } from "../util/storageHelper.uts";
@@ -257,20 +258,84 @@ const typingDesc = computed<string>((): string => {
     return '对方' + desc
 })
 
-const navTitle = computed<string>((): string => {
-    if (typingDesc.value != '') {
-        return typingDesc.value
+// 群会话的副标题兜底：群人数。和 android-chat 的「群名(N)」是同一份信息，
+// 只是挪到了副标题行。有了它，群会话的标题栏稳定是两行，不会因为「正在输入」
+// 来一下走一下就在一行/两行之间跳。群资料还没解析出来时 memberCount 是 0，返回空串。
+const groupMemberCountDesc = computed<string>((): string => {
+    const info = conversationInfo.value
+    if (info == null || info.conversation.type != ConversationType.Group) {
+        return ''
     }
-    return targetUserOnlineStateDesc.value != ''
-        ? conversationTitle.value + `(${targetUserOnlineStateDesc.value})`
-        : conversationTitle.value
+    const target = store.ensureConversationTarget(info.conversation)
+    if (target == null || target.memberCount <= 0) {
+        return ''
+    }
+    return t1('group.member_count', '' + target.memberCount)
+})
+
+// 连接状态。会话列表页把它做成标题栏下面的独立一条（见 ConversationListPage），
+// 会话页没地方挂那条横幅（挂上去消息列表就要跟着上下跳），塞进副标题正好。
+const connectionStatusDesc = computed<string>((): string => {
+    let desc = ''
+    switch (miscState.connectionStatus) {
+        case ConnectionStatus.ConnectionStatusConnecting:
+            desc = '正在连接...'
+            break;
+        case ConnectionStatus.ConnectionStatusReceiveing:
+            desc = '正在同步...'
+            break;
+        case ConnectionStatus.ConnectionStatusUnconnected:
+            desc = '连接失败'
+            break;
+        default:
+            break;
+    }
+    return desc
 })
 
 /**
- * 听筒播放模式下在标题后挂一个听筒图标做标识，同 android-chat 的 ConversationTitleHelper
- * （它画的是自绘的耳朵 vector，icomoon 里没有耳朵，用和长按菜单同一个听筒字形，两处能对上）。
+ * 标题行只放**会话身份**：名字 + 会话自身的持久属性标识（免打扰、听筒播放）。
+ * 「正在输入」「在线状态」这类会来回闪的东西一律进副标题 —— 改造前它们是直接顶掉
+ * 标题文字的，对方一敲键盘会话名就没了，从标题栏认不出自己在跟谁说话。
  */
-const navTitleIcon = computed<string>((): string => isEarpieceMode() ? '\uf4b9' : '')
+const navTitle = computed<string>((): string => conversationTitle.value)
+
+/**
+ * 标题行的状态标识，按「会话属性 → 本机播放通道」排：
+ *   免打扰   \uf39a  ion-android-notifications-off，和会话列表行用的是同一个字形
+ *   听筒播放 \uf4b9  同 android-chat 的 ConversationTitleHelper（它画的是自绘的耳朵
+ *                   vector，icomoon 里没有耳朵，用和长按菜单同一个听筒字形，两处能对上）
+ * 两个都在时拼成一个字符串交给 NavBar，中间那个空格就是它们的间距。
+ */
+const navTitleIcon = computed<string>((): string => {
+    const icons: string[] = []
+    const info = conversationInfo.value
+    if (info != null && info.isSilent) {
+        icons.push('\uf39a')
+    }
+    if (isEarpieceMode()) {
+        icons.push('\uf4b9')
+    }
+    return icons.join(' ')
+})
+
+/**
+ * 副标题：会话身份之外、随时会变的状态。同一时刻只显示一条，按「越临时越靠前」排：
+ *   连接状态 > 对方正在输入 > 单聊在线状态 / 群人数
+ * 全都没有时返回空串，NavBar 自动退回单行标题。
+ */
+const navSubtitle = computed<string>((): string => {
+    if (connectionStatusDesc.value != '') {
+        return connectionStatusDesc.value
+    }
+    if (typingDesc.value != '') {
+        return typingDesc.value
+    }
+    if (targetUserOnlineStateDesc.value != '') {
+        return targetUserOnlineStateDesc.value
+    }
+    return groupMemberCountDesc.value
+})
 
 // 同时只能播放一个语音，逻辑放在会话页统一控制
 const playVoice = (message: Message) => {
