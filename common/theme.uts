@@ -137,6 +137,13 @@ export class AppColors {
     scrim: string = '#0000004D'
     /** 浮层投影。 */
     shadow: string = '#00000040'
+    /**
+     * 深色 HUD 浮层底色（录音/对讲提示）。**明暗两套一样** —— HUD 会盖在任意背景上，
+     * 跟着主题变浅反而会和浅色的会话背景糊在一起。
+     */
+    hudBg: string = '#000000B8'
+    /** HUD 上的文字/图形。 */
+    onHud: string = '#FFFFFF'
 }
 
 function buildDark(): AppColors {

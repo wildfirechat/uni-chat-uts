@@ -1,0 +1,44 @@
+/**
+ * `uni.getRecorderManager()` 的监听转发。
+ *
+ * ## 为什么要有这一层
+ *
+ * `uni.getRecorderManager()` 拿到的是**全局单例**，`onStop`/`onError` 是**追加**监听而不是
+ * 替换：注册几次，一次录音就回调几次。而录音入口（AudioInputView）跟着输入栏的
+ * 「语音 / 键盘」开关反复挂载卸载，在组件里直接 `onStop(...)` 的话，切几次之后录一条语音
+ * 会把历次注册的回调全部叫醒 —— 旧实例的状态早就复位了，表现是莫名其妙连弹几个
+ * 「录音时间太短」。
+ *
+ * 所以监听在这里只绑一次，页面通过 [setRecorderHandlers] 换处理函数。同一时刻只会有一个
+ * 录音入口存活，不需要多播。
+ */
+
+/** 录音结束，参数是录音文件的临时路径 */
+export type RecorderStopHandler = (tempFilePath: string) => void
+/** 录音出错（多半是没有麦克风权限，或被别的应用占着） */
+export type RecorderErrorHandler = () => void
+
+let bound = false
+let stopHandler: RecorderStopHandler | null = null
+let errorHandler: RecorderErrorHandler | null = null
+
+/**
+ * 设置当前的录音回调；传 null 表示自己要卸载了、别再回调过来。
+ * 首次调用时顺带把底层监听绑上。
+ */
+export function setRecorderHandlers(onStop: RecorderStopHandler | null, onError: RecorderErrorHandler | null): void {
+    stopHandler = onStop
+    errorHandler = onError
+    if (bound) {
+        return
+    }
+    bound = true
+    const recorderManager = uni.getRecorderManager()
+    recorderManager.onStop((res) => {
+        stopHandler?.(res.tempFilePath)
+    })
+    recorderManager.onError((res) => {
+        console.log('recorderManager.onError', res)
+        errorHandler?.()
+    })
+}

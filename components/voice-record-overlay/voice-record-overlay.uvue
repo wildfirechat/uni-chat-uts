@@ -1,0 +1,283 @@
+<template>
+    <view v-if="visible" class="vr-root">
+        <view class="vr-card" :style="{ backgroundColor: c.hudBg }">
+            <!-- 计量区三态：上滑待取消 → 取消图标；最后几秒 → 倒计时；其余 → 麦克风 + 音量条 -->
+            <view class="vr-meter">
+                <text v-if="cancelling" class="vr-glyph icomoon"
+                    :style="{ fontSize: iconPx(36), color: c.onHud }">&#xf12a;</text>
+                <text v-else-if="showCountdown" class="vr-countdown"
+                    :style="{ fontSize: fontPx(34), color: c.warning }">{{ remainSeconds }}</text>
+                <view v-else class="vr-wave">
+                    <text class="vr-glyph icomoon" :style="{ fontSize: iconPx(32), color: c.onHud }">&#xf461;</text>
+                    <view class="vr-bars">
+                        <view v-for="(h, i) in bars" :key="i" class="vr-bar"
+                            :style="{ height: h + 'px', backgroundColor: c.onHud }"></view>
+                    </view>
+                </view>
+            </view>
+            <text class="vr-time" :style="{ fontSize: fontPx(12), color: c.onHud }">{{ timeText }}</text>
+            <!-- 待取消时提示条变成红底：手指还在屏幕上，颜色比文字更快被看到 -->
+            <view class="vr-tip" :style="{ backgroundColor: cancelling ? c.danger : c.hudBg }">
+                <text class="vr-tip-text" :style="{ fontSize: fontPx(13), color: c.onHud }">{{ tip }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script setup lang="uts">
+/**
+ * 录音 / 对讲时居中浮起的 HUD，带实时音量条。对齐 flutter
+ * `conversation/input_bar/record_widget.dart` 的 overlay（那边是 7 张 voice_N.png 切图，
+ * 这里改成自己画的柱状条，省掉切图也能跟主题走）。
+ *
+ * ## 音量从哪来：一路真、一路假
+ *
+ * - **对讲（PttAudioInputView）**：真实音量。PTT SDK 的 `onAmplitudeUpdate` 每帧回调
+ *   一段 PCM 的平均振幅，调用方归一化成 0~1 传进 [level]。
+ * - **语音消息（AudioInputView）**：**没有真音量可用**，传 `simulate-level` 让本组件自己
+ *   造一条起伏曲线。uni-app x 的 `uni.getRecorderManager()` 压根没有音量/分贝接口：
+ *   唯一能拿到原始数据的 `onFrameRecorded` 在 app 三端全是 `x`
+ *   （HBuilderX `types/uni/uts-plugin-api/.temp/uni-getRecorderManager/utssdk/interface.uts`），
+ *   而录音期间麦克风被框架的 recorder 独占，再开一路 AudioRecord 读电平在
+ *   Android 10+ 上也拿不到。要真音量只能整个换掉录音实现（自写原生插件录音 + 上报振幅），
+ *   那会连带改动语音消息的编码格式，不在本次改动范围内。
+ *   ⚠️ 所以 simulate 出来的柱子**只表示「在录音」，不表示「你有多大声」**，别拿它做任何判断。
+ *
+ * ## 动画为什么用定时器而不是 CSS
+ *
+ * uni-app x 只有 transition 没有 animation，而 transition 在三端的时序不一致
+ * （见 bottom-action-sheet 里不做入场动画的理由）。这里每 [TICK_MS] 一帧，
+ * 在 JS 里把每根柱子朝目标高度逼近，三端表现一致，可控。
+ */
+import { colors, AppColors } from '@/common/theme.uts'
+import { fontPx, iconPx } from '@/common/layoutScale.uts'
+
+// 组件默认样式隔离，吃不到 global.css 的 .icomoon（见 M0「写组件的两个静默坑」），
+// 所以样式块里自己声明了一份。
+//
+// 注释不能写在 defineOptions({...}) 的最后一个属性之后，Android 的 SFC 转换会把它甩到
+// 对象字面量外面，生成残缺代码（见 popup-menu 的同款说明）。
+defineOptions({
+    name: 'voice-record-overlay'
+})
+
+const props = withDefaults(defineProps<{
+    /** 是否显示。false 时整棵节点不渲染，动画定时器也停掉 */
+    visible?: boolean
+    /** 实时音量，0~1。[simulateLevel] 为 true 时忽略本字段 */
+    level?: number
+    /** 没有真实音量可用时置 true，由本组件造一条起伏曲线（见文件头说明） */
+    simulateLevel?: boolean
+    /** 上滑待取消态：计量区换成取消图标、提示条转红 */
+    cancelling?: boolean
+    /** 已录制秒数 */
+    seconds?: number
+    /** 时长上限秒数；> 0 时最后 [COUNTDOWN_FROM] 秒显示倒计时 */
+    maxSeconds?: number
+    /** 底部提示文案 */
+    tip?: string
+}>(), {
+    visible: false,
+    level: 0,
+    simulateLevel: false,
+    cancelling: false,
+    seconds: 0,
+    maxSeconds: 0,
+    tip: ''
+})
+
+const c = computed<AppColors>((): AppColors => colors())
+
+/** 柱子根数。太多会让每帧的样式下发变多，13 根在 190px 卡片里刚好排满 */
+const BAR_COUNT = 13
+const BAR_MIN_HEIGHT = 3
+const BAR_MAX_HEIGHT = 30
+/** 动画帧间隔。~14fps，柱状条这种离散图形看着已经是连续的了 */
+const TICK_MS = 70
+/** 每帧朝目标高度走的比例，越小越黏 */
+const EASE = 0.45
+/** 剩余多少秒开始显示倒计时 */
+const COUNTDOWN_FROM = 10
+/** 模拟音量时，隔几帧换一次目标值（≈ 说一个字的长度） */
+const SIM_TARGET_TICKS = 4
+
+/** 两端矮中间高的形状权重，让一排柱子看起来像一段波形而不是一排等高块 */
+function buildShape(): number[] {
+    const list: number[] = []
+    for (let i = 0; i < BAR_COUNT; i++) {
+        list.push(0.35 + 0.65 * Math.sin(Math.PI * (i + 0.5) / BAR_COUNT))
+    }
+    return list
+}
+
+function flatBars(): number[] {
+    const list: number[] = []
+    for (let i = 0; i < BAR_COUNT; i++) {
+        list.push(BAR_MIN_HEIGHT)
+    }
+    return list
+}
+
+const BAR_SHAPE: number[] = buildShape()
+
+const bars = ref<number[]>(flatBars())
+
+/** 平滑之后的音量，柱高实际按它算 —— 直接用瞬时值会一帧一跳 */
+let smoothLevel = 0.0
+/** 模拟模式下当前的目标音量 */
+let simTarget = 0.0
+let tickCount = 0
+let timer = 0
+
+/** 距离时长上限还剩几秒；没有上限时是 -1 */
+const remainSeconds = computed<number>((): number => {
+    if (props.maxSeconds <= 0) {
+        return -1
+    }
+    return Math.max(0, props.maxSeconds - props.seconds)
+})
+
+const showCountdown = computed<boolean>((): boolean => {
+    return remainSeconds.value >= 0 && remainSeconds.value <= COUNTDOWN_FROM
+})
+
+const timeText = computed<string>((): string => {
+    const total = props.seconds
+    const m = Math.floor(total / 60)
+    const s = total % 60
+    return (m < 10 ? '0' + m : '' + m) + ':' + (s < 10 ? '0' + s : '' + s)
+})
+
+const stopAnimation = () => {
+    if (timer != 0) {
+        clearInterval(timer)
+        timer = 0
+    }
+    smoothLevel = 0
+    simTarget = 0
+    tickCount = 0
+    bars.value = flatBars()
+}
+
+const startAnimation = () => {
+    if (timer != 0) {
+        return
+    }
+    tickCount = 0
+    timer = setInterval((): void => {
+        // 取消态和倒计时都不显示柱子，这时候别白算一帧样式
+        if (props.cancelling || showCountdown.value) {
+            return
+        }
+        if (props.simulateLevel) {
+            if (tickCount % SIM_TARGET_TICKS == 0) {
+                // 0.15 起步：留一点「刚好没出声」的低谷，全程满格反而假
+                simTarget = 0.15 + Math.random() * 0.85
+            }
+            smoothLevel += (simTarget - smoothLevel) * EASE
+        } else {
+            const target = Math.max(0, Math.min(1, props.level))
+            smoothLevel += (target - smoothLevel) * EASE
+        }
+        tickCount++
+
+        const next: number[] = []
+        for (let i = 0; i < BAR_COUNT; i++) {
+            // 每根柱子在整体音量上再加一点自己的抖动，否则 13 根柱子同起同落像一块板
+            const jitter = 0.6 + Math.random() * 0.4
+            const h = BAR_MIN_HEIGHT + (BAR_MAX_HEIGHT - BAR_MIN_HEIGHT) * smoothLevel * BAR_SHAPE[i] * jitter
+            const from = bars.value[i]
+            next.push(Math.round(from + (h - from) * EASE))
+        }
+        // 逐个改数组元素在 uni-app x 里不触发更新，必须换一个新数组（M0「class 实例装进数组不是响应式」）
+        bars.value = next
+    }, TICK_MS)
+}
+
+watch((): boolean => props.visible, (newValue: boolean, _oldValue: boolean) => {
+    if (newValue) {
+        startAnimation()
+    } else {
+        stopAnimation()
+    }
+}, { immediate: true })
+
+onUnmounted(() => {
+    stopAnimation()
+})
+</script>
+
+<style scoped>
+.icomoon {
+    font-family: "icomoon";
+}
+
+.vr-root {
+    position: fixed;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    /* 少了这一行，浮层会把还按在屏幕上的手指的 touchmove/touchend 吃掉 */
+    pointer-events: none;
+    z-index: 9999;
+}
+
+.vr-card {
+    width: 200px;
+    padding: 16px 12px 12px 12px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.vr-meter {
+    min-height: 52px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.vr-wave {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.vr-bars {
+    margin-left: 8px;
+    height: 34px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.vr-bar {
+    width: 3px;
+    margin: 0 2px;
+    border-radius: 2px;
+}
+
+.vr-time {
+    margin-top: 4px;
+}
+
+.vr-tip {
+    margin-top: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.vr-tip-text {
+    text-align: center;
+}
+</style>

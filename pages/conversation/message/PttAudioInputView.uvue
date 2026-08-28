@@ -1,13 +1,12 @@
 <template>
     <view class="TUI-message-input-main" @longpress="handleLongPress" @touchmove="handleTouchMove"
-        @touchend="handleTouchEnd">
-        <text class="record-text" :style="{ fontSize: fontPx(15), backgroundColor: c.surface, color: c.textPrimary }">{{ text }}</text>
-        <view class="record-modal" v-if="popupToggle" :style="{ backgroundColor: c.scrim }">
-            <view class="wrapper">
-                <view class="modal-loading" :style="{ backgroundColor: c.accent }"></view>
-            </view>
-            <text class="modal-title" :style="{ fontSize: fontPx(14), color: c.onAccent }">{{ title }}</text>
+        @touchend="handleTouchEnd" @touchcancel="handleTouchEnd">
+        <view class="record-button" :style="{ backgroundColor: buttonBg, borderColor: buttonBorder }">
+            <text class="record-text" :style="{ fontSize: fontPx(15), color: buttonFg }">{{ buttonLabel }}</text>
         </view>
+        <!-- 对讲有真实音量：PTT SDK 每帧回调一段 PCM 的平均振幅 -->
+        <voice-record-overlay :visible="popupToggle" :level="level" :seconds="talkSeconds"
+            :max-seconds="maxSpeakSeconds" :tip="tip" />
     </view>
 </template>
 
@@ -16,6 +15,7 @@ import ConversationInfo from "../../../wfc/model/conversationInfo.uts";
 import pttClient from "../../../wfc/ptt/pttClient.uts";
 import TalkingCallback from "../../../wfc/ptt/talkingCallback.uts";
 import PttErrorCode from "../../../wfc/ptt/pttErrorCode.uts";
+import { toast } from "../../../common/prompt.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
@@ -23,100 +23,155 @@ defineOptions({
     name: 'PttAudioInputView'
 })
 
+/** 计时刷新间隔，秒数和倒计时都靠它推进 */
+const TICK_MS = 200
+/**
+ * 音量最多多久往下传一次。
+ *
+ * 原生每读完一帧 PCM 就回调一次（20ms 一帧，≈50 次/秒），比 HUD 的动画帧还密；而 level 是
+ * 传给子组件的 prop，每赋一次值本组件就要重渲染一次。按动画帧的节奏抽稀，中间的采样取峰值
+ * 保留下来，既不丢瞬间的大声，也不让渲染空转。
+ */
+const LEVEL_PUSH_MS = 60
 
 const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     conversationInfo: ConversationInfo
 }>()
 
+/** props 上的 class 类型在模板/闭包里都得显式转一次，集中在这里 */
+const currentConversationInfo = (): ConversationInfo => props.conversationInfo as ConversationInfo
+
+/** HUD 是否显示：按下就亮（这时还在向服务端请求发言权），到 onTalkingEnd / 失败才收 */
 const popupToggle = ref<boolean>(false)
+/** 服务端已经给了发言权，真正在说话 */
 const isTalking = ref<boolean>(false)
-const text = ref<string>('按住对讲')
-const title = ref<string>(' ')
-const recordTime = ref<number>(0)
-const recordTimer = ref<number>(0)
-const longPressClientY = ref<number>(0)
+/** 归一化到 0~1 的实时音量，喂给 HUD 的音量条 */
+const level = ref<number>(0)
+const talkSeconds = ref<number>(0)
+/** 本次对讲的时长上限（秒），0 表示服务端没配上限、不显示倒计时 */
+const maxSpeakSeconds = ref<number>(0)
+const tip = ref<string>('正在请求...')
 
-onBeforeUnmount(() => {
-    if (isTalking.value) {
-        let conversationInfo = props.conversationInfo as ConversationInfo
-        pttClient.releaseTalking(conversationInfo.conversation)
-    }
-    if (recordTimer.value != 0) {
-        clearInterval(recordTimer.value)
-        recordTimer.value = 0
-    }
-})
+let talkStartTime = 0
+let tickTimer = 0
+/** 上次把音量传给 HUD 的时刻，以及这段时间里的峰值 */
+let lastLevelPushTime = 0
+let pendingPeakLevel = 0.0
 
-const resetState = () => {
-    if (recordTimer.value != 0) {
-        clearInterval(recordTimer.value)
-        recordTimer.value = 0
+const buttonLabel = computed<string>((): string => isTalking.value ? '松开结束对讲' : '按住对讲')
+
+// 和 AudioInputView 同款三态，只是对讲没有「上滑取消」，所以没有红色态
+const buttonBg = computed<string>((): string => isTalking.value ? c.value.accent : c.value.surface)
+const buttonBorder = computed<string>((): string => isTalking.value ? c.value.accent : c.value.hairline)
+const buttonFg = computed<string>((): string => isTalking.value ? c.value.onAccent : c.value.textPrimary)
+
+/**
+ * 平均振幅 → 0~1 的音量。
+ *
+ * SDK 给的是一帧 PCM16 里 |sample| 的平均值（见 android-pttclient `PttRecorder`），
+ * 量纲是 0~32767 的**线性**值：正常说话大概只有几百到几千，直接按比例映射的话柱子几乎不动。
+ * 所以先转成分贝再线性归一 —— -55dB 以下当静音，-10dB 顶格，和人耳的响度感受对得上。
+ */
+function amplitudeToLevel(amplitude: number): number {
+    if (amplitude <= 1) {
+        return 0
     }
-    isTalking.value = false
-    popupToggle.value = false
-    text.value = '按住对讲'
-    title.value = ' '
+    const db = 20 * Math.log10(amplitude / 32768)
+    const value = (db + 55) / 45
+    return Math.max(0, Math.min(1, value))
 }
 
-const handleLongPress = (e: UniTouchEvent) => {
+const stopTick = () => {
+    if (tickTimer != 0) {
+        clearInterval(tickTimer)
+        tickTimer = 0
+    }
+}
+
+const resetState = () => {
+    stopTick()
+    lastLevelPushTime = 0
+    pendingPeakLevel = 0
+    isTalking.value = false
+    popupToggle.value = false
+    level.value = 0
+    talkSeconds.value = 0
+    maxSpeakSeconds.value = 0
+    talkStartTime = 0
+    tip.value = '正在请求...'
+}
+
+onBeforeUnmount(() => {
+    if (popupToggle.value) {
+        pttClient.releaseTalking(currentConversationInfo().conversation)
+    }
+    resetState()
+})
+
+const handleLongPress = (_e: UniTouchEvent) => {
     // 权限弹窗会打断长按手势，所以未授权时只申请权限，让用户授权后重新按住
     if (!pttClient.isRecordPermissionGranted()) {
         pttClient.requestRecordPermission((): void => {
-            uni.showToast({
-                title: '已获得录音权限，请重新按住对讲',
-                icon: 'none',
-            } as ShowToastOptions)
+            toast('已获得录音权限，请重新按住对讲')
         }, (): void => {
-            uni.showToast({
-                title: '需要录音权限才能对讲',
-                icon: 'none',
-            } as ShowToastOptions)
+            toast('需要录音权限才能对讲')
         })
         return
     }
-    if (e.changedTouches.length > 0) {
-        longPressClientY.value = e.changedTouches[e.changedTouches.length - 1].clientY
+    if (popupToggle.value) {
+        return
     }
     popupToggle.value = true
-    title.value = '正在请求...'
-    text.value = '正在对讲'
+    tip.value = '正在请求...'
+    level.value = 0
 
     const callback = new TalkingCallback()
     callback.onStartTalking = (): void => {
         isTalking.value = true
-        title.value = '正在对讲'
-        text.value = '松开结束对讲'
-        recordTime.value = 0
-        recordTimer.value = setInterval((): void => {
-            recordTime.value++
-        }, 1000)
+        tip.value = '正在对讲，松开结束'
+        talkSeconds.value = 0
+        talkStartTime = Date.now()
+        // 上限是服务端下发的（会话级可配），拿到才显示倒计时
+        maxSpeakSeconds.value = pttClient.getMaxSpeakTime(currentConversationInfo().conversation)
+        stopTick()
+        tickTimer = setInterval((): void => {
+            // 按时间戳算而不是数 tick：定时器在排版繁忙时会被饿死，数出来的秒数会偏少
+            talkSeconds.value = Math.floor((Date.now() - talkStartTime) / 1000)
+        }, TICK_MS)
     }
     callback.onTalkingEnd = (_reason: number): void => {
         resetState()
     }
     callback.onRequestFail = (errorCode: number): void => {
         resetState()
-        uni.showToast({
-            title: PttErrorCode.desc(errorCode),
-            icon: 'none',
-        } as ShowToastOptions)
+        toast(PttErrorCode.desc(errorCode))
     }
-    let conversationInfo = props.conversationInfo as ConversationInfo
-    pttClient.requestTalk(conversationInfo.conversation, 0, callback)
+    // 原生每读完一帧 PCM 回调一次（android 侧已 post 到主线程），抽稀规则见 [LEVEL_PUSH_MS]。
+    // 平滑留给 voice-record-overlay 的动画定时器做，这里只负责取峰值。
+    callback.onAmplitudeUpdate = (amplitude: number): void => {
+        const value = amplitudeToLevel(amplitude)
+        if (value > pendingPeakLevel) {
+            pendingPeakLevel = value
+        }
+        const now = Date.now()
+        if (now - lastLevelPushTime < LEVEL_PUSH_MS) {
+            return
+        }
+        lastLevelPushTime = now
+        level.value = pendingPeakLevel
+        pendingPeakLevel = 0
+    }
+    pttClient.requestTalk(currentConversationInfo().conversation, 0, callback)
 }
 
 // 对讲不支持上划取消，保留手势回调仅为和 AudioInputView 交互习惯保持一致
 const handleTouchMove = (_e: UniTouchEvent) => {
-    if (isTalking.value) {
-        title.value = '正在对讲'
-    }
 }
 
 const handleTouchEnd = () => {
-    if (isTalking.value) {
-        let conversationInfo = props.conversationInfo as ConversationInfo
-        pttClient.releaseTalking(conversationInfo.conversation)
+    if (popupToggle.value) {
+        pttClient.releaseTalking(currentConversationInfo().conversation)
     }
     resetState()
 }
@@ -128,39 +183,25 @@ const handleTouchEnd = () => {
     height: 33px;
     margin: 0 5px;
     padding: 0 3px;
-    border-radius: 3px;
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
 }
 
-.record-modal {
-    height: 150px;
-    width: 220px;
-    position: fixed;
-    top: 300px;
-    z-index: 9999;
-    left: 70px;
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-}
-
-.wrapper {
+.record-button {
+    flex: 1;
+    height: 33px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
     display: flex;
     flex-direction: row;
-    height: 100px;
-    padding: 35px;
+    align-items: center;
+    justify-content: center;
 }
 
-.modal-loading {
-    width: 20px;
-    height: 8px;
-    border-radius: 2px;
-}
-
-.modal-title {
+.record-text {
     text-align: center;
 }
 </style>

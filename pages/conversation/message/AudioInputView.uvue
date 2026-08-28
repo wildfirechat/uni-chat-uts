@@ -1,13 +1,12 @@
 <template>
     <view class="TUI-message-input-main" @longpress="handleLongPress" @touchmove="handleTouchMove"
-        @touchend="handleTouchEnd">
-        <text class="record-text" :style="{ fontSize: fontPx(15), backgroundColor: c.surface, color: c.textPrimary }">{{ text }}</text>
-        <view class="record-modal" v-if="popupToggle" :style="{ backgroundColor: c.scrim }">
-            <view class="wrapper">
-                <view class="modal-loading" :style="{ backgroundColor: c.accent }"></view>
-            </view>
-            <text class="modal-title" :style="{ fontSize: fontPx(14), color: c.onAccent }">{{ title }}</text>
+        @touchend="handleTouchEnd" @touchcancel="handleTouchCancel">
+        <view class="record-button" :style="{ backgroundColor: buttonBg, borderColor: buttonBorder }">
+            <text class="record-text" :style="{ fontSize: fontPx(15), color: buttonFg }">{{ buttonLabel }}</text>
         </view>
+        <!-- 语音消息没有真实音量可读，只能让 HUD 自己造起伏，理由见 voice-record-overlay 文件头 -->
+        <voice-record-overlay :visible="recording" :simulate-level="true" :cancelling="cancelling"
+            :seconds="recordSeconds" :max-seconds="MAX_RECORD_SECONDS" :tip="tip" />
     </view>
 </template>
 
@@ -16,6 +15,9 @@ import wfc from "../../../wfc/client/wfc.uts";
 import ConversationInfo from "../../../wfc/model/conversationInfo.uts";
 import SoundMessageContent from "../../../wfc/messages/soundMessageContent.uts";
 import { toLocalFilePath } from "../../../common/filePath.uts";
+import { getTouchPoint, TouchPoint } from "../../../common/touch.uts";
+import { setRecorderHandlers } from "../../../common/recorder.uts";
+import { toast } from "../../../common/prompt.uts";
 
 import { colors, AppColors } from "@/common/theme.uts";
 import { fontPx } from "@/common/layoutScale.uts";
@@ -23,100 +25,193 @@ defineOptions({
     name: 'AudioInputView'
 })
 
+/** 录音时长上限，秒。和 start 的 duration 必须一致，超时是 recorder 自己停的 */
+const MAX_RECORD_SECONDS = 60
+/**
+ * 上滑多少**逻辑像素**算取消。
+ *
+ * ⚠️ 判定必须走 [getTouchPoint]：touch 事件的坐标在鸿蒙上是物理像素、在 android 上是逻辑像素
+ * （见 common/touch.uts）。以前这里直接读 `changedTouches[0].clientY`，同一个 100 的阈值
+ * 在 3x 屏的鸿蒙上只有 33 逻辑像素，两端的取消手感差着三倍。
+ */
+const CANCEL_SLIDE_DISTANCE = 50
+/** 计时刷新间隔，秒数和倒计时都靠它推进 */
+const TICK_MS = 200
+
+const TIP_NORMAL = '手指上滑，取消发送'
+const TIP_CANCEL = '松开手指，取消发送'
 
 const c = computed<AppColors>((): AppColors => colors())
 const props = defineProps<{
     conversationInfo: ConversationInfo
 }>()
 
-const popupToggle = ref<boolean>(false)
-const isRecording = ref<boolean>(false)
-const canSend = ref<boolean>(true)
-const text = ref<string>('按住说话')
-const title = ref<string>(' ')
-const recordTime = ref<number>(0)
-const recordTimer = ref<number>(0)
-const longPressClientY = ref<number>(0)
+/** 正在录音（HUD 是否显示、手势是否有效） */
+const recording = ref<boolean>(false)
+/** 上滑到取消区，松手丢弃 */
+const cancelling = ref<boolean>(false)
+const recordSeconds = ref<number>(0)
+
+// ---- 松手到 onStop 回调之间还要用的判定数据 ----
+// HUD 在松手那一刻就收（等异步回调再收会有明显的延迟感），但「这条录音发不发、录了多久」
+// 得等 onStop 才有答案，所以这两个值不跟着 HUD 一起清。
+let recordStartTime = 0
+let discardOnStop = false
+
+let tickTimer = 0
+let longPressY = 0
+
+const buttonLabel = computed<string>((): string => {
+    if (!recording.value) {
+        return '按住说话'
+    }
+    return cancelling.value ? '松开取消' : '松开发送'
+})
+
+const tip = computed<string>((): string => cancelling.value ? TIP_CANCEL : TIP_NORMAL)
+
+// 三态和 flutter record_widget.dart 一致：静止时对齐它替换掉的文本输入框（surface 底 + 发丝描边），
+// 录音中转品牌蓝，上滑待取消转危险红。
+const buttonBg = computed<string>((): string => {
+    if (!recording.value) {
+        return c.value.surface
+    }
+    return cancelling.value ? c.value.danger : c.value.accent
+})
+
+const buttonBorder = computed<string>((): string => {
+    if (!recording.value) {
+        return c.value.hairline
+    }
+    return cancelling.value ? c.value.danger : c.value.accent
+})
+
+const buttonFg = computed<string>((): string => {
+    return recording.value ? c.value.onAccent : c.value.textPrimary
+})
+
+const stopTick = () => {
+    if (tickTimer != 0) {
+        clearInterval(tickTimer)
+        tickTimer = 0
+    }
+}
+
+/** 只收 HUD 和手势状态，不动上面那两个判定数据 */
+const resetHud = () => {
+    stopTick()
+    recording.value = false
+    cancelling.value = false
+    recordSeconds.value = 0
+}
 
 onMounted(() => {
-    const recorderManager = uni.getRecorderManager();
-    recorderManager.onStop((res) => {
-        if (recordTimer.value != 0) {
-            clearInterval(recordTimer.value);
-            recordTimer.value = 0;
+    // 监听为什么不在这里直接 onStop/onError：见 common/recorder.uts 的说明（单例 + 追加监听）
+    const onStop = (tempFilePath: string): void => {
+        const startedAt = recordStartTime
+        // 录满 60s 是 recorder 自己停的，这时手指还按着：HUD 得在这里收，
+        // 而且手指此刻正停在取消区的话同样不该发出去
+        const discard = discardOnStop || cancelling.value
+        recordStartTime = 0
+        discardOnStop = false
+        resetHud()
+        if (startedAt == 0 || discard) {
+            return
         }
-        uni.hideLoading();
-        if (canSend.value) {
-            if (recordTime.value < 1) {
-                uni.showToast({
-                    title: '录音时间太短',
-                    icon: 'none'
-                } as ShowToastOptions);
-            } else {
-                const filePath = toLocalFilePath(res.tempFilePath);
-                const soundMessageContent = new SoundMessageContent(filePath, '', recordTime.value)
-                let conversationInfo = props.conversationInfo as ConversationInfo
-                wfc.sendConversationMessage(conversationInfo.conversation, soundMessageContent);
-            }
+        const durationMs = Date.now() - startedAt
+        if (durationMs < 1000) {
+            toast('录音时间太短')
+            return
         }
-        popupToggle.value = false;
-        isRecording.value = false;
-        canSend.value = true;
-        title.value = ' ';
-        text.value = '按住说话'
-    });
-    recorderManager.onError((res) => {
-        console.log('recorderManager.onError', res);
-    })
+        // 和 flutter 一致做四舍五入，1.6s 的语音显示 2s 而不是 1s
+        const duration = Math.floor((durationMs + 500) / 1000)
+        const filePath = toLocalFilePath(tempFilePath)
+        const soundMessageContent = new SoundMessageContent(filePath, '', duration)
+        let conversationInfo = props.conversationInfo as ConversationInfo
+        wfc.sendConversationMessage(conversationInfo.conversation, soundMessageContent)
+    }
+    const onError = (): void => {
+        const wasRecording = recording.value
+        recordStartTime = 0
+        discardOnStop = false
+        resetHud()
+        if (wasRecording) {
+            toast('录音失败，请检查麦克风权限')
+        }
+    }
+    setRecorderHandlers(onStop, onError)
+})
+
+onUnmounted(() => {
+    if (recording.value) {
+        // 组件是跟着输入栏开关销毁的，销毁时还在录就把 recorder 停掉，否则麦克风一直占着。
+        // 这种半路销毁不发消息 —— 用户是去点别的按钮了，不是想发这条语音
+        uni.getRecorderManager().stop()
+    }
+    recordStartTime = 0
+    discardOnStop = false
+    resetHud()
+    setRecorderHandlers(null, null)
 })
 
 const handleLongPress = (e: UniTouchEvent) => {
-    console.log('to start record');
-    if (e.changedTouches.length > 0) {
-        longPressClientY.value = e.changedTouches[e.changedTouches.length - 1].clientY;
+    if (recording.value) {
+        return
     }
-    popupToggle.value = true;
-    const recorderManager = uni.getRecorderManager();
+    const point = getTouchPoint(e)
+    longPressY = point == null ? 0 : (point as TouchPoint).y
+
+    recording.value = true
+    cancelling.value = false
+    recordSeconds.value = 0
+    recordStartTime = Date.now()
+    discardOnStop = false
+
+    const recorderManager = uni.getRecorderManager()
     recorderManager.start({
-        duration: 60000,
+        duration: MAX_RECORD_SECONDS * 1000,
         sampleRate: 44100,
         format: 'mp3'
-    } as RecorderManagerStartOptions);
-    title.value = '正在录音';
-    isRecording.value = true;
-    recordTime.value = 0;
-    recordTimer.value = setInterval(() => {
-        recordTime.value++;
-    }, 1000);
+    } as RecorderManagerStartOptions)
+
+    stopTick()
+    tickTimer = setInterval((): void => {
+        // 秒数按时间戳算而不是数 tick：定时器在排版繁忙时会被饿死，数出来的秒数会偏少
+        recordSeconds.value = Math.floor((Date.now() - recordStartTime) / 1000)
+    }, TICK_MS)
 }
 
-// 录音时的手势上划移动距离对应文案变化
+// 上滑超过阈值进入取消态，滑回来还能恢复（和微信一致）
 const handleTouchMove = (e: UniTouchEvent) => {
-    if (isRecording.value && e.changedTouches.length > 0) {
-        const clientY = e.changedTouches[e.changedTouches.length - 1].clientY
-        if (Math.abs(longPressClientY.value - clientY) > 100) {
-            text.value = '抬起停止';
-            title.value = '松开手指，取消发送';
-            canSend.value = false;
-        } else if (Math.abs(longPressClientY.value - clientY) > 20) {
-            text.value = '抬起停止';
-            title.value = '上划可取消';
-            canSend.value = true;
-        } else {
-            text.value = '抬起停止';
-            title.value = '正在录音';
-            canSend.value = true;
-        }
+    if (!recording.value) {
+        return
     }
+    const point = getTouchPoint(e)
+    if (point == null) {
+        return
+    }
+    // 只认向上滑：提示语写的就是「上滑取消」，往下滑不该丢消息
+    cancelling.value = longPressY - (point as TouchPoint).y > CANCEL_SLIDE_DISTANCE
 }
 
-// 手指离开页面滑动
 const handleTouchEnd = () => {
-    isRecording.value = false;
-    popupToggle.value = false;
-    text.value = '按住说话';
-    uni.hideLoading();
-    uni.getRecorderManager().stop();
+    if (!recording.value) {
+        return
+    }
+    // 发不发在松手这一刻就定了，HUD 立刻收；剩下的等 onStop 回来再办
+    discardOnStop = cancelling.value
+    resetHud()
+    uni.getRecorderManager().stop()
+}
+
+// 来电、系统手势等会把手势打断，按取消处理，别把半截录音发出去
+const handleTouchCancel = () => {
+    if (!recording.value) {
+        return
+    }
+    discardOnStop = true
+    resetHud()
+    uni.getRecorderManager().stop()
 }
 </script>
 
@@ -126,39 +221,25 @@ const handleTouchEnd = () => {
     height: 33px;
     margin: 0 5px;
     padding: 0 3px;
-    border-radius: 3px;
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
 }
 
-.record-modal {
-    height: 150px;
-    width: 220px;
-    position: fixed;
-    top: 300px;
-    z-index: 9999;
-    left: 70px;
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-}
-
-.wrapper {
+.record-button {
+    flex: 1;
+    height: 33px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
     display: flex;
     flex-direction: row;
-    height: 100px;
-    padding: 35px;
+    align-items: center;
+    justify-content: center;
 }
 
-.modal-loading {
-    width: 20px;
-    height: 8px;
-    border-radius: 2px;
-}
-
-.modal-title {
+.record-text {
     text-align: center;
 }
 </style>
