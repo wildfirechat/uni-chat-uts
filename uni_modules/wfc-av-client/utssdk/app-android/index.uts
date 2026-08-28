@@ -986,7 +986,28 @@ export function getMyProfile(callId: string): string | null {
         return null
     }
     const p = session.getMyProfile()
-    return p == null ? null : participantProfileToJson(p).toString()
+    if (p == null) {
+        return null
+    }
+    const obj = participantProfileToJson(p)
+    // ⚠️ 自己的 screenSharing 一律抹成 false。
+    //
+    // profile 里的 screenSharing 在应用层的含义是「这条 profile 描述的是一路屏幕共享流」——
+    // 会议页拿它区分同一个人的摄像头格子和共享格子（参与者的 key 就是 userId + '-ss'）。
+    // 但 Android 的 `getMyProfile()` 把这个字段当状态位用：`profile.screenSharing = this.isScreenSharing`；
+    // 鸿蒙的 `getSelfProfile()` 和 iOS 的 `myProfile` 都不设这个字段。
+    //
+    // SCREEN_SHARING_REPLACE_MODE 下屏幕轨道是顶替摄像头轨道推出去的，自己**不会**单独成一格，
+    // 照抄这个状态位会让自己那格被误判成共享格，一连串后果：
+    //   - 名字挂上「（共享）」，结束共享也摘不掉（列表不会因为共享结束而重建）；
+    //   - native-view 的 @init 走 setRemoteVideoView(自己, screenSharing=true)，绑一路根本不存在的
+    //     远端共享流 —— 黑屏；
+    //   - didMuteStateChanged / didVideoMuted / didChangeType 里那些 `!p.screenSharing` /
+    //     `p.screenSharing == screenSharing` 的判断会整格跳过自己，于是结束共享后再打开摄像头，
+    //     videoMuted 刷不回来，画面永远出不来（didChangeType 那条还会再 push 一格同 key 的自己）。
+    // 想知道「我在不在共享」用 isScreenSharing(callId)，别读这个字段。
+    obj.put("screenSharing", false)
+    return obj.toString()
 }
 
 // 用 UTSAndroid.requestSystemPermission 申请摄像头/麦克风权限（uts 插件内可用，应用层代码不可直接用）

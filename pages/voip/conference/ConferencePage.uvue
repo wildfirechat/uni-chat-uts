@@ -281,7 +281,9 @@ const duration = computed<string>((): string => {
 
 const tileName = (p: ConferenceParticipant): string => {
     let name = p.self ? '我' : p.displayName
-    if (p.screenSharing) {
+    // 自己那格永远是 screenSharing = false（REPLACE_MODE 下共享轨道顶替摄像头轨道，不单独成格，
+    // 见 app-android/index.uts#getMyProfile 的长注释），所以「（共享）」得另外按 selfScreenSharing 判
+    if (p.screenSharing || (p.self && selfScreenSharing.value)) {
         name += '（共享）'
     } else if (p.host) {
         name += '（主持人）'
